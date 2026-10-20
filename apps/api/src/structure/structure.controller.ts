@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
 import {
   CreateCompanyDto,
@@ -27,6 +27,15 @@ export class StructureController {
   updateCompany(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateCompanyDto) {
     return this.svc.updateCompany(ctx, id, dto);
   }
+
+  @Delete('companies/:id') @RequirePermissions('company.manage')
+  deleteCompany(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.svc.deleteCompany(ctx, id); }
+
+  @Delete('establishments/:id') @RequirePermissions('company.manage')
+  deleteEstablishment(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.svc.deleteEstablishment(ctx, id); }
+
+  @Delete('warehouses/:id') @RequirePermissions('warehouse.manage')
+  deleteWarehouse(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.svc.deleteWarehouse(ctx, id); }
 
   @Post('establishments') @RequirePermissions('company.manage')
   createEstablishment(@CurrentAuth() ctx: AuthContext, @Body() dto: CreateEstablishmentDto) { return this.svc.createEstablishment(ctx, dto); }

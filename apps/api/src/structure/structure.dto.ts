@@ -70,6 +70,7 @@ export class CreateEstablishmentDto extends AddressFields {
 }
 
 export class UpdateEstablishmentDto extends AddressFields {
+  @IsOptional() @IsString() @MaxLength(30) complement?: string;
   @IsOptional() @IsString() @Length(2, 200) name?: string;
   @IsOptional() @Validate(CnpjConstraint) cnpj?: string;
   @IsOptional() @IsString() @MaxLength(30) stateRegistration?: string;

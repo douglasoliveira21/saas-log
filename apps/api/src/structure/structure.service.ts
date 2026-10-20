@@ -21,8 +21,8 @@ function mapUnique(e: unknown, message: string): never {
   throw e;
 }
 
-const cnpjOrUndef = (v?: string) => (v ? onlyDigits(v) : undefined);
-const upperUf = <T extends { state?: string }>(d: T) => ({ ...d, state: d.state?.toUpperCase() });
+const cnpjOrUndef = (v?: string | null) => (v === null ? null : v ? onlyDigits(v) : undefined);
+const upperUf = <T extends { state?: string | null }>(d: T) => ({ ...d, state: d.state === null ? null : d.state?.toUpperCase() });
 
 @Injectable()
 export class StructureService {
@@ -79,7 +79,17 @@ export class StructureService {
 
   async updateEstablishment(ctx: AuthContext, id: string, dto: UpdateEstablishmentDto) {
     return this.prisma.withContext(ctx, async (tx) => {
-      await this.mustExist(tx.establishment.findFirst({ where: { id, tenantId: ctx.tenantId! }, select: { id: true } }));
+      const current = await tx.establishment.findFirst({ where: { id, tenantId: ctx.tenantId! }, select: { cnpj: true, state: true, stateRegistration: true } });
+      if (!current) throw new NotFoundException('Registro não encontrado.');
+      // Com documentos fiscais já registrados, CNPJ, UF e IE compõem a chave de acesso e a numeração: não mudam por aqui.
+      const touchesFiscalId = (dto.cnpj !== undefined && (cnpjOrUndef(dto.cnpj) ?? null) !== current.cnpj)
+        || (dto.state !== undefined && (dto.state?.toUpperCase() ?? null) !== current.state)
+        || (dto.stateRegistration !== undefined && (dto.stateRegistration ?? null) !== current.stateRegistration);
+      if (touchesFiscalId) {
+        const docs = await tx.fiscalDocument.count({ where: { tenantId: ctx.tenantId!, establishmentId: id } });
+        const series = await tx.fiscalSeries.count({ where: { tenantId: ctx.tenantId!, establishmentId: id } });
+        if (docs + series > 0) throw new ConflictException('Este estabelecimento já possui documentos fiscais: CNPJ, UF e inscrição estadual não podem ser alterados. Cadastre um novo estabelecimento.');
+      }
       const row = await tx.establishment
         .update({ where: { id }, data: { ...normalizeContact(upperUf(dto)), cnpj: cnpjOrUndef(dto.cnpj) } })
         .catch((e) => mapUnique(e, 'Já existe um estabelecimento com este CNPJ.'));
@@ -106,6 +116,60 @@ export class StructureService {
       const row = await tx.warehouse.update({ where: { id }, data: upperUf(dto) });
       await this.audit.record(tx, ctx, { action: 'warehouse.updated', entity: 'warehouse', entityId: id, metadata: { fields: Object.keys(dto) } });
       return row;
+    });
+  }
+
+  // ───────────── exclusão (somente cadastros sem uso; o resto se inativa) ─────────────
+
+  private blocked(e: unknown): never {
+    const text = String((e as Error)?.message ?? '');
+    if ((e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2003') || /foreign key|RESTRICT setting/i.test(text)) {
+      throw new ConflictException('Este registro já está em uso (estoque, pedidos, notas ou integrações). Desative-o em vez de excluir.');
+    }
+    throw e;
+  }
+
+  async deleteCompany(ctx: AuthContext, id: string) {
+    return this.prisma.withContext(ctx, async (tx) => {
+      const c = await tx.company.findFirst({ where: { id, tenantId: ctx.tenantId! } });
+      if (!c) throw new NotFoundException('Registro não encontrado.');
+      const n = await tx.establishment.count({ where: { tenantId: ctx.tenantId!, companyId: id } });
+      if (n > 0) throw new ConflictException(`A empresa possui ${n} estabelecimento(s). Exclua-os antes (ou desative a empresa).`);
+      await tx.company.delete({ where: { id } }).catch((e) => this.blocked(e));
+      await this.audit.record(tx, ctx, { action: 'company.deleted', entity: 'company', entityId: id, metadata: { legalName: c.legalName, cnpj: c.cnpj } });
+      return { id, deleted: true };
+    });
+  }
+
+  async deleteEstablishment(ctx: AuthContext, id: string) {
+    return this.prisma.withContext(ctx, async (tx) => {
+      const t = ctx.tenantId!;
+      const e = await tx.establishment.findFirst({ where: { id, tenantId: t } });
+      if (!e) throw new NotFoundException('Registro não encontrado.');
+      const wh = await tx.warehouse.count({ where: { tenantId: t, establishmentId: id } });
+      if (wh > 0) throw new ConflictException(`O estabelecimento possui ${wh} depósito(s). Exclua-os antes (ou desative o estabelecimento).`);
+      const [docs, series, certs] = await Promise.all([
+        tx.fiscalDocument.count({ where: { tenantId: t, establishmentId: id } }),
+        tx.fiscalSeries.count({ where: { tenantId: t, establishmentId: id } }),
+        tx.fiscalCertificate.count({ where: { tenantId: t, establishmentId: id } }),
+      ]);
+      if (docs + series + certs > 0) throw new ConflictException('O estabelecimento possui documentos, numeração ou certificado fiscal. Desative-o em vez de excluir.');
+      const cfg = await tx.fiscalConfiguration.findFirst({ where: { tenantId: t, establishmentId: id } });
+      if (cfg && cfg.status !== 'DRAFT') throw new ConflictException('A configuração fiscal deste estabelecimento já foi enviada ou validada pelo contador. Desative-o em vez de excluir.');
+      if (cfg) await tx.fiscalConfiguration.delete({ where: { id: cfg.id } });
+      await tx.establishment.delete({ where: { id } }).catch((err) => this.blocked(err));
+      await this.audit.record(tx, ctx, { action: 'establishment.deleted', entity: 'establishment', entityId: id, metadata: { name: e.name, cnpj: e.cnpj } });
+      return { id, deleted: true };
+    });
+  }
+
+  async deleteWarehouse(ctx: AuthContext, id: string) {
+    return this.prisma.withContext(ctx, async (tx) => {
+      const w = await tx.warehouse.findFirst({ where: { id, tenantId: ctx.tenantId! } });
+      if (!w) throw new NotFoundException('Registro não encontrado.');
+      await tx.warehouse.delete({ where: { id } }).catch((e) => this.blocked(e));
+      await this.audit.record(tx, ctx, { action: 'warehouse.deleted', entity: 'warehouse', entityId: id, metadata: { code: w.code, name: w.name } });
+      return { id, deleted: true };
     });
   }
 
