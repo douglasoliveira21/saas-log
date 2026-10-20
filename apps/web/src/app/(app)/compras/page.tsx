@@ -1,8 +1,10 @@
 'use client';
 
+import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { brl, dateBr, PURCHASE_STATUS } from '@/lib/format';
+import { useUi, PageHeader, Alert, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 interface Row { id: string; number: number; status: string; total: string; expectedDate: string | null; createdAt: string; supplier: { legalName: string }; warehouse: { code: string } }
@@ -20,6 +22,7 @@ const num = (v: string) => Number(v.replace(',', '.'));
 
 export default function ComprasPage() {
   const { can } = useSession();
+  const ui = useUi();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [sugs, setSugs] = useState<Suggestion[]>([]);
@@ -49,7 +52,7 @@ export default function ComprasPage() {
     setError(''); setOk('');
     try { await fn(); setOk(message); load(); if (detail) await open(detail.id); } catch (e) { setError((e as Error).message); }
   };
-  const ask = (q: string, fn: (reason: string) => Promise<unknown>, message: string) => { const r = window.prompt(q); if (r) void act(() => fn(r), message); };
+  const ask = async (q: string, fn: (reason: string) => Promise<unknown>, message: string) => { const r = await ui.prompt({ title: q.replace(/:$/, ''), label: 'Motivo', multiline: true, confirmLabel: 'Confirmar' }); if (r) void act(() => fn(r), message); };
 
   function startForm(d?: Detail, product?: Suggestion) {
     setForm({ id: d?.id });
@@ -78,12 +81,11 @@ export default function ComprasPage() {
 
   return (
     <>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <div><h1>Compras</h1><p className="muted">Ordens até o limite configurado são aprovadas na hora; acima dele, aguardam alçada. Contas a pagar e conferência com XML chegam nas Fases 6 e 7.</p></div>
-        {can('purchases.create') && <button className="btn primary" onClick={() => startForm()} disabled={!suppliers.length || !whs.length}>+ Ordem de compra</button>}
-      </div>
-      {error && <div className="alert error" role="alert">{error}</div>}
-      {ok && <div className="alert ok" role="status">{ok}</div>}
+      <PageHeader title="Compras" description={<>Ordens até o limite configurado são aprovadas na hora; acima dele, aguardam alçada. A conferência com o XML da nota está em Fiscal e as contas a pagar, em Financeiro.</>} actions={<>
+          {can('purchases.create') && <button className="btn primary" onClick={() => startForm()} disabled={!suppliers.length || !whs.length}><Plus aria-hidden />Ordem de compra</button>}
+        </>} />
+      {error && <Alert kind="error">{error}</Alert>}
+      {ok && <Alert kind="ok">{ok}</Alert>}
       {!suppliers.length && can('purchases.create') && <div className="alert">Cadastre um fornecedor para criar ordens de compra.</div>}
 
       {sugs.length > 0 && (
@@ -120,7 +122,7 @@ export default function ComprasPage() {
               {lines.length > 1 && <button type="button" className="btn sm" onClick={() => setLines(lines.filter((_, k) => k !== i))}>Remover</button>}
             </div>
           ))}
-          <button type="button" className="btn sm" onClick={() => setLines([...lines, { productId: '', quantity: '1', unitCost: '' }])}>+ item</button>
+          <button type="button" className="btn sm" onClick={() => setLines([...lines, { productId: '', quantity: '1', unitCost: '' }])}><Plus aria-hidden />item</button>
           <div className="row" style={{ marginTop: 12 }}><button className="btn primary" onClick={save}>Salvar rascunho</button><button className="btn" onClick={() => setForm(null)}>Cancelar</button></div>
         </section>
       )}
@@ -129,9 +131,9 @@ export default function ComprasPage() {
         <div className="table-wrap"><table>
           <thead><tr><th>Nº</th><th>Fornecedor</th><th>Depósito</th><th>Situação</th><th>Total</th><th>Previsão</th><th /></tr></thead>
           <tbody>
-            {!rows && !error && <tr><td colSpan={7} className="muted">Carregando…</td></tr>}
+            {!rows && !error && <tr><td colSpan={7}><Skeleton rows={3} /></td></tr>}
             {rows?.length === 0 && <tr><td colSpan={7} className="empty">Nenhuma ordem de compra ainda.</td></tr>}
-            {rows?.map((o) => <tr key={o.id}><td>{o.number}</td><td>{o.supplier.legalName}</td><td>{o.warehouse.code}</td><td><span className="badge">{PURCHASE_STATUS[o.status]}</span></td><td>{brl(o.total)}</td><td>{dateBr(o.expectedDate)}</td><td><button className="btn sm" onClick={() => open(o.id)}>Abrir</button></td></tr>)}
+            {rows?.map((o) => <tr key={o.id}><td>{o.number}</td><td>{o.supplier.legalName}</td><td>{o.warehouse.code}</td><td><span className="badge">{PURCHASE_STATUS[o.status]}</span></td><td className="num">{brl(o.total)}</td><td>{dateBr(o.expectedDate)}</td><td><button className="btn sm" onClick={() => open(o.id)}>Abrir</button></td></tr>)}
           </tbody>
         </table></div>
       </section>
@@ -157,7 +159,7 @@ export default function ComprasPage() {
           <div className="table-wrap"><table>
             <thead><tr><th>Produto</th><th>Pedido</th><th>Recebido</th><th>Custo un.</th>{['APPROVED', 'PARTIALLY_RECEIVED'].includes(detail.status) && can('purchases.receive') && <th>Receber agora</th>}</tr></thead>
             <tbody>{detail.items.map((i) => (
-              <tr key={i.id}><td>{i.product.sku} — {i.product.name}</td><td>{i.qtyOrdered}</td><td>{i.qtyReceived}</td><td>{brl(i.unitCost)}</td>
+              <tr key={i.id}><td>{i.product.sku} — {i.product.name}</td><td>{i.qtyOrdered}</td><td>{i.qtyReceived}</td><td className="num">{brl(i.unitCost)}</td>
                 {['APPROVED', 'PARTIALLY_RECEIVED'].includes(detail.status) && can('purchases.receive') && <td><input type="number" min={0} max={i.qtyOrdered - i.qtyReceived} aria-label={`Receber ${i.product.sku}`} style={{ width: 90 }} value={recv[i.productId] ?? ''} onChange={(e) => setRecv({ ...recv, [i.productId]: e.target.value })} /></td>}
               </tr>
             ))}</tbody>

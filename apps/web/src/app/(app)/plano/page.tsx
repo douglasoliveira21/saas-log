@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { PageHeader, Alert } from '@/components/ui';
 import { brl, dateBr } from '@/lib/format';
 
 interface Resource { key: string; label: string; used: number; limit: number | null; exceeded: boolean }
@@ -20,8 +21,8 @@ export default function PlanoPage() {
 
   return (
     <>
-      <h1>Plano e uso</h1>
-      {error && <div className="alert error" role="alert">{error}</div>}
+      <PageHeader title="Plano e uso" />
+      {error && <Alert kind="error">{error}</Alert>}
       {b && (
         <>
           {b.readOnly && <div className="alert error" role="alert">A avaliação terminou: o sistema está em modo somente leitura. Contrate um plano para voltar a lançar dados.</div>}

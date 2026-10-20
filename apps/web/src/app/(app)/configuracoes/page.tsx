@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
+import { PageHeader, Alert, Skeleton } from '@/components/ui';
 
 interface Settings { 'commission.event': string; 'sales.maxDiscountPct': number; 'purchases.approvalLimit': number }
 
@@ -27,11 +28,10 @@ export default function ConfiguracoesPage() {
 
   return (
     <>
-      <h1>Políticas comerciais</h1>
-      <p className="muted">Valem para novos pedidos e ordens; documentos já confirmados não são recalculados.</p>
-      {error && <div className="alert error" role="alert">{error}</div>}
-      {ok && <div className="alert ok" role="status">{ok}</div>}
-      {!s && !error && <p className="muted">Carregando…</p>}
+      <PageHeader title="Políticas comerciais" description={<>Valem para novos pedidos e ordens; documentos já confirmados não são recalculados.</>} />
+      {error && <Alert kind="error">{error}</Alert>}
+      {ok && <Alert kind="ok">{ok}</Alert>}
+      {!s && !error && <Skeleton rows={3} />}
       {s && (
         <form className="card" onSubmit={save} style={{ maxWidth: 560 }}>
           <div className="field">

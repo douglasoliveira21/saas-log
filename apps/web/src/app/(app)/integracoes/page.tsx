@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { useUi, PageHeader, Alert, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 type Support = 'SUPPORTED' | 'IMPLEMENTED_UNVERIFIED' | 'PLANNED' | 'UNSUPPORTED';
@@ -41,6 +42,7 @@ const money = (v: number | null | undefined) => (v == null ? '—' : v.toLocaleS
 
 export default function IntegracoesPage() {
   const { can } = useSession();
+  const ui = useUi();
   const manage = can('integrations.manage');
   const [providers, setProviders] = useState<Provider[]>([]);
   const [conns, setConns] = useState<Connection[] | null>(null);
@@ -116,16 +118,15 @@ export default function IntegracoesPage() {
     }), 'Configuração salva.');
   }
 
-  const confirmThen = (msg: string, fn: () => void) => { if (window.confirm(msg)) fn(); };
+  const confirmThen = async (msg: string, fn: () => void) => { if (await ui.confirm({ title: 'Confirmar ação', message: msg, danger: true, confirmLabel: 'Continuar', cancelLabel: 'Voltar' })) fn(); };
   const meta = (p: string) => providers.find((x) => x.provider === p);
   const current = conns?.find((c) => c.id === sel);
 
   return (
     <>
-      <h1>Marketplaces e integrações</h1>
-      <p className="muted">Central de conexões por empresa. Credenciais ficam cifradas no servidor e nunca chegam ao navegador. Conectores marcados como “Planejado” ainda não executam chamadas ao canal.</p>
-      {error && <div className="alert error" role="alert">{error}</div>}
-      {ok && <div className="alert ok" role="status">{ok}</div>}
+      <PageHeader title="Marketplaces e integrações" description={<>Central de conexões por empresa. Credenciais ficam cifradas no servidor e nunca chegam ao navegador. Conectores marcados como “Planejado” ainda não executam chamadas ao canal.</>} />
+      {error && <Alert kind="error">{error}</Alert>}
+      {ok && <Alert kind="ok">{ok}</Alert>}
       {secret && (
         <div className="alert" role="status">
           <strong>Segredo do webhook (exibido uma única vez):</strong> <code>{secret.secret}</code><br />
@@ -161,7 +162,7 @@ export default function IntegracoesPage() {
         <div className="table-wrap"><table>
           <thead><tr><th>Conexão</th><th>Canal</th><th>Situação</th><th>Última sincronização</th><th>Fila</th><th /></tr></thead>
           <tbody>
-            {!conns && !error && <tr><td colSpan={6} className="muted">Carregando…</td></tr>}
+            {!conns && !error && <tr><td colSpan={6}><Skeleton rows={3} /></td></tr>}
             {conns?.length === 0 && <tr><td colSpan={6} className="empty">Nenhum canal conectado. Adicione uma conexão acima para começar.</td></tr>}
             {conns?.map((c) => (
               <tr key={c.id} style={c.id === sel ? { background: 'var(--surface-2)' } : undefined}>
@@ -239,18 +240,17 @@ export default function IntegracoesPage() {
               {listings.map((l) => (
                 <tr key={l.productId}>
                   <td>{l.sku} — {l.name}</td><td>{l.externalItemId ?? <span className="muted">rascunho</span>}</td><td>{l.availableQty}</td><td><strong>{l.publishableQty}</strong></td>
-                  <td>{money(l.price)}</td><td>{l.margin ? `${l.margin.marginPct.toFixed(1)}%` : '—'}</td>
+                  <td className="num">{money(l.price)}</td><td>{l.margin ? `${l.margin.marginPct.toFixed(1)}%` : '—'}</td>
                   <td className="muted">{l.lastPublishedQty ?? '—'} un · {money(l.lastPublishedPrice)}</td>
                   <td>{l.syncStatus ? <span className={`badge ${SYNC[l.syncStatus][1]}`} title={l.syncError ?? ''}>{SYNC[l.syncStatus][0]}</span> : '—'}{l.syncError && <div className="muted">{l.syncError}</div>}</td>
-                  <td>{can('pricing.manage') && <button className="btn sm" onClick={() => {
-                    const v = window.prompt(`Novo preço aprovado para ${l.sku} (R$):`, l.price?.toString() ?? '');
-                    if (!v) return;
-                    const reason = window.prompt('Motivo da alteração:');
-                    if (!reason) return;
-                    const price = Number(v.replace(',', '.'));
+                  <td>{can('pricing.manage') && <button className="btn sm" onClick={async () => {
+                    const res = await ui.form({ title: `Preço aprovado — ${l.sku}`, confirmLabel: 'Definir preço', fields: [{ name: 'price', label: 'Novo preço aprovado (R$)', required: true, defaultValue: l.price?.toString() ?? '' }, { name: 'reason', label: 'Motivo da alteração', type: 'textarea', required: true }] });
+                    if (!res) return;
+                    const reason = res.reason;
+                    const price = Number(res.price.replace(',', '.'));
                     void act(async () => {
                       try { await api(`/integrations/connections/${current.id}/listings/${l.productId}/price`, 'PUT', { price, reason }); }
-                      catch (e) { if (/acima de 20%/.test((e as Error).message) && window.confirm((e as Error).message + ' Confirmar mesmo assim?')) await api(`/integrations/connections/${current.id}/listings/${l.productId}/price`, 'PUT', { price, reason, confirmLargeChange: true }); else throw e; }
+                      catch (e) { if (/acima de 20%/.test((e as Error).message) && await ui.confirm({ title: 'Variação grande de preço', message: (e as Error).message + ' Confirmar mesmo assim?', confirmLabel: 'Confirmar' })) await api(`/integrations/connections/${current.id}/listings/${l.productId}/price`, 'PUT', { price, reason, confirmLargeChange: true }); else throw e; }
                     }, 'Preço aprovado e registrado no histórico.');
                   }}>Definir preço</button>}</td>
                 </tr>

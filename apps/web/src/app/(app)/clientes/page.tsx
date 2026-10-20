@@ -1,7 +1,9 @@
 'use client';
 
+import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
+import { PageHeader, Alert, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 interface Customer { id: string; kind: 'PF' | 'PJ'; name: string; document: string | null; email: string | null; phone: string | null; city: string | null; state: string | null; active: boolean }
@@ -30,12 +32,11 @@ export default function ClientesPage() {
 
   return (
     <>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <div><h1>Clientes</h1><p className="muted">Pessoas físicas e jurídicas. Dados pessoais ficam restritos às permissões do módulo.</p></div>
-        {manage && <button className="btn primary" onClick={() => setAdding(true)}>+ Cliente</button>}
-      </div>
-      {error && <div className="alert error" role="alert">{error}</div>}
-      {ok && <div className="alert ok" role="status">{ok}</div>}
+      <PageHeader title="Clientes" description={<>Pessoas físicas e jurídicas. Dados pessoais ficam restritos às permissões do módulo.</>} actions={<>
+          {manage && <button className="btn primary" onClick={() => setAdding(true)}><Plus aria-hidden />Cliente</button>}
+        </>} />
+      {error && <Alert kind="error">{error}</Alert>}
+      {ok && <Alert kind="ok">{ok}</Alert>}
       {adding && (
         <form className="card" style={{ marginBottom: 16 }} onSubmit={create}>
           <h2>Novo cliente</h2>
@@ -59,7 +60,7 @@ export default function ClientesPage() {
           <table>
             <thead><tr><th>Nome</th><th>Tipo</th><th>Documento</th><th>Contato</th><th>Local</th><th /></tr></thead>
             <tbody>
-              {!items && !error && <tr><td colSpan={6} className="muted">Carregando…</td></tr>}
+              {!items && !error && <tr><td colSpan={6}><Skeleton rows={3} /></td></tr>}
               {items?.length === 0 && <tr><td colSpan={6} className="empty">Nenhum cliente encontrado.</td></tr>}
               {items?.map((c) => (
                 <tr key={c.id} style={c.active ? undefined : { opacity: 0.55 }}>

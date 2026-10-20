@@ -1,7 +1,9 @@
 'use client';
 
+import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
+import { PageHeader, Alert, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 interface Supplier { id: string; legalName: string; tradeName: string | null; document: string | null; email: string | null; phone: string | null; paymentTerms: string | null; leadTimeDays: number | null; active: boolean }
@@ -31,12 +33,11 @@ export default function FornecedoresPage() {
 
   return (
     <>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <div><h1>Fornecedores</h1><p className="muted">Dados bancários e histórico de compras chegam com o módulo de Compras (Fase 3).</p></div>
-        {manage && <button className="btn primary" onClick={() => setAdding(true)}>+ Fornecedor</button>}
-      </div>
-      {error && <div className="alert error" role="alert">{error}</div>}
-      {ok && <div className="alert ok" role="status">{ok}</div>}
+      <PageHeader title="Fornecedores" description={<>Cadastro de fornecedores usados em compras, notas fiscais e contas a pagar.</>} actions={<>
+          {manage && <button className="btn primary" onClick={() => setAdding(true)}><Plus aria-hidden />Fornecedor</button>}
+        </>} />
+      {error && <Alert kind="error">{error}</Alert>}
+      {ok && <Alert kind="ok">{ok}</Alert>}
       {adding && (
         <form className="card" style={{ marginBottom: 16 }} onSubmit={create}>
           <h2>Novo fornecedor</h2>
@@ -58,7 +59,7 @@ export default function FornecedoresPage() {
           <table>
             <thead><tr><th>Fornecedor</th><th>Documento</th><th>Contato</th><th>Pagamento</th><th>Prazo</th><th /></tr></thead>
             <tbody>
-              {!items && !error && <tr><td colSpan={6} className="muted">Carregando…</td></tr>}
+              {!items && !error && <tr><td colSpan={6}><Skeleton rows={3} /></td></tr>}
               {items?.length === 0 && <tr><td colSpan={6} className="empty">Nenhum fornecedor cadastrado.</td></tr>}
               {items?.map((s) => (
                 <tr key={s.id} style={s.active ? undefined : { opacity: 0.55 }}>

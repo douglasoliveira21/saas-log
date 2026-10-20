@@ -1,8 +1,10 @@
 'use client';
 
+import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { brl, dateBr, ORDER_STATUS } from '@/lib/format';
+import { useUi, PageHeader, Alert, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 interface OrderRow { id: string; number: number; status: string; channel: string; total: string; createdAt: string; customer: { name: string }; salesperson: { name: string } | null }
@@ -21,6 +23,7 @@ const num = (v: string) => (v.trim() === '' ? undefined : Number(v.replace(',', 
 
 export default function VendasPage() {
   const { can } = useSession();
+  const ui = useUi();
   const [rows, setRows] = useState<OrderRow[] | null>(null);
   const [status, setStatus] = useState('');
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -71,27 +74,34 @@ export default function VendasPage() {
   const setLine = (i: number, patch: Partial<Line>) => setLines(lines.map((l, k) => (k === i ? { ...l, ...patch } : l)));
 
   async function doReturn(d: Detail) {
-    const reason = window.prompt('Motivo da devolução:');
-    if (!reason) return;
-    const items = d.items.map((i) => ({ i, q: Number(window.prompt(`${i.product.sku} — devolver quantas unidades? (vendido ${i.quantity}, já devolvido ${i.returnedQty})`, '0') ?? 0) })).filter((x) => x.q > 0);
-    if (!items.length) return;
-    const restock = window.confirm('Repor as unidades no estoque? (OK = sim, Cancelar = avariado/descartado)');
+    const res = await ui.form({
+      title: 'Registrar devolução', message: 'Informe quantas unidades de cada item voltaram.', confirmLabel: 'Registrar devolução',
+      fields: [
+        { name: 'reason', label: 'Motivo da devolução', type: 'textarea', required: true },
+        ...d.items.map((i) => ({ name: `q_${i.id}`, label: `${i.product.sku} — vendido ${i.quantity}, já devolvido ${i.returnedQty}`, type: 'number' as const, defaultValue: 0, min: 0, max: i.quantity - i.returnedQty })),
+        { name: 'restock', label: 'Destino das unidades', type: 'select' as const, defaultValue: 'yes', options: [{ value: 'yes', label: 'Repor no estoque' }, { value: 'no', label: 'Avariado/descartado (não repor)' }] },
+      ],
+    });
+    if (!res) return;
+    const reason = res.reason;
+    const items = d.items.map((i) => ({ i, q: Number(res[`q_${i.id}`] || 0) })).filter((x) => x.q > 0);
+    if (!items.length) { ui.toast.info('Nenhuma quantidade informada.'); return; }
+    const restock = res.restock === 'yes';
     await act(() => api(`/sales/orders/${d.id}/returns`, 'POST', { reason, restock, items: items.map((x) => ({ orderItemId: x.i.id, quantity: x.q })) }), 'Devolução registrada.');
   }
 
   const cancel = async (d: Detail) => {
-    const reason = window.prompt('Motivo do cancelamento:');
+    const reason = await ui.prompt({ title: 'Cancelar pedido', message: 'As reservas de estoque serão liberadas e as comissões estornadas.', label: 'Motivo do cancelamento', danger: true, confirmLabel: 'Cancelar pedido', cancelLabel: 'Voltar' });
     if (reason) await act(() => api(`/sales/orders/${d.id}/cancel`, 'POST', { reason }), 'Pedido cancelado.');
   };
 
   return (
     <>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <div><h1>Vendas e pedidos</h1><p className="muted">Confirmar reserva o estoque; expedir baixa o físico. Pagamento e faturamento chegam com Financeiro e Fiscal.</p></div>
-        {can('sales.create') && <button className="btn primary" onClick={() => startForm()} disabled={!customers.length || !whs.length}>+ Pedido</button>}
-      </div>
-      {error && <div className="alert error" role="alert">{error}</div>}
-      {ok && <div className="alert ok" role="status">{ok}</div>}
+      <PageHeader title="Vendas e pedidos" description={<>Confirmar reserva o estoque; expedir baixa o físico. As contas a receber são geradas no Financeiro e a nota, em Fiscal.</>} actions={<>
+          {can('sales.create') && <button className="btn primary" onClick={() => startForm()} disabled={!customers.length || !whs.length}><Plus aria-hidden />Pedido</button>}
+        </>} />
+      {error && <Alert kind="error">{error}</Alert>}
+      {ok && <Alert kind="ok">{ok}</Alert>}
       {!customers.length && can('sales.create') && <div className="alert">Cadastre ao menos um cliente em “Clientes” para criar pedidos.</div>}
 
       {form && (
@@ -115,7 +125,7 @@ export default function VendasPage() {
               {lines.length > 1 && <button type="button" className="btn sm" onClick={() => setLines(lines.filter((_, k) => k !== i))}>Remover</button>}
             </div>
           ))}
-          <div className="row"><button type="button" className="btn sm" onClick={() => setLines([...lines, { productId: '', quantity: '1', unitPrice: '', discountPct: '' }])}>+ item</button></div>
+          <div className="row"><button type="button" className="btn sm" onClick={() => setLines([...lines, { productId: '', quantity: '1', unitPrice: '', discountPct: '' }])}><Plus aria-hidden />item</button></div>
           <div className="row" style={{ marginTop: 12 }}><button className="btn primary" onClick={save}>Salvar rascunho</button><button className="btn" onClick={() => setForm(null)}>Cancelar</button></div>
         </section>
       )}
@@ -128,10 +138,10 @@ export default function VendasPage() {
           <table>
             <thead><tr><th>Nº</th><th>Cliente</th><th>Vendedor</th><th>Situação</th><th>Total</th><th>Data</th><th /></tr></thead>
             <tbody>
-              {!rows && !error && <tr><td colSpan={7} className="muted">Carregando…</td></tr>}
+              {!rows && !error && <tr><td colSpan={7}><Skeleton rows={3} /></td></tr>}
               {rows?.length === 0 && <tr><td colSpan={7} className="empty">Nenhum pedido encontrado.</td></tr>}
               {rows?.map((o) => (
-                <tr key={o.id}><td>{o.number}</td><td>{o.customer.name}</td><td>{o.salesperson?.name ?? '—'}</td><td><span className="badge">{ORDER_STATUS[o.status]}</span></td><td>{brl(o.total)}</td><td>{dateBr(o.createdAt)}</td><td><button className="btn sm" onClick={() => open(o.id)}>Abrir</button></td></tr>
+                <tr key={o.id}><td>{o.number}</td><td>{o.customer.name}</td><td>{o.salesperson?.name ?? '—'}</td><td><span className="badge">{ORDER_STATUS[o.status]}</span></td><td className="num">{brl(o.total)}</td><td>{dateBr(o.createdAt)}</td><td><button className="btn sm" onClick={() => open(o.id)}>Abrir</button></td></tr>
               ))}
             </tbody>
           </table>
@@ -149,7 +159,7 @@ export default function VendasPage() {
               </>}
               {detail.status === 'PENDING_APPROVAL' && can('sales.approve') && <>
                 <button className="btn primary" onClick={() => act(() => api(`/sales/orders/${detail.id}/approve`, 'POST'), 'Pedido aprovado e confirmado.')}>Aprovar</button>
-                <button className="btn" onClick={() => { const r = window.prompt('Motivo da rejeição:'); if (r) void act(() => api(`/sales/orders/${detail.id}/reject`, 'POST', { reason: r }), 'Pedido devolvido a rascunho.'); }}>Rejeitar</button>
+                <button className="btn" onClick={async () => { const r = await ui.prompt({ title: 'Rejeitar pedido', label: 'Motivo da rejeição', multiline: true, confirmLabel: 'Rejeitar' }); if (r) void act(() => api(`/sales/orders/${detail.id}/reject`, 'POST', { reason: r }), 'Pedido devolvido a rascunho.'); }}>Rejeitar</button>
               </>}
               {NEXT[detail.status] && can('sales.fulfill') && <button className="btn primary" onClick={() => act(() => api(`/sales/orders/${detail.id}/advance`, 'POST', { to: NEXT[detail.status][0] }), 'Situação atualizada.')}>{NEXT[detail.status][1]}</button>}
               {['DRAFT', 'PENDING_APPROVAL', 'CONFIRMED', 'PICKING', 'PACKED'].includes(detail.status) && can('sales.create') && <button className="btn" onClick={() => cancel(detail)}>Cancelar</button>}
@@ -162,7 +172,7 @@ export default function VendasPage() {
           <div className="table-wrap">
             <table>
               <thead><tr><th>Produto</th><th>Qtd.</th><th>Preço</th><th>Desc.</th><th>Total</th><th>Devolvido</th></tr></thead>
-              <tbody>{detail.items.map((i) => <tr key={i.id}><td>{i.product.sku} — {i.product.name}</td><td>{i.quantity}</td><td>{brl(i.unitPrice)}</td><td>{Number(i.discountPct)}%</td><td>{brl(i.total)}</td><td>{i.returnedQty}</td></tr>)}</tbody>
+              <tbody>{detail.items.map((i) => <tr key={i.id}><td>{i.product.sku} — {i.product.name}</td><td>{i.quantity}</td><td className="num">{brl(i.unitPrice)}</td><td>{Number(i.discountPct)}%</td><td className="num">{brl(i.total)}</td><td>{i.returnedQty}</td></tr>)}</tbody>
             </table>
           </div>
           <p style={{ textAlign: 'right', marginBottom: 0 }}>Subtotal {brl(detail.subtotal)} · Descontos {brl(detail.discountTotal)} · Frete {brl(detail.shipping)} · <strong>Total {brl(detail.total)}</strong></p>

@@ -1,8 +1,11 @@
 'use client';
 
+import { AlertTriangle, ArrowRight, Boxes, Building2, Check, PackageX, Users, Wallet, Warehouse } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { Alert, PageHeader, Skeleton, StatCard } from '@/components/ui';
 import { api } from '@/lib/api';
+import { brl } from '@/lib/format';
 import { useSession } from '@/lib/session';
 
 interface Metrics { products: number; belowMin: number; outOfStock: number; stockValue: string; fiscalPending: number }
@@ -11,76 +14,88 @@ interface Overview {
   checklist: { key: string; label: string; done: boolean }[];
   pendingModules: string[];
 }
+interface FinanceSummary { PAYABLE: Record<string, string>; RECEIVABLE: Record<string, string> }
 
 export default function DashboardPage() {
   const { me, can } = useSession();
   const [m, setM] = useState<Metrics | null>(null);
+  const [fin, setFin] = useState<FinanceSummary | null>(null);
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
     api<Overview>('/dashboard/overview').then(setData).catch((e) => setError(e.message));
     if (can('stock.view')) api<Metrics>('/stock/metrics').then(setM).catch(() => undefined);
+    if (can('finance.view')) api<FinanceSummary>('/finance/summary').then(setFin).catch(() => undefined);
   }, [can]);
 
-  const stats = data && [
-    ['Empresas', data.counts.companies],
-    ['Estabelecimentos', data.counts.establishments],
-    ['Depósitos', data.counts.warehouses],
-    ['Usuários ativos', data.counts.users],
-  ] as const;
   const done = data?.checklist.filter((c) => c.done).length ?? 0;
+  const total = data?.checklist.length ?? 0;
+  const pct = total ? Math.round((done / total) * 100) : 0;
 
   return (
     <>
-      <h1>Olá, {me.user.name.split(' ')[0]}</h1>
-      <p className="muted">Visão geral de {me.tenant!.name}. Os números vêm do banco de dados em tempo real.</p>
-      {error && <div className="alert error" role="alert">{error}</div>}
-      {!data && !error && <p className="muted">Carregando…</p>}
+      <PageHeader title={`Olá, ${me.user.name.split(' ')[0]}`} description={`Visão geral de ${me.tenant!.name}. Os números vêm do banco de dados em tempo real.`} />
+      {error && <Alert kind="error">{error}</Alert>}
+      {!data && !error && (
+        <div className="grid cols-4">{[0, 1, 2, 3].map((i) => <div className="card" key={i}><span className="skeleton" style={{ height: 14, width: '55%', marginBottom: 12 }} /><span className="skeleton" style={{ height: 30, width: '40%' }} /></div>)}</div>
+      )}
       {data && (
-        <>
-          <div className="grid cols-4" style={{ marginBottom: 16 }}>
-            {stats!.map(([label, n]) => (
-              <div className="card stat" key={label}>
-                <div className="muted">{label}</div>
-                <div className="n">{n}</div>
-              </div>
-            ))}
-          </div>
+        <div className="stack">
+          <section aria-label="Estrutura da empresa" className="grid cols-4">
+            <StatCard label="Empresas" value={data.counts.companies} icon={<Building2 />} />
+            <StatCard label="Estabelecimentos" value={data.counts.establishments} icon={<Warehouse />} />
+            <StatCard label="Depósitos" value={data.counts.warehouses} icon={<Boxes />} />
+            <StatCard label="Usuários ativos" value={data.counts.users} icon={<Users />} />
+          </section>
+
           {m && (
-            <div className="grid cols-4" style={{ marginBottom: 16 }}>
-              {([
-                ['Produtos ativos', m.products],
-                ['Abaixo do mínimo', m.belowMin],
-                ['Sem estoque', m.outOfStock],
-                ['Valor em estoque (custo)', Number(m.stockValue).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })],
-                ['Sem NCM (pendência fiscal)', m.fiscalPending],
-              ] as const).map(([label, n]) => (
-                <div className="card stat" key={label}><div className="muted">{label}</div><div className="n">{n}</div></div>
-              ))}
-            </div>
+            <section aria-label="Estoque">
+              <div className="card-head"><h2>Estoque</h2><Link href="/estoque" className="btn sm ghost">Ver estoque <ArrowRight /></Link></div>
+              <div className="grid cols-4">
+                <StatCard label="Produtos ativos" value={m.products} icon={<Boxes />} />
+                <StatCard label="Abaixo do mínimo" value={m.belowMin} icon={<AlertTriangle />} tone={m.belowMin ? 'warn' : undefined} />
+                <StatCard label="Sem estoque" value={m.outOfStock} icon={<PackageX />} tone={m.outOfStock ? 'danger' : undefined} />
+                <StatCard label="Valor em estoque (custo)" value={brl(m.stockValue)} icon={<Wallet />} />
+                {m.fiscalPending > 0 && <StatCard label="Sem NCM (pendência fiscal)" value={m.fiscalPending} tone="warn" icon={<AlertTriangle />} hint="Cadastre o NCM para emitir notas." />}
+              </div>
+            </section>
           )}
-          <div className="grid cols-2">
-            <section className="card">
-              <h2>Checklist de implantação ({done}/{data.checklist.length})</h2>
+
+          {fin && (
+            <section aria-label="Financeiro">
+              <div className="card-head"><h2>Contas a pagar e a receber</h2><Link href="/financeiro" className="btn sm ghost">Abrir financeiro <ArrowRight /></Link></div>
+              <div className="grid cols-4">
+                <StatCard label="A pagar vencido" value={brl(fin.PAYABLE.overdue)} tone={Number(fin.PAYABLE.overdue) > 0 ? 'danger' : undefined} icon={<Wallet />} />
+                <StatCard label="A pagar em 7 dias" value={brl(fin.PAYABLE.next7)} icon={<Wallet />} />
+                <StatCard label="A receber vencido" value={brl(fin.RECEIVABLE.overdue)} tone={Number(fin.RECEIVABLE.overdue) > 0 ? 'warn' : undefined} icon={<Wallet />} />
+                <StatCard label="A receber em 7 dias" value={brl(fin.RECEIVABLE.next7)} tone="ok" icon={<Wallet />} />
+              </div>
+            </section>
+          )}
+
+          {done < total && (
+            <section className="card" aria-label="Checklist de implantação">
+              <div className="card-head">
+                <h2>Checklist de implantação</h2>
+                <span className="badge brand">{done} de {total}</span>
+              </div>
+              <div className="progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Progresso da implantação" style={{ marginBottom: 8 }}><span style={{ width: `${pct}%` }} /></div>
               <ul className="checklist">
                 {data.checklist.map((c) => (
                   <li key={c.key}>
-                    <span className={`tick ${c.done ? 'done' : ''}`}>{c.done ? '✓' : ''}</span>
-                    <span>{c.label}</span>
+                    <span className={`tick ${c.done ? 'done' : ''}`}>{c.done && <Check />}</span>
+                    <span className={c.done ? 'muted' : ''}>{c.label}</span>
                   </li>
                 ))}
               </ul>
-              <p style={{ marginBottom: 0 }}><Link href="/empresa">Configurar empresa e depósitos →</Link></p>
+              <p style={{ margin: '12px 0 0' }}><Link href="/empresa" className="btn sm">Configurar empresa e depósitos <ArrowRight /></Link></p>
             </section>
-            <section className="card">
-              <h2>Ainda não disponível</h2>
-              <p className="muted">Indicadores de vendas, estoque e financeiro aparecerão aqui quando os módulos correspondentes forem entregues — sem números fictícios.</p>
-              <ul>{data.pendingModules.map((m) => <li key={m}>{m}</li>)}</ul>
-            </section>
-          </div>
-        </>
+          )}
+          {!m && !fin && done === total && <Alert kind="info">Sua estrutura está configurada. Use o menu à esquerda para acessar os módulos permitidos ao seu perfil.</Alert>}
+        </div>
       )}
+      {!data && !error && <div style={{ marginTop: 16 }}><Skeleton rows={3} /></div>}
     </>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
+import { PageHeader, Alert } from '@/components/ui';
 import { dateBr } from '@/lib/format';
 
 interface Tenant { id: string; name: string; slug: string; status: string; plan: string | null; trialEndsAt: string | null; createdAt: string; users: number; products: number; orders30d: number; connections: number; lastActivity: string | null }
@@ -38,10 +39,9 @@ export default function PlataformaPage() {
 
   return (
     <>
-      <h1>Plataforma</h1>
-      <p className="muted">Visão de administrador global: somente metadados e contagens. Nenhum dado comercial, fiscal ou financeiro das empresas é exibido. Toda alteração fica registrada aqui e na auditoria da empresa.</p>
-      {error && <div className="alert error" role="alert">{error}</div>}
-      {ok && <div className="alert ok" role="status">{ok}</div>}
+      <PageHeader title="Plataforma" description={<>Visão de administrador global: somente metadados e contagens. Nenhum dado comercial, fiscal ou financeiro das empresas é exibido. Toda alteração fica registrada aqui e na auditoria da empresa.</>} />
+      {error && <Alert kind="error">{error}</Alert>}
+      {ok && <Alert kind="ok">{ok}</Alert>}
 
       {edit && (
         <form className="card" style={{ marginBottom: 16 }} onSubmit={save}>

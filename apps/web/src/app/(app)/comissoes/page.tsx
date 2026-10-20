@@ -1,8 +1,10 @@
 'use client';
 
+import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { brl } from '@/lib/format';
+import { useUi, PageHeader, Alert } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 interface Salesperson { id: string; name: string; email: string | null; active: boolean; userId: string | null }
@@ -15,6 +17,7 @@ const STATUS: Record<string, string> = { FORECAST: 'Prevista', EARNED: 'Aprovada
 
 export default function ComissoesPage() {
   const { can } = useSession();
+  const ui = useUi();
   const manage = can('commissions.manage');
   const [people, setPeople] = useState<Salesperson[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
@@ -49,7 +52,7 @@ export default function ComissoesPage() {
     try { await api(`/commission-rules/${r.id}/active`, 'PUT', { active: !r.active }); load(); } catch (err) { setError((err as Error).message); }
   }
   async function pay(id: string, name: string) {
-    if (!window.confirm(`Marcar como paga toda a comissão aprovada de ${name}?`)) return;
+    if (!(await ui.confirm({ title: 'Marcar comissão como paga?', message: `Toda a comissão aprovada de ${name} será marcada como paga. Para gerar uma conta a pagar no Financeiro, use o repasse.`, confirmLabel: 'Marcar como paga' }))) return;
     setError(''); setOk('');
     try { const r = await api<{ paid: string }>('/commissions/pay', 'POST', { salespersonId: id }); setOk(`Pago: ${brl(r.paid)}.`); load(); } catch (err) { setError((err as Error).message); }
   }
@@ -57,12 +60,11 @@ export default function ComissoesPage() {
 
   return (
     <>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <div><h1>Vendedores e comissões</h1><p className="muted">Uma única regra por item (maior prioridade; empate → mais específica). Cancelamentos e devoluções entram como estornos; nada é apagado.</p></div>
-        {manage && <div className="row"><button className="btn" onClick={() => setPanel('person')}>+ Vendedor</button><button className="btn primary" onClick={() => setPanel('rule')}>+ Regra</button></div>}
-      </div>
-      {error && <div className="alert error" role="alert">{error}</div>}
-      {ok && <div className="alert ok" role="status">{ok}</div>}
+      <PageHeader title="Vendedores e comissões" description={<>Uma única regra por item (maior prioridade; empate → mais específica). Cancelamentos e devoluções entram como estornos; nada é apagado.</>} actions={<>
+          {manage && <div className="row"><button className="btn" onClick={() => setPanel('person')}><Plus aria-hidden />Vendedor</button><button className="btn primary" onClick={() => setPanel('rule')}><Plus aria-hidden />Regra</button></div>}
+        </>} />
+      {error && <Alert kind="error">{error}</Alert>}
+      {ok && <Alert kind="ok">{ok}</Alert>}
 
       {panel === 'person' && (
         <form className="card" style={{ marginBottom: 16 }} onSubmit={createPerson}>
@@ -102,7 +104,7 @@ export default function ComissoesPage() {
           <thead><tr><th>Vendedor</th><th>Prevista</th><th>Aprovada</th><th>Paga</th><th /></tr></thead>
           <tbody>
             {Object.keys(summary).length === 0 && <tr><td colSpan={5} className="empty">Ainda não há comissões. Elas surgem quando pedidos de vendedores com regra aplicável são confirmados.</td></tr>}
-            {Object.entries(summary).map(([id, s]) => <tr key={id}><td>{s.name}</td><td>{brl(s.FORECAST)}</td><td>{brl(s.EARNED)}</td><td>{brl(s.PAID)}</td><td>{manage && <button className="btn sm" onClick={() => pay(id, s.name)}>Pagar aprovadas</button>}</td></tr>)}
+            {Object.entries(summary).map(([id, s]) => <tr key={id}><td>{s.name}</td><td className="num">{brl(s.FORECAST)}</td><td className="num">{brl(s.EARNED)}</td><td className="num">{brl(s.PAID)}</td><td>{manage && <button className="btn sm" onClick={() => pay(id, s.name)}>Pagar aprovadas</button>}</td></tr>)}
           </tbody>
         </table></div>
       </section>
@@ -137,7 +139,7 @@ export default function ComissoesPage() {
           <thead><tr><th>Quando</th><th>Pedido</th><th>Vendedor</th><th>Tipo</th><th>Situação</th><th>Valor</th></tr></thead>
           <tbody>
             {entries.length === 0 && <tr><td colSpan={6} className="empty">Sem lançamentos.</td></tr>}
-            {entries.map((e) => <tr key={e.id}><td>{new Date(e.createdAt).toLocaleString('pt-BR')}</td><td>{e.order.number}</td><td>{e.salesperson.name}</td><td>{e.kind === 'ACCRUAL' ? 'Comissão' : `Estorno${e.note ? ` (${e.note})` : ''}`}</td><td><span className="badge">{STATUS[e.status]}</span></td><td>{brl(e.amount)}</td></tr>)}
+            {entries.map((e) => <tr key={e.id}><td>{new Date(e.createdAt).toLocaleString('pt-BR')}</td><td>{e.order.number}</td><td>{e.salesperson.name}</td><td>{e.kind === 'ACCRUAL' ? 'Comissão' : `Estorno${e.note ? ` (${e.note})` : ''}`}</td><td><span className="badge">{STATUS[e.status]}</span></td><td className="num">{brl(e.amount)}</td></tr>)}
           </tbody>
         </table></div>
       </section>

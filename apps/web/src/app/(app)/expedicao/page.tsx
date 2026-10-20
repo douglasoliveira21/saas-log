@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { dateBr } from '@/lib/format';
+import { PageHeader, Alert } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 interface QueueItem { id: string; number: number; status: string; channel: string; customer: string; city: string | null; state: string | null }
@@ -66,10 +67,9 @@ export default function ExpedicaoPage() {
 
   return (
     <>
-      <h1>Logística e expedição</h1>
-      <p className="muted">Registro de envios e rastreio manual. Cotação, etiqueta e rastreio automático dos Correios dependem de contrato e credenciais — nada é simulado.</p>
-      {error && <div className="alert error" role="alert">{error}</div>}
-      {ok && <div className="alert ok" role="status">{ok}</div>}
+      <PageHeader title="Logística e expedição" description={<>Registro de envios e rastreio manual. Cotação, etiqueta e rastreio automático dos Correios dependem de contrato e credenciais — nada é simulado.</>} />
+      {error && <Alert kind="error">{error}</Alert>}
+      {ok && <Alert kind="ok">{ok}</Alert>}
 
       {caps && (
         <div className="card" style={{ marginBottom: 16 }}>

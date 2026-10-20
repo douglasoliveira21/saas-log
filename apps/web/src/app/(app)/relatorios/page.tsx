@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { PageHeader, Alert } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 interface Report { key: string; title: string; columns: { key: string; label: string }[]; filters: string[]; canExport: boolean }
@@ -46,10 +47,9 @@ export default function RelatoriosPage() {
 
   return (
     <>
-      <h1>Relatórios</h1>
-      <p className="muted">Você vê apenas relatórios dos módulos aos quais tem acesso. Exportações ficam registradas na auditoria; planilhas neutralizam fórmulas em textos.</p>
-      {error && <div className="alert error" role="alert">{error}</div>}
-      {ok && <div className="alert ok" role="status">{ok}</div>}
+      <PageHeader title="Relatórios" description={<>Você vê apenas relatórios dos módulos aos quais tem acesso. Exportações ficam registradas na auditoria; planilhas neutralizam fórmulas em textos.</>} />
+      {error && <Alert kind="error">{error}</Alert>}
+      {ok && <Alert kind="ok">{ok}</Alert>}
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="row" style={{ gap: 12, flexWrap: 'wrap', alignItems: 'end' }}>
           <div><label htmlFor="r">Relatório</label><select id="r" value={key} onChange={(e) => setKey(e.target.value)}>{reports.map((r) => <option key={r.key} value={r.key}>{r.title}</option>)}</select></div>

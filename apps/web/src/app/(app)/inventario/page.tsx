@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
+import { useUi, PageHeader, Alert, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 interface Count { id: string; name: string; status: string; createdAt: string; warehouse: { code: string; name: string }; _count: { items: number } }
@@ -13,6 +14,7 @@ const STATUS: Record<string, string> = { OPEN: 'Em contagem', SUBMITTED: 'Aguard
 
 export default function InventarioPage() {
   const { can } = useSession();
+  const ui = useUi();
   const [counts, setCounts] = useState<Count[] | null>(null);
   const [whs, setWhs] = useState<{ id: string; code: string; name: string }[]>([]);
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -58,10 +60,9 @@ export default function InventarioPage() {
 
   return (
     <>
-      <h1>Inventário</h1>
-      <p className="muted">Contagem → envio → aprovação. Só a aprovação gera ajustes no estoque, um movimento auditável por divergência.</p>
-      {error && <div className="alert error" role="alert">{error}</div>}
-      {ok && <div className="alert ok" role="status">{ok}</div>}
+      <PageHeader title="Inventário" description={<>Contagem → envio → aprovação. Só a aprovação gera ajustes no estoque, um movimento auditável por divergência.</>} />
+      {error && <Alert kind="error">{error}</Alert>}
+      {ok && <Alert kind="ok">{ok}</Alert>}
 
       {can('inventory.count') && (
         <form className="card" style={{ marginBottom: 16 }} onSubmit={create}>
@@ -79,7 +80,7 @@ export default function InventarioPage() {
           <table>
             <thead><tr><th>Contagem</th><th>Depósito</th><th>Itens</th><th>Situação</th><th>Aberta em</th><th /></tr></thead>
             <tbody>
-              {!counts && !error && <tr><td colSpan={6} className="muted">Carregando…</td></tr>}
+              {!counts && !error && <tr><td colSpan={6}><Skeleton rows={3} /></td></tr>}
               {counts?.length === 0 && <tr><td colSpan={6} className="empty">Nenhuma contagem aberta ainda.</td></tr>}
               {counts?.map((c) => (
                 <tr key={c.id}><td>{c.name}</td><td>{c.warehouse.code}</td><td>{c._count.items}</td><td><span className="badge">{STATUS[c.status]}</span></td>
@@ -97,7 +98,7 @@ export default function InventarioPage() {
             <div className="row">
               {detail.status === 'OPEN' && can('inventory.count') && <button className="btn" onClick={() => act(() => api(`/inventory/counts/${detail.id}/submit`, 'POST'), 'Enviada para aprovação.')}>Enviar para aprovação</button>}
               {detail.status === 'SUBMITTED' && can('stock.approve') && <>
-                <button className="btn primary" onClick={() => window.confirm('Aprovar e aplicar os ajustes de estoque?') && act(() => api(`/inventory/counts/${detail.id}/approve`, 'POST'), 'Inventário aprovado e ajustes aplicados.')}>Aprovar e ajustar</button>
+                <button className="btn primary" onClick={async () => { if (await ui.confirm({ title: 'Aprovar inventário?', message: 'Os ajustes de estoque serão aplicados e só podem ser desfeitos por estorno.', confirmLabel: 'Aprovar e ajustar' })) void act(() => api(`/inventory/counts/${detail.id}/approve`, 'POST'), 'Inventário aprovado e ajustes aplicados.'); }}>Aprovar e ajustar</button>
                 <button className="btn" onClick={() => act(() => api(`/inventory/counts/${detail.id}/reject`, 'POST'), 'Inventário rejeitado.')}>Rejeitar</button>
               </>}
             </div>

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { PageHeader, Alert, Skeleton } from '@/components/ui';
 
 interface Item { id: string; action: string; entity: string | null; entityId: string | null; metadata: Record<string, unknown>; createdAt: string; user: { name: string; email: string } | null }
 interface Page { items: Item[]; nextCursor: string | null }
@@ -20,15 +21,14 @@ export default function AuditoriaPage() {
 
   return (
     <>
-      <h1>Auditoria</h1>
-      <p className="muted">Trilha append-only das ações críticas. Segredos nunca são gravados.</p>
-      {error && <div className="alert error" role="alert">{error}</div>}
+      <PageHeader title="Auditoria" description={<>Trilha append-only das ações críticas. Segredos nunca são gravados.</>} />
+      {error && <Alert kind="error">{error}</Alert>}
       <section className="card">
         <div className="table-wrap">
           <table>
             <thead><tr><th>Quando</th><th>Quem</th><th>Ação</th><th>Detalhes</th></tr></thead>
             <tbody>
-              {!items && !error && <tr><td colSpan={4} className="muted">Carregando…</td></tr>}
+              {!items && !error && <tr><td colSpan={4}><Skeleton rows={3} /></td></tr>}
               {items?.length === 0 && <tr><td colSpan={4} className="empty">Nenhum evento registrado.</td></tr>}
               {items?.map((i) => (
                 <tr key={i.id}>

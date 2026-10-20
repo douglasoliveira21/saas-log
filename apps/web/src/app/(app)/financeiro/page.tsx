@@ -1,8 +1,10 @@
 'use client';
 
+import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { brl, dateBr } from '@/lib/format';
+import { useUi, PageHeader, Alert } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 type Tab = 'pagar' | 'receber' | 'caixa' | 'dre' | 'contas' | 'banco' | 'marketplaces';
@@ -25,6 +27,7 @@ const num = (v: FormDataEntryValue | number | null) => Number(String(v ?? '').re
 
 export default function FinanceiroPage() {
   const { can } = useSession();
+  const ui = useUi();
   const manage = can('finance.manage');
   const reconcile = can('finance.reconcile');
   const [tab, setTab] = useState<Tab>('pagar');
@@ -120,13 +123,12 @@ export default function FinanceiroPage() {
 
   return (
     <>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <div><h1>Financeiro</h1><p className="muted">Baixas e estornos são lançamentos auditáveis: nada é apagado. O DRE é gerencial e não substitui a contabilidade.</p></div>
-        {manage && (tab === 'pagar' || tab === 'receber') && <button className="btn primary" onClick={() => setPanel('novo')}>+ Lançar título</button>}
-        {manage && tab === 'contas' && <button className="btn primary" onClick={() => setPanel('conta')}>+ Conta</button>}
-      </div>
-      {error && <div className="alert error" role="alert">{error}</div>}
-      {ok && <div className="alert ok" role="status">{ok}</div>}
+      <PageHeader title="Financeiro" description={<>Baixas e estornos são lançamentos auditáveis: nada é apagado. O DRE é gerencial e não substitui a contabilidade.</>} actions={<>
+          {manage && (tab === 'pagar' || tab === 'receber') && <button className="btn primary" onClick={() => setPanel('novo')}><Plus aria-hidden />Lançar título</button>}
+        {manage && tab === 'contas' && <button className="btn primary" onClick={() => setPanel('conta')}><Plus aria-hidden />Conta</button>}
+        </>} />
+      {error && <Alert kind="error">{error}</Alert>}
+      {ok && <Alert kind="ok">{ok}</Alert>}
 
       {summary && (
         <div className="grid cols-4" style={{ marginBottom: 16 }}>
@@ -137,8 +139,8 @@ export default function FinanceiroPage() {
         </div>
       )}
 
-      <div className="row" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
-        {tabs.filter((t) => t[2]).map(([k, label]) => <button key={k} className={`btn ${tab === k ? 'primary' : ''}`} onClick={() => { setTab(k); setPanel(null); setSettling(null); }}>{label}</button>)}
+      <div className="tabs" role="tablist" aria-label="Seções do financeiro">
+        {tabs.filter((t) => t[2]).map(([k, label]) => <button key={k} role="tab" aria-selected={tab === k} className={`tab ${tab === k ? 'active' : ''}`} onClick={() => { setTab(k); setPanel(null); setSettling(null); }}>{label}</button>)}
       </div>
 
       {panel === 'novo' && (
@@ -196,12 +198,12 @@ export default function FinanceiroPage() {
                 <tr key={t.id}>
                   <td>{dateBr(t.dueDate)} {t.overdue && <span className="badge warn">{t.daysOverdue}d atraso</span>}</td>
                   <td>{t.description}{t.counterpartyName ? <><br /><span className="muted">{t.counterpartyName}</span></> : null} {t.origin !== 'MANUAL' && <span className="badge">{t.origin}</span>}</td>
-                  <td>{t.installmentNo}/{t.installmentTotal}</td><td>{brl(t.amount)}</td><td>{brl(t.outstanding)}</td>
+                  <td>{t.installmentNo}/{t.installmentTotal}</td><td className="num">{brl(t.amount)}</td><td className="num">{brl(t.outstanding)}</td>
                   <td><span className={`badge ${t.status === 'PAID' ? 'ok' : t.overdue ? 'warn' : ''}`}>{STATUS[t.status]}</span></td>
                   <td className="row">
                     {manage && (t.status === 'OPEN' || t.status === 'PARTIAL') && <button className="btn sm" onClick={() => setSettling(t)}>{direction === 'PAYABLE' ? 'Pagar' : 'Receber'}</button>}
                     {can('finance.approve') && direction === 'PAYABLE' && !t.approvedAt && t.status === 'OPEN' && <button className="btn sm" onClick={() => run(() => api(`/finance/titles/${t.id}/approve`, 'POST'), 'Título aprovado.')}>Aprovar</button>}
-                    {manage && t.status === 'OPEN' && <button className="btn sm" onClick={() => { const reason = window.prompt('Motivo do cancelamento:'); if (reason) void run(() => api(`/finance/titles/${t.id}/cancel`, 'POST', { reason }), 'Título cancelado.'); }}>Cancelar</button>}
+                    {manage && t.status === 'OPEN' && <button className="btn sm" onClick={async () => { const reason = await ui.prompt({ title: 'Cancelar título', message: 'Somente títulos sem baixa podem ser cancelados.', label: 'Motivo do cancelamento', danger: true, confirmLabel: 'Cancelar título', cancelLabel: 'Voltar' }); if (reason) void run(() => api(`/finance/titles/${t.id}/cancel`, 'POST', { reason }), 'Título cancelado.'); }}>Cancelar</button>}
                   </td>
                 </tr>
               ))}
@@ -222,7 +224,7 @@ export default function FinanceiroPage() {
               <p>Saldo inicial: <strong>{brl(flow.openingBalance)}</strong> · Vencido a receber: {brl(flow.overdue.receivable)} · Vencido a pagar: {brl(flow.overdue.payable)}</p>
               <div className="table-wrap"><table>
                 <thead><tr><th>Período</th><th>Entradas realizadas</th><th>Saídas realizadas</th><th>A receber</th><th>A pagar</th><th>Marketplaces previstos</th><th>Saldo final</th></tr></thead>
-                <tbody>{flow.rows.map((r) => <tr key={r.start}><td>{dateBr(r.start)} – {dateBr(r.end)} {r.projected && <span className="badge">projetado</span>}</td><td>{brl(r.realizedIn)}</td><td>{brl(r.realizedOut)}</td><td>{brl(r.pendingIn)}</td><td>{brl(r.pendingOut)}</td><td>{brl(r.marketplaceExpectedIn)}</td><td><strong>{brl(r.closingBalance)}</strong></td></tr>)}</tbody>
+                <tbody>{flow.rows.map((r) => <tr key={r.start}><td>{dateBr(r.start)} – {dateBr(r.end)} {r.projected && <span className="badge">projetado</span>}</td><td className="num">{brl(r.realizedIn)}</td><td className="num">{brl(r.realizedOut)}</td><td className="num">{brl(r.pendingIn)}</td><td className="num">{brl(r.pendingOut)}</td><td className="num">{brl(r.marketplaceExpectedIn)}</td><td><strong>{brl(r.closingBalance)}</strong></td></tr>)}</tbody>
               </table></div>
               <ul className="muted">{flow.notes.map((n) => <li key={n}>{n}</li>)}</ul>
             </>
@@ -243,7 +245,7 @@ export default function FinanceiroPage() {
       {tab === 'contas' && (
         <div className="card"><div className="table-wrap"><table>
           <thead><tr><th>Conta</th><th>Tipo</th><th>Saldo</th><th>Situação</th><th /></tr></thead>
-          <tbody>{accounts.map((a) => <tr key={a.id}><td>{a.name}{a.bankName ? <span className="muted"> · {a.bankName}</span> : null}</td><td>{a.kind}</td><td>{brl(a.balance)}</td><td>{a.active ? 'Ativa' : 'Inativa'}</td><td>{manage && <button className="btn sm" onClick={() => run(() => api(`/finance/accounts/${a.id}/active`, 'PUT', { active: !a.active }), 'Conta atualizada.')}>{a.active ? 'Desativar' : 'Ativar'}</button>}</td></tr>)}</tbody>
+          <tbody>{accounts.map((a) => <tr key={a.id}><td>{a.name}{a.bankName ? <span className="muted"> · {a.bankName}</span> : null}</td><td>{a.kind}</td><td className="num">{brl(a.balance)}</td><td>{a.active ? 'Ativa' : 'Inativa'}</td><td>{manage && <button className="btn sm" onClick={() => run(() => api(`/finance/accounts/${a.id}/active`, 'PUT', { active: !a.active }), 'Conta atualizada.')}>{a.active ? 'Desativar' : 'Ativar'}</button>}</td></tr>)}</tbody>
         </table></div></div>
       )}
 
@@ -259,7 +261,7 @@ export default function FinanceiroPage() {
               {lines.length === 0 && <tr><td colSpan={4} className="muted">Nenhum lançamento importado.</td></tr>}
               {lines.map((l) => (
                 <tr key={l.id}>
-                  <td>{dateBr(l.postedAt)}</td><td>{l.description}</td><td>{brl(l.amount)}</td>
+                  <td>{dateBr(l.postedAt)}</td><td>{l.description}</td><td className="num">{brl(l.amount)}</td>
                   <td>{l.settlementId ? <><span className="badge ok">conciliado</span> <button className="btn sm" onClick={() => run(() => api(`/finance/statement-lines/${l.id}/unmatch`, 'POST'), 'Conciliação desfeita.', () => setTab('banco'))}>Desfazer</button></>
                     : l.suggestions.length ? l.suggestions.map((s) => <button key={s.settlementId} className="btn sm" title={s.description} onClick={() => run(() => api(`/finance/statement-lines/${l.id}/match`, 'POST', { settlementId: s.settlementId }), 'Conciliado.', () => api<StmtLine[]>(`/finance/accounts/${acct}/statement`).then(setLines))}>Conciliar com “{s.description.slice(0, 24)}”</button>)
                       : <span className="muted">sem sugestão</span>}</td>
@@ -288,11 +290,11 @@ export default function FinanceiroPage() {
               {mkt?.items.length === 0 && <tr><td colSpan={6} className="muted">Nada importado.</td></tr>}
               {mkt?.items.map((m) => (
                 <tr key={m.id}>
-                  <td>{m.externalOrderId}</td><td>{brl(m.gross)}</td><td>{brl(m.netReported)}</td><td>{dateBr(m.receivedDate)}</td>
+                  <td>{m.externalOrderId}</td><td className="num">{brl(m.gross)}</td><td className="num">{brl(m.netReported)}</td><td>{dateBr(m.receivedDate)}</td>
                   <td><span className={`badge ${m.status === 'RECONCILED' ? 'ok' : m.status === 'IMPORTED' ? '' : 'warn'}`}>{MKT[m.status]}</span>{m.divergence.map((d) => <div key={d.code} className="muted">{d.message}</div>)}</td>
                   <td>{manage && (m.status === 'IMPORTED' || m.status === 'DIVERGENT') && (
-                    <button className="btn sm" onClick={() => {
-                      if (m.divergence.length && !window.confirm('Há divergências. Confirmar mesmo assim? O aceite fica registrado.')) return;
+                    <button className="btn sm" onClick={async () => {
+                      if (m.divergence.length && !(await ui.confirm({ title: 'Conciliar com divergências?', message: 'O aceite fica registrado na auditoria.', confirmLabel: 'Aceitar e conciliar' }))) return;
                       void run(() => api(`/finance/marketplace/settlements/${m.id}/reconcile`, 'POST', { accountId: acct || accounts[0]?.id, acceptDivergence: m.divergence.length > 0 }), 'Linha conciliada.', loadMkt);
                     }}>Conciliar</button>)}</td>
                 </tr>

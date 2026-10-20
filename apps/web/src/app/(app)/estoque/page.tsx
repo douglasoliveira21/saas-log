@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
+import { useUi, PageHeader, Alert, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 interface Row { productId: string; sku: string; name: string; minStock: number; onHand: number; reserved: number; blocked: number; available: number }
@@ -17,6 +18,7 @@ const LABEL = Object.fromEntries([...TYPES.map(([v, l]) => [v, l]), ['TRANSFER_I
 
 export default function EstoquePage() {
   const { can } = useSession();
+  const ui = useUi();
   const canMove = can('stock.move');
   const canAdjust = can('stock.adjust');
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -58,7 +60,7 @@ export default function EstoquePage() {
   }
 
   async function reverse(m: Movement) {
-    const reason = window.prompt(`Motivo do estorno de "${LABEL[m.type]}" (${m.quantity > 0 ? '+' : ''}${m.quantity}) de ${m.product.sku}:`);
+    const reason = await ui.prompt({ title: 'Estornar movimento', message: `${LABEL[m.type]} (${m.quantity > 0 ? '+' : ''}${m.quantity}) de ${m.product.sku}. O estorno cria um lançamento inverso; o histórico é mantido.`, label: 'Motivo do estorno', danger: true, confirmLabel: 'Estornar' });
     if (!reason) return;
     setError(''); setOk('');
     try { await api(`/stock/movements/${m.id}/reverse`, 'POST', { reason }); setOk('Movimento estornado.'); load(); } catch (err) { setError((err as Error).message); }
@@ -69,12 +71,11 @@ export default function EstoquePage() {
 
   return (
     <>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <div><h1>Estoque</h1><p className="muted">Disponível = físico − reservado − bloqueado. Movimentos confirmados não são editados: erros são corrigidos com estorno.</p></div>
-        {canMove && <div className="row"><button className="btn" onClick={() => setPanel('transfer')}>Transferir</button><button className="btn primary" onClick={() => setPanel('move')}>Movimentar</button></div>}
-      </div>
-      {error && <div className="alert error" role="alert">{error}</div>}
-      {ok && <div className="alert ok" role="status">{ok}</div>}
+      <PageHeader title="Estoque" description={<>Disponível = físico − reservado − bloqueado. Movimentos confirmados não são editados: erros são corrigidos com estorno.</>} actions={<>
+          {canMove && <div className="row"><button className="btn" onClick={() => setPanel('transfer')}>Transferir</button><button className="btn primary" onClick={() => setPanel('move')}>Movimentar</button></div>}
+        </>} />
+      {error && <Alert kind="error">{error}</Alert>}
+      {ok && <Alert kind="ok">{ok}</Alert>}
 
       {panel === 'move' && (
         <form className="card" style={{ marginBottom: 16 }} onSubmit={(e) => submit(e, 'move')}>
@@ -113,7 +114,7 @@ export default function EstoquePage() {
           <table>
             <thead><tr><th>SKU</th><th>Produto</th><th>Físico</th><th>Reservado</th><th>Bloqueado</th><th>Disponível</th><th>Mínimo</th></tr></thead>
             <tbody>
-              {!rows && !error && <tr><td colSpan={7} className="muted">Carregando…</td></tr>}
+              {!rows && !error && <tr><td colSpan={7}><Skeleton rows={3} /></td></tr>}
               {rows?.length === 0 && <tr><td colSpan={7} className="empty">Nenhum produto para exibir. Cadastre produtos em “Produtos e catálogo”.</td></tr>}
               {rows?.map((r) => (
                 <tr key={r.productId}>

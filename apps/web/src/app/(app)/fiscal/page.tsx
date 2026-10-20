@@ -1,8 +1,10 @@
 'use client';
 
+import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { brl } from '@/lib/format';
+import { useUi, PageHeader, Alert, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 type Tab = 'config' | 'inbound' | 'rules' | 'outgoing';
@@ -49,13 +51,13 @@ export default function FiscalPage() {
 
   return (
     <>
-      <h1>Fiscal</h1>
+      <PageHeader title="Fiscal" />
       <div className="alert">O sistema <strong>não traz alíquotas nem regras tributárias prontas</strong>: tudo é cadastrado e validado pelo seu contador. A <strong>transmissão para a SEFAZ ainda não está disponível</strong> (provedor pendente) e a autenticidade dos XML recebidos <strong>não é verificada</strong> por este sistema.</div>
-      {error && <div className="alert error" role="alert">{error}</div>}
-      {ok && <div className="alert ok" role="status">{ok}</div>}
-      <div className="row" style={{ marginBottom: 12 }}>
+      {error && <Alert kind="error">{error}</Alert>}
+      {ok && <Alert kind="ok">{ok}</Alert>}
+      <div className="tabs" role="tablist" aria-label="Seções do fiscal">
         {([['config', 'Configuração e certificado'], ['inbound', 'XML recebidos'], ['rules', 'Regras tributárias'], ['outgoing', 'Notas de saída']] as [Tab, string][]).map(([k, l]) => (
-          <button key={k} className={`btn ${tab === k ? 'primary' : ''}`} onClick={() => { setTab(k); setError(''); setOk(''); }}>{l}</button>
+          <button key={k} role="tab" aria-selected={tab === k} className={`tab ${tab === k ? 'active' : ''}`} onClick={() => { setTab(k); setError(''); setOk(''); }}>{l}</button>
         ))}
       </div>
       {tab === 'config' && <ConfigTab act={act} can={can} />}
@@ -69,6 +71,7 @@ export default function FiscalPage() {
 type TabProps = { act: (fn: () => Promise<unknown>, m: string, r: () => void) => Promise<void>; can: (p?: string) => boolean };
 
 function ConfigTab({ act, can }: TabProps) {
+  const ui = useUi();
   const [ests, setEsts] = useState<Est[]>([]);
   const [sel, setSel] = useState('');
   const [view, setView] = useState<ConfigView | null>(null);
@@ -126,7 +129,7 @@ function ConfigTab({ act, can }: TabProps) {
                 {manage && view.config.status === 'DRAFT' && <button type="button" className="btn" onClick={() => act(() => api(`/fiscal/establishments/${sel}/config/submit`, 'POST'), 'Enviada para validação do contador.', reload)}>Enviar ao contador</button>}
                 {can('fiscal.approve') && view.config.status === 'PENDING_ACCOUNTANT' && <>
                   <button type="button" className="btn primary" onClick={() => act(() => api(`/fiscal/establishments/${sel}/config/approve`, 'POST'), 'Configuração validada.', reload)}>Validar (contador)</button>
-                  <button type="button" className="btn" onClick={() => { const r = window.prompt('Motivo da devolução:'); if (r) void act(() => api(`/fiscal/establishments/${sel}/config/reject`, 'POST', { reason: r }), 'Configuração devolvida.', reload); }}>Devolver</button>
+                  <button type="button" className="btn" onClick={async () => { const r = await ui.prompt({ title: 'Devolver configuração', label: 'Motivo da devolução', multiline: true, confirmLabel: 'Devolver' }); if (r) void act(() => api(`/fiscal/establishments/${sel}/config/reject`, 'POST', { reason: r }), 'Configuração devolvida.', reload); }}>Devolver</button>
                 </>}
               </div>
             </form>
@@ -157,6 +160,7 @@ function ConfigTab({ act, can }: TabProps) {
 }
 
 function InboundTab({ act, can }: TabProps) {
+  const ui = useUi();
   const [docs, setDocs] = useState<InDoc[] | null>(null);
   const [sel, setSel] = useState<(InDoc & { items: InItem[]; supplier: { legalName: string } | null }) | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -190,9 +194,9 @@ function InboundTab({ act, can }: TabProps) {
         <div className="table-wrap"><table>
           <thead><tr><th>Nº/Série</th><th>Emitente</th><th>Valor</th><th>Ambiente</th><th>Situação</th><th /></tr></thead>
           <tbody>
-            {!docs && <tr><td colSpan={6} className="muted">Carregando…</td></tr>}
+            {!docs && <tr><td colSpan={6}><Skeleton rows={3} /></td></tr>}
             {docs?.length === 0 && <tr><td colSpan={6} className="empty">Nenhuma nota importada.</td></tr>}
-            {docs?.map((d) => <tr key={d.id}><td>{d.number}/{d.series}</td><td>{d.emitterName}</td><td>{brl(d.totalInvoice)}</td><td>{d.environment === 'HOMOLOGACAO' ? <span className="badge warn">homologação</span> : 'produção'}</td><td><span className={`badge ${badge(d.status)}`}>{STATUS_LABEL[d.status]}</span></td><td><button className="btn sm" onClick={() => open(d.id)}>Abrir</button></td></tr>)}
+            {docs?.map((d) => <tr key={d.id}><td>{d.number}/{d.series}</td><td>{d.emitterName}</td><td className="num">{brl(d.totalInvoice)}</td><td>{d.environment === 'HOMOLOGACAO' ? <span className="badge warn">homologação</span> : 'produção'}</td><td><span className={`badge ${badge(d.status)}`}>{STATUS_LABEL[d.status]}</span></td><td><button className="btn sm" onClick={() => open(d.id)}>Abrir</button></td></tr>)}
           </tbody>
         </table></div>
       </section>
@@ -208,7 +212,7 @@ function InboundTab({ act, can }: TabProps) {
             <thead><tr><th>#</th><th>Código</th><th>Descrição</th><th>Qtd. XML</th><th>Un.</th><th>Total</th><th>NCM</th><th>Produto do ERP</th><th>Estoque</th></tr></thead>
             <tbody>
               {sel.items.map((i) => (
-                <tr key={i.id}><td>{i.line}</td><td>{i.supplierCode}</td><td>{i.description}</td><td>{Number(i.quantity)}</td><td>{i.unit}</td><td>{brl(i.totalValue)}</td><td>{i.ncm ?? '—'}</td>
+                <tr key={i.id}><td>{i.line}</td><td>{i.supplierCode}</td><td>{i.description}</td><td>{Number(i.quantity)}</td><td>{i.unit}</td><td className="num">{brl(i.totalValue)}</td><td>{i.ncm ?? '—'}</td>
                   <td>{sel.status === 'IMPORTED' && can('fiscal.import')
                     ? <select aria-label={`Produto do item ${i.line}`} value={i.productId ?? ''} onChange={(e) => e.target.value && act(() => api(`/fiscal/inbound/${sel.id}/items/${i.line}/product`, 'PUT', { productId: e.target.value }), 'Item vinculado.', reload)}><option value="">Vincular…</option>{products.map((p) => <option key={p.id} value={p.id}>{p.sku}</option>)}</select>
                     : (i.product?.sku ?? '—')} {i.matchedBy && <span className="badge">{i.matchedBy}</span>}</td>
@@ -233,8 +237,8 @@ function InboundTab({ act, can }: TabProps) {
                   </table></div>
                   {rec.notDelivered?.length > 0 && <p className="muted">Itens da OC não constantes na nota: {rec.notDelivered.map((n: any) => `${n.sku} (${n.pending})`).join(', ')}.</p>}
                   {rec.blockers?.length > 0 && <div className="alert error">{rec.blockers.map((b: string) => <div key={b}>{b}</div>)}</div>}
-                  {can('purchases.receive') && <button className="btn primary" disabled={!rec.canReceive} onClick={() => {
-                    const accept = rec.costDivergent ? window.confirm('Há divergência de custo em relação à ordem de compra. Receber mesmo assim com o custo da nota?') : undefined;
+                  {can('purchases.receive') && <button className="btn primary" disabled={!rec.canReceive} onClick={async () => {
+                    const accept = rec.costDivergent ? await ui.confirm({ title: 'Divergência de custo', message: 'Há divergência de custo em relação à ordem de compra. Receber mesmo assim, com o custo da nota?', confirmLabel: 'Receber com o custo da nota' }) : undefined;
                     if (rec.costDivergent && !accept) return;
                     void act(() => api(`/fiscal/inbound/${sel.id}/receive`, 'POST', { purchaseOrderId: po, acceptCostDivergence: accept }), 'Recebimento registrado e estoque atualizado.', reload);
                   }}>Receber mercadoria</button>}
@@ -249,6 +253,7 @@ function InboundTab({ act, can }: TabProps) {
 }
 
 function RulesTab({ act, can }: TabProps) {
+  const ui = useUi();
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [adding, setAdding] = useState(false);
   const [calc, setCalc] = useState<any>(null);
@@ -287,7 +292,7 @@ function RulesTab({ act, can }: TabProps) {
     <>
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <p className="muted">Regras são do seu contador: cada versão tem vigência, fonte (base legal/parecer) e só vale depois de aprovada por outra pessoa. Versão aprovada nunca é alterada — cria-se uma nova. O motor ainda <strong>não calcula ST, DIFAL e FCP</strong> (vira pendência).</p>
-        {can('fiscal.rules') && <button className="btn primary" onClick={() => setAdding(true)}>+ Regra</button>}
+        {can('fiscal.rules') && <button className="btn primary" onClick={() => setAdding(true)}><Plus aria-hidden />Regra</button>}
       </div>
       {adding && (
         <form className="card" style={{ marginBottom: 16 }} onSubmit={create}>
@@ -320,7 +325,7 @@ function RulesTab({ act, can }: TabProps) {
         <div className="table-wrap"><table>
           <thead><tr><th>Regra</th><th>Escopo</th><th>Versão</th><th>Situação</th><th>Vigência</th><th>Parâmetros</th><th /></tr></thead>
           <tbody>
-            {!rules && <tr><td colSpan={7} className="muted">Carregando…</td></tr>}
+            {!rules && <tr><td colSpan={7}><Skeleton rows={3} /></td></tr>}
             {rules?.length === 0 && <tr><td colSpan={7} className="empty">Nenhuma regra cadastrada. Sem regra aprovada, o motor devolve pendência — nunca uma alíquota presumida.</td></tr>}
             {rules?.flatMap((r) => r.versions.map((v, idx) => (
               <tr key={v.id} style={r.active ? undefined : { opacity: 0.55 }}>
@@ -332,7 +337,7 @@ function RulesTab({ act, can }: TabProps) {
                   {v.status === 'DRAFT' && can('fiscal.rules') && <button className="btn sm" onClick={() => act(() => api(`/fiscal/rules/versions/${v.id}/submit`, 'POST'), 'Enviada para aprovação.', load)}>Enviar p/ aprovação</button>}
                   {v.status === 'PENDING_APPROVAL' && can('fiscal.approve') && <>
                     <button className="btn sm primary" onClick={() => act(() => api(`/fiscal/rules/versions/${v.id}/approve`, 'POST'), 'Versão aprovada.', load)}>Aprovar</button>{' '}
-                    <button className="btn sm" onClick={() => { const re = window.prompt('Motivo:'); if (re) void act(() => api(`/fiscal/rules/versions/${v.id}/reject`, 'POST', { reason: re }), 'Devolvida a rascunho.', load); }}>Devolver</button>
+                    <button className="btn sm" onClick={async () => { const re = await ui.prompt({ title: 'Devolver a rascunho', label: 'Motivo', multiline: true, confirmLabel: 'Devolver' }); if (re) void act(() => api(`/fiscal/rules/versions/${v.id}/reject`, 'POST', { reason: re }), 'Devolvida a rascunho.', load); }}>Devolver</button>
                   </>}
                   {idx === 0 && can('fiscal.rules') && <button className="btn sm" onClick={() => act(() => api(`/fiscal/rules/${r.id}/active`, 'PUT', { active: !r.active }), r.active ? 'Regra desativada.' : 'Regra ativada.', load)}>{r.active ? 'Desativar' : 'Ativar'}</button>}
                 </td>
@@ -368,6 +373,7 @@ function RulesTab({ act, can }: TabProps) {
 }
 
 function OutgoingTab({ act, can }: TabProps) {
+  const ui = useUi();
   const [docs, setDocs] = useState<OutDoc[] | null>(null);
   const [sel, setSel] = useState<(OutDoc & { items: { line: number; description: string; ncm: string | null; cfop: string | null; totalValue: string; declaredTax: { taxes?: Record<string, { amount: number }> } }[] }) | null>(null);
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -393,9 +399,9 @@ function OutgoingTab({ act, can }: TabProps) {
         <div className="table-wrap"><table>
           <thead><tr><th>Pedido</th><th>Cliente</th><th>Nº/Série</th><th>Valor</th><th>Ambiente</th><th>Situação</th><th /></tr></thead>
           <tbody>
-            {!docs && <tr><td colSpan={7} className="muted">Carregando…</td></tr>}
+            {!docs && <tr><td colSpan={7}><Skeleton rows={3} /></td></tr>}
             {docs?.length === 0 && <tr><td colSpan={7} className="empty">Nenhuma nota de saída preparada.</td></tr>}
-            {docs?.map((d) => <tr key={d.id}><td>{d.salesOrder?.number}</td><td>{d.salesOrder?.customer.name}</td><td>{d.number ? `${d.number}/${d.series}` : '—'}</td><td>{brl(d.totalInvoice)}</td><td>{d.environment}</td><td><span className={`badge ${badge(d.status)}`}>{STATUS_LABEL[d.status]}</span></td><td><button className="btn sm" onClick={() => open(d.id)}>Abrir</button></td></tr>)}
+            {docs?.map((d) => <tr key={d.id}><td>{d.salesOrder?.number}</td><td>{d.salesOrder?.customer.name}</td><td>{d.number ? `${d.number}/${d.series}` : '—'}</td><td className="num">{brl(d.totalInvoice)}</td><td>{d.environment}</td><td><span className={`badge ${badge(d.status)}`}>{STATUS_LABEL[d.status]}</span></td><td><button className="btn sm" onClick={() => open(d.id)}>Abrir</button></td></tr>)}
           </tbody>
         </table></div>
       </section>
@@ -406,7 +412,7 @@ function OutgoingTab({ act, can }: TabProps) {
             {emit && (
               <div className="row">
                 {['PENDING_VALIDATION', 'READY_TO_TRANSMIT', 'REJECTED'].includes(sel.status) && <button className="btn" onClick={() => act(() => api(`/fiscal/outgoing/${sel.id}/revalidate`, 'POST'), 'Documento revalidado.', reload)}>Revalidar</button>}
-                {['READY_TO_TRANSMIT', 'COMMUNICATION_FAILURE'].includes(sel.status) && <button className="btn primary" onClick={() => window.confirm('Transmitir consome a numeração da nota. Continuar?') && act(() => api(`/fiscal/outgoing/${sel.id}/transmit`, 'POST'), 'Resultado da transmissão registrado.', reload)}>Transmitir</button>}
+                {['READY_TO_TRANSMIT', 'COMMUNICATION_FAILURE'].includes(sel.status) && <button className="btn primary" onClick={async () => { if (await ui.confirm({ title: 'Transmitir nota?', message: 'A transmissão consome a numeração da nota e não pode ser desfeita por aqui.', confirmLabel: 'Transmitir' })) void act(() => api(`/fiscal/outgoing/${sel.id}/transmit`, 'POST'), 'Resultado da transmissão registrado.', reload); }}>Transmitir</button>}
                 {['PENDING_CONSULT', 'COMMUNICATION_FAILURE'].includes(sel.status) && <button className="btn" onClick={() => act(() => api(`/fiscal/outgoing/${sel.id}/consult`, 'POST'), 'Consulta realizada.', reload)}>Consultar situação</button>}
               </div>
             )}
@@ -416,7 +422,7 @@ function OutgoingTab({ act, can }: TabProps) {
           <IssueList issues={sel.issues} />
           <div className="table-wrap"><table>
             <thead><tr><th>#</th><th>Descrição</th><th>NCM</th><th>CFOP</th><th>Total</th><th>Impostos calculados (regra aprovada)</th></tr></thead>
-            <tbody>{sel.items.map((i) => <tr key={i.line}><td>{i.line}</td><td>{i.description}</td><td>{i.ncm ?? '—'}</td><td>{i.cfop ?? '—'}</td><td>{brl(i.totalValue)}</td><td className="muted">{Object.entries(i.declaredTax?.taxes ?? {}).map(([c, t]) => `${c} ${t.amount.toFixed(2)}`).join(' · ') || '—'}</td></tr>)}</tbody>
+            <tbody>{sel.items.map((i) => <tr key={i.line}><td>{i.line}</td><td>{i.description}</td><td>{i.ncm ?? '—'}</td><td>{i.cfop ?? '—'}</td><td className="num">{brl(i.totalValue)}</td><td className="muted">{Object.entries(i.declaredTax?.taxes ?? {}).map(([c, t]) => `${c} ${t.amount.toFixed(2)}`).join(' · ') || '—'}</td></tr>)}</tbody>
           </table></div>
         </section>
       )}

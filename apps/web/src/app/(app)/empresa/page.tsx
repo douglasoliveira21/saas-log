@@ -1,7 +1,9 @@
 'use client';
 
+import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
+import { PageHeader, Alert, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 interface Warehouse { id: string; code: string; name: string; kind: string; active: boolean }
@@ -57,19 +59,13 @@ export default function EmpresaPage() {
 
   return (
     <>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <div>
-          <h1>Empresa, estabelecimentos e depósitos</h1>
-          <p className="muted">Empresa ≠ estabelecimento (CNPJ/IE) ≠ depósito (local físico do estoque).</p>
-        </div>
-        <div className="row">
-          {manage && <button className="btn" onClick={() => setForm('company')}>+ Empresa</button>}
-          {manage && <button className="btn" onClick={() => setForm('establishment')} disabled={!tree?.length}>+ Estabelecimento</button>}
-          {manageWh && <button className="btn" onClick={() => setForm('warehouse')} disabled={!establishments.length}>+ Depósito</button>}
-        </div>
-      </div>
-      {error && <div className="alert error" role="alert">{error}</div>}
-      {ok && <div className="alert ok" role="status">{ok}</div>}
+      <PageHeader title="Empresa, estabelecimentos e depósitos" description={<>Empresa ≠ estabelecimento (CNPJ/IE) ≠ depósito (local físico do estoque).</>} actions={<>
+          {manage && <button className="btn" onClick={() => setForm('company')}><Plus aria-hidden />Empresa</button>}
+          {manage && <button className="btn" onClick={() => setForm('establishment')} disabled={!tree?.length}><Plus aria-hidden />Estabelecimento</button>}
+          {manageWh && <button className="btn" onClick={() => setForm('warehouse')} disabled={!establishments.length}><Plus aria-hidden />Depósito</button>}
+        </>} />
+      {error && <Alert kind="error">{error}</Alert>}
+      {ok && <Alert kind="ok">{ok}</Alert>}
 
       {form === 'company' && (
         <form className="card" style={{ marginBottom: 16 }} onSubmit={(e) => submit(e, '/companies', 'Empresa cadastrada.')}>
@@ -118,7 +114,7 @@ export default function EmpresaPage() {
         </form>
       )}
 
-      {!tree && !error && <p className="muted">Carregando…</p>}
+      {!tree && !error && <Skeleton rows={3} />}
       {tree?.length === 0 && <div className="card empty">Nenhuma empresa cadastrada ainda. Use “+ Empresa” para começar.</div>}
       {tree?.map((c) => (
         <section className="card" key={c.id} style={{ marginBottom: 16 }}>

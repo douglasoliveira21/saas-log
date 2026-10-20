@@ -1,7 +1,9 @@
 'use client';
 
+import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
+import { PageHeader, Alert, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 interface Member { id: string; status: string; role: { id: string; key: string; name: string }; user: { name: string; email: string; lastLoginAt: string | null } }
@@ -42,12 +44,11 @@ export default function UsuariosPage() {
 
   return (
     <>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <div><h1>Usuários e papéis</h1><p className="muted">Permissões são verificadas no servidor a cada requisição.</p></div>
-        {manage && <button className="btn primary" onClick={() => setAdding(true)}>+ Adicionar usuário</button>}
-      </div>
-      {error && <div className="alert error" role="alert">{error}</div>}
-      {ok && <div className="alert ok" role="status">{ok}</div>}
+      <PageHeader title="Usuários e papéis" description={<>Permissões são verificadas no servidor a cada requisição.</>} actions={<>
+          {manage && <button className="btn primary" onClick={() => setAdding(true)}><Plus aria-hidden />Adicionar usuário</button>}
+        </>} />
+      {error && <Alert kind="error">{error}</Alert>}
+      {ok && <Alert kind="ok">{ok}</Alert>}
 
       {adding && (
         <form className="card" style={{ marginBottom: 16 }} onSubmit={add}>
@@ -68,7 +69,7 @@ export default function UsuariosPage() {
           <table>
             <thead><tr><th>Nome</th><th>E-mail</th><th>Papel</th><th>Situação</th><th /></tr></thead>
             <tbody>
-              {!members && <tr><td colSpan={5} className="muted">Carregando…</td></tr>}
+              {!members && <tr><td colSpan={5}><Skeleton rows={3} /></td></tr>}
               {members?.map((m) => (
                 <tr key={m.id}>
                   <td>{m.user.name}</td><td>{m.user.email}</td>

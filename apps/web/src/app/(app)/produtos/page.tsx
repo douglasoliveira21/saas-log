@@ -1,7 +1,9 @@
 'use client';
 
+import { Search, Plus } from 'lucide-react';
 import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { api, ApiError } from '@/lib/api';
+import { useUi, PageHeader, Alert, Skeleton, EmptyState, SortTh, useSort } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 interface Product { id: string; sku: string; name: string; barcode: string | null; brand: string | null; saleUnit: string; costPrice: string | null; suggestedPrice: string | null; minStock: number; ncm: string | null; active: boolean; fiscalPending: boolean; category: { name: string } | null }
@@ -13,6 +15,7 @@ const TEMPLATE = 'sku;nome;codigo_barras;marca;categoria;unidade;custo;preco_ven
 
 export default function ProdutosPage() {
   const { can } = useSession();
+  const ui = useUi();
   const manage = can('products.manage');
   const [items, setItems] = useState<Product[] | null>(null);
   const [total, setTotal] = useState(0);
@@ -36,6 +39,9 @@ export default function ProdutosPage() {
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
   useEffect(() => { api<Category[]>('/categories').then(setCats).catch(() => undefined); }, []);
 
+  const { rows: sortedItems, sort, toggle: toggleSort } = useSort(items, { sku: (p) => p.sku, name: (p) => p.name, cat: (p) => p.category?.name, cost: (p) => (p.costPrice == null ? null : Number(p.costPrice)), price: (p) => (p.suggestedPrice == null ? null : Number(p.suggestedPrice)), min: (p) => p.minStock });
+  const sortProps = { sort, toggle: toggleSort };
+
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(''); setOk('');
@@ -48,7 +54,7 @@ export default function ProdutosPage() {
   }
 
   async function newCategory() {
-    const name = window.prompt('Nome da nova categoria');
+    const name = await ui.prompt({ title: 'Nova categoria', label: 'Nome da categoria', confirmLabel: 'Criar categoria' });
     if (!name) return;
     try { await api('/categories', 'POST', { name }); setCats(await api<Category[]>('/categories')); } catch (err) { setError((err as Error).message); }
   }
@@ -80,12 +86,11 @@ export default function ProdutosPage() {
 
   return (
     <>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <div><h1>Produtos e catálogo</h1><p className="muted">Cadastro mestre por SKU. Dados fiscais nunca são preenchidos automaticamente: produto sem NCM aparece como pendente.</p></div>
-        {manage && <div className="row"><button className="btn" onClick={() => setPanel('import')}>Importar planilha</button><button className="btn primary" onClick={() => setPanel('new')}>+ Produto</button></div>}
-      </div>
-      {error && <div className="alert error" role="alert">{error}</div>}
-      {ok && <div className="alert ok" role="status">{ok}</div>}
+      <PageHeader title="Produtos e catálogo" description={<>Cadastro mestre por SKU. Dados fiscais nunca são preenchidos automaticamente: produto sem NCM aparece como pendente.</>} actions={<>
+          {manage && <div className="row"><button className="btn" onClick={() => setPanel('import')}>Importar planilha</button><button className="btn primary" onClick={() => setPanel('new')}><Plus aria-hidden />Produto</button></div>}
+        </>} />
+      {error && <Alert kind="error">{error}</Alert>}
+      {ok && <Alert kind="ok">{ok}</Alert>}
 
       {panel === 'new' && (
         <form className="card" style={{ marginBottom: 16 }} onSubmit={create}>
@@ -95,7 +100,7 @@ export default function ProdutosPage() {
             <div><label htmlFor="name">Nome *</label><input id="name" name="name" required minLength={2} /></div>
             <div><label htmlFor="barcode">Código de barras (GTIN)</label><input id="barcode" name="barcode" inputMode="numeric" /></div>
             <div><label htmlFor="brand">Marca</label><input id="brand" name="brand" /></div>
-            <div><label htmlFor="categoryId">Categoria <button type="button" className="btn sm" onClick={newCategory}>+ nova</button></label>
+            <div><label htmlFor="categoryId">Categoria <button type="button" className="btn sm" onClick={newCategory}><Plus aria-hidden />nova</button></label>
               <select id="categoryId" name="categoryId" defaultValue=""><option value="">Sem categoria</option>{cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
             <div><label htmlFor="saleUnit">Unidade</label><input id="saleUnit" name="saleUnit" defaultValue="UN" maxLength={6} /></div>
             <div><label htmlFor="costPrice">Custo (R$)</label><input id="costPrice" name="costPrice" inputMode="decimal" /></div>
@@ -130,23 +135,23 @@ export default function ProdutosPage() {
       )}
 
       <section className="card">
-        <div className="row" style={{ marginBottom: 12 }}>
-          <input aria-label="Buscar produtos" placeholder="Buscar por SKU, nome ou código de barras" value={search} onChange={(e) => setSearch(e.target.value)} style={{ maxWidth: 360 }} />
-          <label className="row" style={{ fontWeight: 400, margin: 0 }}><input type="checkbox" checked={fiscal} onChange={(e) => setFiscal(e.target.checked)} style={{ width: 'auto' }} /> Só com pendência fiscal</label>
-          <span className="muted">{total} produto(s)</span>
+        <div className="toolbar">
+          <div className="search"><Search aria-hidden /><input aria-label="Buscar produtos" placeholder="Buscar por SKU, nome ou código de barras" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+          <label className="check"><input type="checkbox" checked={fiscal} onChange={(e) => setFiscal(e.target.checked)} /> Só com pendência fiscal</label>
+          <span className="muted" style={{ marginLeft: 'auto' }}>{total} produto(s)</span>
         </div>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>SKU</th><th>Produto</th><th>Categoria</th><th>Custo</th><th>Preço sugerido</th><th>Mín.</th><th>Fiscal</th><th /></tr></thead>
+            <thead><tr><SortTh label="SKU" k="sku" {...sortProps} /><SortTh label="Produto" k="name" {...sortProps} /><SortTh label="Categoria" k="cat" {...sortProps} /><SortTh label="Custo" k="cost" className="num" {...sortProps} /><SortTh label="Preço sugerido" k="price" className="num" {...sortProps} /><SortTh label="Mín." k="min" className="num" {...sortProps} /><th>Fiscal</th><th><span className="sr-only">Ações</span></th></tr></thead>
             <tbody>
-              {!items && !error && <tr><td colSpan={8} className="muted">Carregando…</td></tr>}
-              {items?.length === 0 && <tr><td colSpan={8} className="empty">Nenhum produto encontrado. {manage && 'Cadastre manualmente ou importe uma planilha.'}</td></tr>}
-              {items?.map((p) => (
+              {!items && !error && <tr><td colSpan={8}><Skeleton rows={3} /></td></tr>}
+              {items?.length === 0 && <tr><td colSpan={8}><EmptyState title={search || fiscal ? 'Nenhum produto com esses filtros' : 'Nenhum produto cadastrado'}>{search || fiscal ? 'Ajuste a busca ou limpe os filtros.' : manage ? 'Cadastre manualmente ou importe uma planilha.' : 'Peça a um gestor para cadastrar os produtos.'}</EmptyState></td></tr>}
+              {sortedItems?.map((p) => (
                 <tr key={p.id} style={p.active ? undefined : { opacity: 0.55 }}>
-                  <td>{p.sku}</td><td>{p.name}{p.brand && <span className="muted"> · {p.brand}</span>}</td><td>{p.category?.name ?? '—'}</td>
-                  <td>{brl(p.costPrice)}</td><td>{brl(p.suggestedPrice)}</td><td>{p.minStock}</td>
+                  <td className="mono">{p.sku}</td><td>{p.name}{p.brand && <span className="muted"> · {p.brand}</span>}</td><td>{p.category?.name ?? '—'}</td>
+                  <td className="num">{brl(p.costPrice)}</td><td className="num">{brl(p.suggestedPrice)}</td><td className="num">{p.minStock}</td>
                   <td>{p.fiscalPending ? <span className="badge warn">NCM pendente</span> : <span className="badge ok">NCM {p.ncm}</span>}</td>
-                  <td>{manage && <button className="btn sm" onClick={() => toggle(p)}>{p.active ? 'Inativar' : 'Reativar'}</button>}</td>
+                  <td className="actions">{manage && <button className="btn sm" onClick={() => toggle(p)}>{p.active ? 'Inativar' : 'Reativar'}</button>}</td>
                 </tr>
               ))}
             </tbody>

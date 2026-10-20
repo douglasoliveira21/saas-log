@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
+import { PageHeader, Alert } from '@/components/ui';
 
 interface Product { id: string; sku: string; name: string }
 interface Conn { id: string; label: string; provider: string }
@@ -42,9 +43,8 @@ export default function PrecosPage() {
 
   return (
     <>
-      <h1>Preços e margens</h1>
-      <p className="muted">Margem é sobre a <strong>venda</strong>; markup é sobre o <strong>custo</strong> — são coisas diferentes. Deixe os campos de tarifa em branco para usar o perfil salvo no canal; preencher sobrescreve apenas esta simulação.</p>
-      {error && <div className="alert error" role="alert">{error}</div>}
+      <PageHeader title="Preços e margens" description={<>Margem é sobre a <strong>venda</strong>; markup é sobre o <strong>custo</strong> — são coisas diferentes. Deixe os campos de tarifa em branco para usar o perfil salvo no canal; preencher sobrescreve apenas esta simulação.</>} />
+      {error && <Alert kind="error">{error}</Alert>}
       <form className="card" onSubmit={run} style={{ marginBottom: 16 }}>
         <div className="form-grid">
           <div><label htmlFor="p">Produto *</label><select id="p" name="product" required><option value="">Selecione…</option>{products.map((p) => <option key={p.id} value={p.id}>{p.sku} — {p.name}</option>)}</select></div>
@@ -69,7 +69,7 @@ export default function PrecosPage() {
             <tbody>
               {res.evaluations.length === 0 && <tr><td colSpan={7} className="empty">Informe preços para comparar.</td></tr>}
               {res.evaluations.map((e) => (
-                <tr key={e.price}><td>{brl(e.price)}</td><td>{brl(e.percentDeductions)}</td><td>{brl(e.fixedCosts)}</td><td>{brl(e.contribution)}</td><td>{e.marginPct.toFixed(2)}%</td><td>{e.markupPct == null ? '—' : `${e.markupPct.toFixed(2)}%`}</td>
+                <tr key={e.price}><td className="num">{brl(e.price)}</td><td className="num">{brl(e.percentDeductions)}</td><td className="num">{brl(e.fixedCosts)}</td><td className="num">{brl(e.contribution)}</td><td>{e.marginPct.toFixed(2)}%</td><td>{e.markupPct == null ? '—' : `${e.markupPct.toFixed(2)}%`}</td>
                   <td>{e.check.ok ? <span className="badge ok">dentro dos limites</span> : <span className="badge warn">{e.check.reason}</span>}</td></tr>
               ))}
             </tbody>
