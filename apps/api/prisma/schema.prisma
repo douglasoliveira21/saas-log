@@ -1,0 +1,1652 @@
+// DistribuiHub ERP — modelo de dados (Fase 1: fundação).
+// Regras gerais:
+//  - Toda tabela de negócio carrega tenant_id e é protegida por Row-Level Security (ver migration 0002).
+//  - Sem exclusão física de registros rastreáveis: usamos status/active.
+//  - Tabelas globais (sem RLS): plans, users, refresh_sessions. Ver docs/MULTITENANCY.md.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum TenantStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum MembershipStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum TaxRegime {
+  SIMPLES_NACIONAL
+  LUCRO_PRESUMIDO
+  LUCRO_REAL
+  MEI
+}
+
+enum EstablishmentKind {
+  MATRIZ
+  FILIAL
+  CENTRO_DISTRIBUICAO
+}
+
+enum WarehouseKind {
+  PROPRIO
+  TERCEIROS
+  CONSIGNADO
+}
+
+// ───────────────────────── Globais ─────────────────────────
+
+model Plan {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  name        String
+  limits      Json     @default("{}")
+  active      Boolean  @default(true)
+  priceCents  Int?     @map("price_cents")
+  description String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenants       Tenant[]
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model User {
+  id               String     @id @default(uuid()) @db.Uuid
+  email            String     @unique // sempre minúsculo (normalizado na aplicação)
+  name             String
+  passwordHash     String     @map("password_hash")
+  status           UserStatus @default(ACTIVE)
+  failedLoginCount Int        @default(0) @map("failed_login_count")
+  lockedUntil      DateTime?  @map("locked_until")
+  lastLoginAt      DateTime?  @map("last_login_at")
+  createdAt        DateTime   @default(now()) @map("created_at")
+
+  memberships Membership[]
+  sessions    RefreshSession[]
+
+  @@map("users")
+}
+
+// Sessões de refresh: guardamos somente o hash do token opaco.
+model RefreshSession {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tenantId   String?   @map("tenant_id") @db.Uuid
+  familyId   String    @map("family_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  replacedBy String?   @map("replaced_by") @db.Uuid
+  userAgent  String?   @map("user_agent")
+  ip         String?
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_sessions")
+}
+
+// ───────────────────────── Tenant e acesso ─────────────────────────
+
+model Tenant {
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String       @unique
+  status      TenantStatus @default(TRIAL)
+  planId      String?      @map("plan_id") @db.Uuid
+  trialEndsAt DateTime?    @map("trial_ends_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  plan                   Plan?                   @relation(fields: [planId], references: [id])
+  memberships            Membership[]
+  roles                  Role[]
+  companies              Company[]
+  establishments         Establishment[]
+  warehouses             Warehouse[]
+  auditLogs              AuditLog[]
+  productCategories      ProductCategory[]
+  products               Product[]
+  suppliers              Supplier[]
+  customers              Customer[]
+  salespeople            Salesperson[]
+  commissionRules        CommissionRule[]
+  salesOrders            SalesOrder[]
+  purchaseOrders         PurchaseOrder[]
+  marketplaceConnections MarketplaceConnection[]
+  backgroundJobs         BackgroundJob[]
+  subscriptions          Subscription[]
+
+  @@map("tenants")
+}
+
+model Role {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  key       String
+  name      String
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id])
+  permissions RolePermission[]
+  memberships Membership[]
+
+  @@unique([tenantId, key])
+  @@unique([tenantId, id])
+  @@map("roles")
+}
+
+model RolePermission {
+  roleId     String @map("role_id") @db.Uuid
+  tenantId   String @map("tenant_id") @db.Uuid
+  permission String
+
+  role Role @relation(fields: [tenantId, roleId], references: [tenantId, id])
+
+  @@id([roleId, permission])
+  @@index([tenantId])
+  @@map("role_permissions")
+}
+
+model Membership {
+  id        String           @id @default(uuid()) @db.Uuid
+  tenantId  String           @map("tenant_id") @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  roleId    String           @map("role_id") @db.Uuid
+  status    MembershipStatus @default(ACTIVE)
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+  role   Role   @relation(fields: [tenantId, roleId], references: [tenantId, id])
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+// ───────────────────────── Estrutura da empresa ─────────────────────────
+// Empresa (pessoa jurídica) ≠ Estabelecimento (CNPJ/IE) ≠ Depósito (local físico de estoque)
+// ≠ Canal de venda (Fase 4+). Endereço é embutido por ora (ADR-0003).
+
+model Company {
+  id           String     @id @default(uuid()) @db.Uuid
+  tenantId     String     @map("tenant_id") @db.Uuid
+  legalName    String     @map("legal_name")
+  tradeName    String?    @map("trade_name")
+  cnpj         String?
+  taxRegime    TaxRegime? @map("tax_regime")
+  contactEmail String?    @map("contact_email")
+  contactPhone String?    @map("contact_phone")
+  responsible  String?
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  establishments Establishment[]
+
+  @@unique([tenantId, cnpj])
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@map("companies")
+}
+
+model Establishment {
+  id                    String            @id @default(uuid()) @db.Uuid
+  tenantId              String            @map("tenant_id") @db.Uuid
+  companyId             String            @map("company_id") @db.Uuid
+  kind                  EstablishmentKind @default(MATRIZ)
+  name                  String
+  cnpj                  String?
+  stateRegistration     String?           @map("state_registration")
+  municipalRegistration String?           @map("municipal_registration")
+  cnae                  String?
+  zipCode               String?           @map("zip_code")
+  street                String?
+  number                String?
+  complement            String?
+  district              String?
+  city                  String?
+  state                 String?           @db.Char(2)
+  active                Boolean           @default(true)
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  tenant              Tenant               @relation(fields: [tenantId], references: [id])
+  company             Company              @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  warehouses          Warehouse[]
+  fiscalConfiguration FiscalConfiguration?
+  fiscalCertificates  FiscalCertificate[]
+
+  @@unique([tenantId, cnpj])
+  @@unique([tenantId, id])
+  @@index([tenantId, companyId])
+  @@map("establishments")
+}
+
+model Warehouse {
+  id              String        @id @default(uuid()) @db.Uuid
+  tenantId        String        @map("tenant_id") @db.Uuid
+  establishmentId String        @map("establishment_id") @db.Uuid
+  code            String
+  name            String
+  kind            WarehouseKind @default(PROPRIO)
+  zipCode         String?       @map("zip_code")
+  street          String?
+  number          String?
+  district        String?
+  city            String?
+  state           String?       @db.Char(2)
+  active          Boolean       @default(true)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
+  establishment          Establishment           @relation(fields: [tenantId, establishmentId], references: [tenantId, id])
+  stockBalances          StockBalance[]
+  stockMovements         StockMovement[]
+  stockReservations      StockReservation[]
+  inventoryCounts        InventoryCount[]
+  salesOrders            SalesOrder[]
+  purchaseOrders         PurchaseOrder[]
+  marketplaceConnections MarketplaceConnection[]
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, id])
+  @@index([tenantId, establishmentId])
+  @@map("warehouses")
+}
+
+// ───────────────────────── Auditoria ─────────────────────────
+// Append-only: o papel de runtime só possui INSERT/SELECT (migration 0002).
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  tenantId  String   @map("tenant_id") @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  action    String
+  entity    String?
+  entityId  String?  @map("entity_id")
+  metadata  Json     @default("{}")
+  ip        String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entity, entityId])
+  @@map("audit_logs")
+}
+
+// ───────────────────────── Fase 2: catálogo, fornecedores e estoque ─────────────────────────
+
+enum ProductKind {
+  PHYSICAL
+  KIT
+  SET
+  VARIATION
+}
+
+enum MovementType {
+  PURCHASE_ENTRY
+  SALE_EXIT
+  RETURN_ENTRY
+  TRANSFER_OUT
+  TRANSFER_IN
+  ADJUSTMENT
+  LOSS
+  DAMAGE
+  INTERNAL_USE
+  REVERSAL
+}
+
+enum ReservationStatus {
+  ACTIVE
+  RELEASED
+  CONSUMED
+}
+
+enum CountStatus {
+  OPEN
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+model ProductCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant                  Tenant                   @relation(fields: [tenantId], references: [id])
+  products                Product[]
+  channelCategoryMappings ChannelCategoryMapping[]
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, id])
+  @@map("product_categories")
+}
+
+model Product {
+  id               String      @id @default(uuid()) @db.Uuid
+  tenantId         String      @map("tenant_id") @db.Uuid
+  sku              String
+  barcode          String?
+  name             String
+  shortDescription String?     @map("short_description")
+  description      String?
+  brand            String?
+  manufacturer     String?
+  model            String?
+  categoryId       String?     @map("category_id") @db.Uuid
+  saleUnit         String      @default("UN") @map("sale_unit")
+  purchaseUnit     String      @default("UN") @map("purchase_unit")
+  unitConversion   Int         @default(1) @map("unit_conversion")
+  netWeightG       Int?        @map("net_weight_g")
+  grossWeightG     Int?        @map("gross_weight_g")
+  heightMm         Int?        @map("height_mm")
+  widthMm          Int?        @map("width_mm")
+  lengthMm         Int?        @map("length_mm")
+  kind             ProductKind @default(PHYSICAL)
+  active           Boolean     @default(true)
+  costPrice        Decimal?    @map("cost_price") @db.Decimal(14, 4)
+  extraCost        Decimal?    @map("extra_cost") @db.Decimal(14, 4)
+  suggestedPrice   Decimal?    @map("suggested_price") @db.Decimal(14, 2)
+  minPrice         Decimal?    @map("min_price") @db.Decimal(14, 2)
+  targetMarginPct  Decimal?    @map("target_margin_pct") @db.Decimal(6, 2)
+  minStock         Int         @default(0) @map("min_stock")
+  maxStock         Int?        @map("max_stock")
+  reorderPoint     Int?        @map("reorder_point")
+  leadTimeDays     Int?        @map("lead_time_days")
+  locationNote     String?     @map("location_note")
+  // Fiscal: nunca preenchido automaticamente; ausência = pendência.
+  ncm              String?
+  cest             String?
+  taxOrigin        Int?        @map("tax_origin")
+  taxUnit          String?     @map("tax_unit")
+  taxGtin          String?     @map("tax_gtin")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  tenant              Tenant               @relation(fields: [tenantId], references: [id])
+  category            ProductCategory?     @relation(fields: [tenantId, categoryId], references: [tenantId, id])
+  suppliers           ProductSupplier[]
+  balances            StockBalance[]
+  movements           StockMovement[]
+  reservations        StockReservation[]
+  countItems          InventoryCountItem[]
+  salesOrderItems     SalesOrderItem[]
+  purchaseOrderItems  PurchaseOrderItem[]
+  goodsReceiptItems   GoodsReceiptItem[]
+  channelListings     ChannelListing[]
+  fiscalDocumentItems FiscalDocumentItem[]
+
+  @@unique([tenantId, sku])
+  @@unique([tenantId, barcode])
+  @@unique([tenantId, id])
+  @@index([tenantId, name])
+  @@map("products")
+}
+
+model Supplier {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  legalName         String   @map("legal_name")
+  tradeName         String?  @map("trade_name")
+  document          String?
+  stateRegistration String?  @map("state_registration")
+  email             String?
+  phone             String?
+  paymentTerms      String?  @map("payment_terms")
+  leadTimeDays      Int?     @map("lead_time_days")
+  notes             String?
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant          Tenant            @relation(fields: [tenantId], references: [id])
+  products        ProductSupplier[]
+  purchaseOrders  PurchaseOrder[]
+  fiscalDocuments FiscalDocument[]
+
+  @@unique([tenantId, document])
+  @@unique([tenantId, id])
+  @@map("suppliers")
+}
+
+model ProductSupplier {
+  tenantId    String   @map("tenant_id") @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  supplierId  String   @map("supplier_id") @db.Uuid
+  supplierSku String?  @map("supplier_sku")
+  lastPrice   Decimal? @map("last_price") @db.Decimal(14, 4)
+  isMain      Boolean  @default(false) @map("is_main")
+
+  product  Product  @relation(fields: [tenantId, productId], references: [tenantId, id])
+  supplier Supplier @relation(fields: [tenantId, supplierId], references: [tenantId, id])
+
+  @@id([productId, supplierId])
+  @@index([tenantId])
+  @@map("product_suppliers")
+}
+
+// Saldo por produto × depósito. disponível = on_hand − reserved − blocked (regra única em StockService).
+model StockBalance {
+  tenantId    String   @map("tenant_id") @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  warehouseId String   @map("warehouse_id") @db.Uuid
+  onHand      Int      @default(0) @map("on_hand")
+  reserved    Int      @default(0)
+  blocked     Int      @default(0)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  product   Product   @relation(fields: [tenantId, productId], references: [tenantId, id])
+  warehouse Warehouse @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+
+  @@id([productId, warehouseId])
+  @@index([tenantId, warehouseId])
+  @@map("stock_balances")
+}
+
+// Razão imutável: o papel de runtime só tem INSERT/SELECT. Correção = novo movimento (REVERSAL).
+model StockMovement {
+  id             String       @id @default(uuid()) @db.Uuid
+  tenantId       String       @map("tenant_id") @db.Uuid
+  productId      String       @map("product_id") @db.Uuid
+  warehouseId    String       @map("warehouse_id") @db.Uuid
+  type           MovementType
+  quantity       Int
+  balanceBefore  Int          @map("balance_before")
+  balanceAfter   Int          @map("balance_after")
+  reason         String?
+  reference      String?
+  idempotencyKey String?      @map("idempotency_key")
+  reversalOfId   String?      @unique @map("reversal_of_id") @db.Uuid
+  transferId     String?      @map("transfer_id") @db.Uuid
+  createdById    String?      @map("created_by_id") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  product   Product   @relation(fields: [tenantId, productId], references: [tenantId, id])
+  warehouse Warehouse @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, productId, createdAt])
+  @@index([tenantId, warehouseId, createdAt])
+  @@map("stock_movements")
+}
+
+model StockReservation {
+  id             String            @id @default(uuid()) @db.Uuid
+  tenantId       String            @map("tenant_id") @db.Uuid
+  productId      String            @map("product_id") @db.Uuid
+  warehouseId    String            @map("warehouse_id") @db.Uuid
+  quantity       Int
+  status         ReservationStatus @default(ACTIVE)
+  reference      String?
+  idempotencyKey String            @map("idempotency_key")
+  createdById    String?           @map("created_by_id") @db.Uuid
+  createdAt      DateTime          @default(now()) @map("created_at")
+  resolvedAt     DateTime?         @map("resolved_at")
+
+  product   Product   @relation(fields: [tenantId, productId], references: [tenantId, id])
+  warehouse Warehouse @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, status])
+  @@map("stock_reservations")
+}
+
+model InventoryCount {
+  id           String      @id @default(uuid()) @db.Uuid
+  tenantId     String      @map("tenant_id") @db.Uuid
+  warehouseId  String      @map("warehouse_id") @db.Uuid
+  name         String
+  status       CountStatus @default(OPEN)
+  createdById  String?     @map("created_by_id") @db.Uuid
+  resolvedById String?     @map("resolved_by_id") @db.Uuid
+  createdAt    DateTime    @default(now()) @map("created_at")
+  submittedAt  DateTime?   @map("submitted_at")
+  resolvedAt   DateTime?   @map("resolved_at")
+
+  warehouse Warehouse            @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  items     InventoryCountItem[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, status])
+  @@map("inventory_counts")
+}
+
+model InventoryCountItem {
+  tenantId   String @map("tenant_id") @db.Uuid
+  countId    String @map("count_id") @db.Uuid
+  productId  String @map("product_id") @db.Uuid
+  systemQty  Int    @map("system_qty")
+  countedQty Int?   @map("counted_qty")
+
+  count   InventoryCount @relation(fields: [tenantId, countId], references: [tenantId, id])
+  product Product        @relation(fields: [tenantId, productId], references: [tenantId, id])
+
+  @@id([countId, productId])
+  @@map("inventory_count_items")
+}
+
+// ───────────────────────── Fase 3: clientes, vendas, compras e comissões ─────────────────────────
+
+enum CustomerKind {
+  PF
+  PJ
+}
+
+enum SalesChannel {
+  DIRECT
+  PHONE
+  WHATSAPP
+  EMAIL
+  STORE
+  WEB
+  REPRESENTATIVE
+  MARKETPLACE
+}
+
+enum OrderStatus {
+  DRAFT
+  PENDING_APPROVAL
+  CONFIRMED
+  PICKING
+  PACKED
+  SHIPPED
+  DELIVERED
+  CLOSED
+  CANCELLED
+}
+
+enum PurchaseStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum ReceiptStatus {
+  POSTED
+  REVERSED
+}
+
+enum CommissionRuleKind {
+  PERCENT
+  FIXED_PER_UNIT
+}
+
+enum CommissionEntryKind {
+  ACCRUAL
+  REVERSAL
+}
+
+enum CommissionStatus {
+  FORECAST
+  EARNED
+  PAID
+}
+
+model TenantSetting {
+  tenantId  String   @map("tenant_id") @db.Uuid
+  key       String
+  value     Json
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@id([tenantId, key])
+  @@map("tenant_settings")
+}
+
+model DocumentCounter {
+  tenantId String @map("tenant_id") @db.Uuid
+  kind     String
+  last     Int    @default(0)
+
+  @@id([tenantId, kind])
+  @@map("document_counters")
+}
+
+model Customer {
+  id                String       @id @default(uuid()) @db.Uuid
+  tenantId          String       @map("tenant_id") @db.Uuid
+  kind              CustomerKind
+  name              String
+  document          String?
+  stateRegistration String?      @map("state_registration")
+  email             String?
+  phone             String?
+  zipCode           String?      @map("zip_code")
+  street            String?
+  number            String?
+  district          String?
+  city              String?
+  state             String?      @db.Char(2)
+  active            Boolean      @default(true)
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id])
+  orders SalesOrder[]
+
+  @@unique([tenantId, document])
+  @@unique([tenantId, id])
+  @@map("customers")
+}
+
+model Salesperson {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  name         String
+  email        String?
+  phone        String?
+  userId       String?  @map("user_id") @db.Uuid
+  employment   String   @default("EMPLOYEE")
+  supervisorId String?  @map("supervisor_id") @db.Uuid
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id])
+  orders      SalesOrder[]
+  rules       CommissionRule[]
+  commissions SalesCommission[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, userId])
+  @@map("salespeople")
+}
+
+model CommissionRule {
+  id            String             @id @default(uuid()) @db.Uuid
+  tenantId      String             @map("tenant_id") @db.Uuid
+  name          String
+  salespersonId String?            @map("salesperson_id") @db.Uuid
+  categoryId    String?            @map("category_id") @db.Uuid
+  productId     String?            @map("product_id") @db.Uuid
+  customerId    String?            @map("customer_id") @db.Uuid
+  channel       SalesChannel?
+  kind          CommissionRuleKind
+  percent       Decimal?           @db.Decimal(7, 4)
+  fixedAmount   Decimal?           @map("fixed_amount") @db.Decimal(14, 2)
+  priority      Int                @default(0)
+  validFrom     DateTime?          @map("valid_from")
+  validTo       DateTime?          @map("valid_to")
+  active        Boolean            @default(true)
+  createdAt     DateTime           @default(now()) @map("created_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  salesperson Salesperson? @relation(fields: [tenantId, salespersonId], references: [tenantId, id])
+
+  @@index([tenantId, active])
+  @@map("commission_rules")
+}
+
+model SalesOrder {
+  id             String       @id @default(uuid()) @db.Uuid
+  tenantId       String       @map("tenant_id") @db.Uuid
+  number         Int
+  customerId     String       @map("customer_id") @db.Uuid
+  salespersonId  String?      @map("salesperson_id") @db.Uuid
+  warehouseId    String       @map("warehouse_id") @db.Uuid
+  channel        SalesChannel @default(DIRECT)
+  status         OrderStatus  @default(DRAFT)
+  subtotal       Decimal      @default(0) @db.Decimal(14, 2)
+  discountTotal  Decimal      @default(0) @map("discount_total") @db.Decimal(14, 2)
+  shipping       Decimal      @default(0) @db.Decimal(14, 2)
+  total          Decimal      @default(0) @db.Decimal(14, 2)
+  notes          String?
+  approvalReason String?      @map("approval_reason")
+  cancelReason   String?      @map("cancel_reason")
+  externalSource String?      @map("external_source")
+  externalRef    String?      @map("external_ref")
+  createdById    String?      @map("created_by_id") @db.Uuid
+  approvedById   String?      @map("approved_by_id") @db.Uuid
+  confirmedAt    DateTime?    @map("confirmed_at")
+  shippedAt      DateTime?    @map("shipped_at")
+  deliveredAt    DateTime?    @map("delivered_at")
+  cancelledAt    DateTime?    @map("cancelled_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  tenant          Tenant            @relation(fields: [tenantId], references: [id])
+  customer        Customer          @relation(fields: [tenantId, customerId], references: [tenantId, id])
+  salesperson     Salesperson?      @relation(fields: [tenantId, salespersonId], references: [tenantId, id])
+  warehouse       Warehouse         @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  items           SalesOrderItem[]
+  returns         ReturnRequest[]
+  commissions     SalesCommission[]
+  externalOrders  ExternalOrder[]
+  fiscalDocuments FiscalDocument[]
+  shipments       Shipment[]
+
+  @@unique([tenantId, number])
+  @@unique([tenantId, externalSource, externalRef])
+  @@unique([tenantId, id])
+  @@index([tenantId, status])
+  @@map("sales_orders")
+}
+
+model SalesOrderItem {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  orderId       String   @map("order_id") @db.Uuid
+  productId     String   @map("product_id") @db.Uuid
+  quantity      Int
+  unitPrice     Decimal  @map("unit_price") @db.Decimal(14, 2)
+  discountPct   Decimal  @default(0) @map("discount_pct") @db.Decimal(5, 2)
+  total         Decimal  @db.Decimal(14, 2)
+  costSnapshot  Decimal? @map("cost_snapshot") @db.Decimal(14, 4)
+  reservationId String?  @map("reservation_id") @db.Uuid
+
+  order       SalesOrder   @relation(fields: [tenantId, orderId], references: [tenantId, id])
+  product     Product      @relation(fields: [tenantId, productId], references: [tenantId, id])
+  returnItems ReturnItem[]
+
+  @@unique([orderId, productId])
+  @@unique([tenantId, id])
+  @@map("sales_order_items")
+}
+
+model ReturnRequest {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  orderId     String   @map("order_id") @db.Uuid
+  reason      String
+  restock     Boolean  @default(true)
+  createdById String?  @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  order SalesOrder   @relation(fields: [tenantId, orderId], references: [tenantId, id])
+  items ReturnItem[]
+
+  @@unique([tenantId, id])
+  @@map("return_requests")
+}
+
+model ReturnItem {
+  tenantId    String @map("tenant_id") @db.Uuid
+  returnId    String @map("return_id") @db.Uuid
+  orderItemId String @map("order_item_id") @db.Uuid
+  quantity    Int
+
+  request   ReturnRequest  @relation(fields: [tenantId, returnId], references: [tenantId, id])
+  orderItem SalesOrderItem @relation(fields: [tenantId, orderItemId], references: [tenantId, id])
+
+  @@id([returnId, orderItemId])
+  @@map("return_items")
+}
+
+// Livro de comissões: nunca apagamos; cancelamentos/devoluções entram como REVERSAL (valor negativo).
+model SalesCommission {
+  id            String              @id @default(uuid()) @db.Uuid
+  tenantId      String              @map("tenant_id") @db.Uuid
+  orderId       String              @map("order_id") @db.Uuid
+  orderItemId   String?             @map("order_item_id") @db.Uuid
+  salespersonId String              @map("salesperson_id") @db.Uuid
+  ruleId        String?             @map("rule_id") @db.Uuid
+  returnId      String?             @map("return_id") @db.Uuid
+  kind          CommissionEntryKind
+  status        CommissionStatus
+  base          Decimal             @db.Decimal(14, 2)
+  amount        Decimal             @db.Decimal(14, 2)
+  note          String?
+  createdAt     DateTime            @default(now()) @map("created_at")
+  earnedAt      DateTime?           @map("earned_at")
+  paidAt        DateTime?           @map("paid_at")
+  payoutTitleId String?             @map("payout_title_id") @db.Uuid
+
+  order       SalesOrder  @relation(fields: [tenantId, orderId], references: [tenantId, id])
+  salesperson Salesperson @relation(fields: [tenantId, salespersonId], references: [tenantId, id])
+
+  @@index([tenantId, salespersonId, status])
+  @@index([tenantId, orderId])
+  @@map("sales_commissions")
+}
+
+model PurchaseOrder {
+  id           String         @id @default(uuid()) @db.Uuid
+  tenantId     String         @map("tenant_id") @db.Uuid
+  number       Int
+  supplierId   String         @map("supplier_id") @db.Uuid
+  warehouseId  String         @map("warehouse_id") @db.Uuid
+  status       PurchaseStatus @default(DRAFT)
+  expectedDate DateTime?      @map("expected_date")
+  freight      Decimal        @default(0) @db.Decimal(14, 2)
+  total        Decimal        @default(0) @db.Decimal(14, 2)
+  notes        String?
+  createdById  String?        @map("created_by_id") @db.Uuid
+  approvedById String?        @map("approved_by_id") @db.Uuid
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  tenant    Tenant              @relation(fields: [tenantId], references: [id])
+  supplier  Supplier            @relation(fields: [tenantId, supplierId], references: [tenantId, id])
+  warehouse Warehouse           @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  items     PurchaseOrderItem[]
+  receipts  GoodsReceipt[]
+
+  @@unique([tenantId, number])
+  @@unique([tenantId, id])
+  @@index([tenantId, status])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+  orderId     String  @map("order_id") @db.Uuid
+  productId   String  @map("product_id") @db.Uuid
+  qtyOrdered  Int     @map("qty_ordered")
+  qtyReceived Int     @default(0) @map("qty_received")
+  unitCost    Decimal @map("unit_cost") @db.Decimal(14, 4)
+
+  order   PurchaseOrder @relation(fields: [tenantId, orderId], references: [tenantId, id])
+  product Product       @relation(fields: [tenantId, productId], references: [tenantId, id])
+
+  @@unique([orderId, productId])
+  @@map("purchase_order_items")
+}
+
+model GoodsReceipt {
+  id             String        @id @default(uuid()) @db.Uuid
+  tenantId       String        @map("tenant_id") @db.Uuid
+  purchaseId     String        @map("purchase_id") @db.Uuid
+  status         ReceiptStatus @default(POSTED)
+  note           String?
+  idempotencyKey String?       @map("idempotency_key")
+  createdById    String?       @map("created_by_id") @db.Uuid
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  purchase PurchaseOrder      @relation(fields: [tenantId, purchaseId], references: [tenantId, id])
+  items    GoodsReceiptItem[]
+
+  @@unique([tenantId, idempotencyKey])
+  @@unique([tenantId, id])
+  @@map("goods_receipts")
+}
+
+model GoodsReceiptItem {
+  tenantId   String  @map("tenant_id") @db.Uuid
+  receiptId  String  @map("receipt_id") @db.Uuid
+  productId  String  @map("product_id") @db.Uuid
+  quantity   Int
+  unitCost   Decimal @map("unit_cost") @db.Decimal(14, 4)
+  movementId String? @map("movement_id") @db.Uuid
+  note       String?
+
+  receipt GoodsReceipt @relation(fields: [tenantId, receiptId], references: [tenantId, id])
+  product Product      @relation(fields: [tenantId, productId], references: [tenantId, id])
+
+  @@id([receiptId, productId])
+  @@map("goods_receipt_items")
+}
+
+// ───────────────────────── Fase 4: central de integrações ─────────────────────────
+
+enum ConnectionStatus {
+  NOT_CONNECTED
+  AWAITING_AUTHORIZATION
+  TEST_PENDING
+  INCOMPLETE_CONFIG
+  CONNECTED
+  ACTIVE
+  PAUSED
+  TOKEN_EXPIRED
+  SYNC_ERROR
+  DISCONNECTED
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  DEAD
+  CANCELLED
+}
+
+enum WebhookStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+  IGNORED
+}
+
+// Credenciais (tokens) ficam somente em credentials_enc: AES-256-GCM com chave derivada por tenant.
+model MarketplaceConnection {
+  id                String           @id @default(uuid()) @db.Uuid
+  tenantId          String           @map("tenant_id") @db.Uuid
+  provider          String
+  label             String
+  status            ConnectionStatus @default(NOT_CONNECTED)
+  externalAccountId String?          @map("external_account_id")
+  warehouseId       String?          @map("warehouse_id") @db.Uuid
+  config            Json             @default("{}")
+  credentialsEnc    String?          @map("credentials_enc")
+  webhookSecretEnc  String?          @map("webhook_secret_enc")
+  oauthNonce        String?          @map("oauth_nonce")
+  tokenExpiresAt    DateTime?        @map("token_expires_at")
+  testedAt          DateTime?        @map("tested_at")
+  lastSyncAt        DateTime?        @map("last_sync_at")
+  lastError         String?          @map("last_error")
+  createdById       String?          @map("created_by_id") @db.Uuid
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  tenant                  Tenant                   @relation(fields: [tenantId], references: [id])
+  warehouse               Warehouse?               @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  mappings                ExternalEntityMapping[]
+  webhooks                WebhookEvent[]
+  logs                    IntegrationLog[]
+  jobs                    BackgroundJob[]
+  externalOrders          ExternalOrder[]
+  channelListings         ChannelListing[]
+  channelCategoryMappings ChannelCategoryMapping[]
+
+  @@unique([tenantId, provider, externalAccountId])
+  @@unique([tenantId, id])
+  @@index([tenantId, status])
+  @@map("marketplace_connections")
+}
+
+model ExternalEntityMapping {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  connectionId String   @map("connection_id") @db.Uuid
+  entityType   String   @map("entity_type")
+  internalId   String?  @map("internal_id") @db.Uuid
+  externalId   String   @map("external_id")
+  metadata     Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  connection MarketplaceConnection @relation(fields: [tenantId, connectionId], references: [tenantId, id])
+
+  @@unique([connectionId, entityType, externalId])
+  @@index([tenantId, entityType, internalId])
+  @@map("external_entity_mappings")
+}
+
+model WebhookEvent {
+  id           String        @id @default(uuid()) @db.Uuid
+  tenantId     String        @map("tenant_id") @db.Uuid
+  connectionId String        @map("connection_id") @db.Uuid
+  dedupeKey    String        @map("dedupe_key")
+  eventType    String?       @map("event_type")
+  payload      Json
+  status       WebhookStatus @default(RECEIVED)
+  error        String?
+  receivedAt   DateTime      @default(now()) @map("received_at")
+  processedAt  DateTime?     @map("processed_at")
+
+  connection MarketplaceConnection @relation(fields: [tenantId, connectionId], references: [tenantId, id])
+
+  @@unique([connectionId, dedupeKey])
+  @@unique([tenantId, id])
+  @@index([tenantId, status])
+  @@map("webhook_events")
+}
+
+// Append-only. Mensagens e metadados passam por remoção de segredos antes de gravar.
+model IntegrationLog {
+  id           BigInt   @id @default(autoincrement())
+  tenantId     String   @map("tenant_id") @db.Uuid
+  connectionId String?  @map("connection_id") @db.Uuid
+  level        String
+  operation    String
+  message      String
+  statusCode   Int?     @map("status_code")
+  durationMs   Int?     @map("duration_ms")
+  metadata     Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  connection MarketplaceConnection? @relation(fields: [tenantId, connectionId], references: [tenantId, id])
+
+  @@index([tenantId, connectionId, createdAt])
+  @@map("integration_logs")
+}
+
+// Fila durável no PostgreSQL (ADR-0006). Reivindicação cross-tenant por função SECURITY DEFINER.
+model BackgroundJob {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  connectionId   String?   @map("connection_id") @db.Uuid
+  type           String
+  payload        Json      @default("{}")
+  status         JobStatus @default(QUEUED)
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(5) @map("max_attempts")
+  runAt          DateTime  @default(now()) @map("run_at")
+  lockedAt       DateTime? @map("locked_at")
+  lockedBy       String?   @map("locked_by")
+  lastError      String?   @map("last_error")
+  result         Json?
+  idempotencyKey String?   @map("idempotency_key")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  finishedAt     DateTime? @map("finished_at")
+
+  tenant     Tenant                 @relation(fields: [tenantId], references: [id])
+  connection MarketplaceConnection? @relation(fields: [tenantId, connectionId], references: [tenantId, id])
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([status, runAt])
+  @@index([tenantId, connectionId, status])
+  @@map("background_jobs")
+}
+
+// Livro das ordens vindas de canais: garante idempotência da importação e guarda o que precisa de atenção (SKU sem vínculo, estoque, etc.).
+model ExternalOrder {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  connectionId   String   @map("connection_id") @db.Uuid
+  externalId     String   @map("external_id")
+  status         String // AWAITING_PAYMENT | IMPORTED | NEEDS_ATTENTION | CANCELLED
+  externalStatus String?  @map("external_status")
+  salesOrderId   String?  @map("sales_order_id") @db.Uuid
+  reason         String?
+  payload        Json
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  connection MarketplaceConnection @relation(fields: [tenantId, connectionId], references: [tenantId, id])
+  salesOrder SalesOrder?           @relation(fields: [tenantId, salesOrderId], references: [tenantId, id])
+
+  @@unique([connectionId, externalId])
+  @@index([tenantId, connectionId, status])
+  @@map("external_orders")
+}
+
+// ───────────────────────── Fase 5b: anúncios, preços e categorias por canal ─────────────────────────
+
+// Um produto do ERP publicado (ou a publicar) em uma conexão. O preço aqui é o preço APROVADO do canal.
+model ChannelListing {
+  id                 String    @id @default(uuid()) @db.Uuid
+  tenantId           String    @map("tenant_id") @db.Uuid
+  connectionId       String    @map("connection_id") @db.Uuid
+  productId          String    @map("product_id") @db.Uuid
+  externalItemId     String?   @map("external_item_id")
+  title              String?
+  status             String    @default("DRAFT") // DRAFT | LINKED | PAUSED
+  price              Decimal?  @db.Decimal(14, 2)
+  lastPublishedPrice Decimal?  @map("last_published_price") @db.Decimal(14, 2)
+  lastPublishedQty   Int?      @map("last_published_qty")
+  syncStatus         String?   @map("sync_status") // OK | BLOCKED | ERROR
+  syncError          String?   @map("sync_error")
+  lastSyncAt         DateTime? @map("last_sync_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  connection MarketplaceConnection @relation(fields: [tenantId, connectionId], references: [tenantId, id])
+  product    Product               @relation(fields: [tenantId, productId], references: [tenantId, id])
+
+  @@unique([connectionId, productId])
+  @@unique([connectionId, externalItemId])
+  @@index([tenantId, connectionId])
+  @@map("channel_listings")
+}
+
+// Histórico imutável de alterações de preço de canal.
+model PriceHistory {
+  id           BigInt   @id @default(autoincrement())
+  tenantId     String   @map("tenant_id") @db.Uuid
+  productId    String   @map("product_id") @db.Uuid
+  connectionId String   @map("connection_id") @db.Uuid
+  oldPrice     Decimal? @map("old_price") @db.Decimal(14, 2)
+  newPrice     Decimal  @map("new_price") @db.Decimal(14, 2)
+  marginPct    Decimal? @map("margin_pct") @db.Decimal(7, 2)
+  reason       String
+  userId       String?  @map("user_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, productId, connectionId, createdAt])
+  @@map("price_history")
+}
+
+// Categoria do ERP → categoria do canal. O identificador externo é informado pelo usuário (a consulta automática
+// de categorias depende dos conectores reais).
+model ChannelCategoryMapping {
+  id                   String   @id @default(uuid()) @db.Uuid
+  tenantId             String   @map("tenant_id") @db.Uuid
+  connectionId         String   @map("connection_id") @db.Uuid
+  categoryId           String   @map("category_id") @db.Uuid
+  externalCategoryId   String   @map("external_category_id")
+  externalCategoryName String?  @map("external_category_name")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  connection MarketplaceConnection @relation(fields: [tenantId, connectionId], references: [tenantId, id])
+  category   ProductCategory       @relation(fields: [tenantId, categoryId], references: [tenantId, id])
+
+  @@unique([connectionId, categoryId])
+  @@map("channel_category_mappings")
+}
+
+// ───────────────────────── Fase 6: fiscal ─────────────────────────
+// Princípios: nenhuma alíquota/regra tributária vem pré-cadastrada; regras são do tenant, versionadas, aprovadas e
+// rastreáveis. Documentos e XML são imutáveis após registrados.
+
+// Parâmetros fiscais por estabelecimento. A validação do contador é registrada (quem/quando).
+model FiscalConfiguration {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  establishmentId String    @map("establishment_id") @db.Uuid
+  environment     String    @default("HOMOLOGACAO") // HOMOLOGACAO | PRODUCAO
+  documentTypes   String[]  @default(["NFE"]) @map("document_types")
+  nfeSeries       Int       @default(1) @map("nfe_series")
+  accountantName  String?   @map("accountant_name")
+  accountantEmail String?   @map("accountant_email")
+  status          String    @default("DRAFT") // DRAFT | PENDING_ACCOUNTANT | APPROVED
+  approvedById    String?   @map("approved_by_id") @db.Uuid
+  approvedAt      DateTime? @map("approved_at")
+  notes           String?
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  establishment Establishment @relation(fields: [tenantId, establishmentId], references: [tenantId, id])
+
+  @@unique([tenantId, establishmentId])
+  @@map("fiscal_configurations")
+}
+
+// Certificado digital A1: arquivo e senha ficam cifrados (AES-256-GCM, chave por tenant); só metadados são expostos.
+model FiscalCertificate {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  establishmentId String   @map("establishment_id") @db.Uuid
+  subject         String
+  cnpj            String?
+  serial          String
+  fingerprint     String
+  notBefore       DateTime @map("not_before")
+  notAfter        DateTime @map("not_after")
+  pfxEnc          String   @map("pfx_enc")
+  status          String   @default("ACTIVE") // ACTIVE | REPLACED
+  uploadedById    String?  @map("uploaded_by_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  establishment Establishment @relation(fields: [tenantId, establishmentId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@index([tenantId, establishmentId, status])
+  @@map("fiscal_certificates")
+}
+
+model FiscalDocument {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  direction       String // ENTRY | EXIT
+  model           String    @default("55")
+  status          String
+  accessKey       String?   @map("access_key")
+  series          Int?
+  number          Int?
+  environment     String? // HOMOLOGACAO | PRODUCAO (tpAmb do documento)
+  issuedAt        DateTime? @map("issued_at")
+  establishmentId String?   @map("establishment_id") @db.Uuid
+  emitterDoc      String?   @map("emitter_doc")
+  emitterName     String?   @map("emitter_name")
+  emitterUf       String?   @map("emitter_uf")
+  recipientDoc    String?   @map("recipient_doc")
+  totalProducts   Decimal?  @map("total_products") @db.Decimal(14, 2)
+  totalInvoice    Decimal?  @map("total_invoice") @db.Decimal(14, 2)
+  totalFreight    Decimal?  @map("total_freight") @db.Decimal(14, 2)
+  authProtocol    String?   @map("auth_protocol")
+  authStatusCode  String?   @map("auth_status_code")
+  authenticity    String    @default("UNVERIFIED") // UNVERIFIED | VERIFIED (consulta SEFAZ / assinatura) — hoje sempre UNVERIFIED
+  issues          Json      @default("[]")
+  installments    Json      @default("[]")
+  supplierId      String?   @map("supplier_id") @db.Uuid
+  purchaseOrderId String?   @map("purchase_order_id") @db.Uuid
+  receiptId       String?   @map("receipt_id") @db.Uuid
+  salesOrderId    String?   @map("sales_order_id") @db.Uuid
+  calculationId   String?   @map("calculation_id") @db.Uuid
+  providerState   Json      @default("{}") @map("provider_state")
+  importedById    String?   @map("imported_by_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  supplier   Supplier?            @relation(fields: [tenantId, supplierId], references: [tenantId, id])
+  salesOrder SalesOrder?          @relation(fields: [tenantId, salesOrderId], references: [tenantId, id])
+  items      FiscalDocumentItem[]
+  xmlFiles   FiscalXmlFile[]
+
+  @@unique([tenantId, accessKey])
+  @@unique([tenantId, id])
+  @@index([tenantId, direction, status])
+  @@map("fiscal_documents")
+}
+
+model FiscalDocumentItem {
+  id           String  @id @default(uuid()) @db.Uuid
+  tenantId     String  @map("tenant_id") @db.Uuid
+  documentId   String  @map("document_id") @db.Uuid
+  line         Int
+  supplierCode String? @map("supplier_code")
+  gtin         String?
+  description  String
+  ncm          String?
+  cfop         String?
+  unit         String?
+  quantity     Decimal @db.Decimal(14, 4)
+  unitValue    Decimal @map("unit_value") @db.Decimal(14, 6)
+  totalValue   Decimal @map("total_value") @db.Decimal(14, 2)
+  declaredTax  Json    @default("{}") @map("declared_tax")
+  productId    String? @map("product_id") @db.Uuid
+  matchedBy    String? @map("matched_by") // SUPPLIER_CODE | GTIN | MANUAL
+  stockQty     Int?    @map("stock_qty")
+
+  document FiscalDocument @relation(fields: [tenantId, documentId], references: [tenantId, id])
+  product  Product?       @relation(fields: [tenantId, productId], references: [tenantId, id])
+
+  @@unique([documentId, line])
+  @@map("fiscal_document_items")
+}
+
+// XML original, imutável (guarda de retenção). O hash prova que o conteúdo não foi alterado.
+model FiscalXmlFile {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  documentId  String   @map("document_id") @db.Uuid
+  kind        String   @default("RECEIVED") // RECEIVED | SIGNED | AUTHORIZED
+  sha256      String
+  content     String
+  source      String? // origem: upload manual, nome do arquivo
+  createdById String?  @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  document FiscalDocument @relation(fields: [tenantId, documentId], references: [tenantId, id])
+
+  @@index([tenantId, documentId])
+  @@map("fiscal_xml_files")
+}
+
+// Numeração por estabelecimento/série/ambiente, incrementada atomicamente (nunca reutiliza número).
+model FiscalSeries {
+  tenantId        String @map("tenant_id") @db.Uuid
+  establishmentId String @map("establishment_id") @db.Uuid
+  model           String @default("55")
+  series          Int
+  environment     String
+  last            Int    @default(0)
+
+  @@id([tenantId, establishmentId, model, series, environment])
+  @@map("fiscal_series")
+}
+
+model TaxRule {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  name          String
+  operation     String // PURCHASE | SALE | RETURN_SALE | RETURN_PURCHASE | TRANSFER | OTHER
+  originUf      String?  @map("origin_uf") @db.Char(2)
+  destUf        String?  @map("dest_uf") @db.Char(2)
+  ncmPrefix     String?  @map("ncm_prefix")
+  regime        String?
+  productOrigin Int?     @map("product_origin")
+  recipientKind String?  @map("recipient_kind") // CONTRIBUINTE | NAO_CONTRIBUINTE
+  priority      Int      @default(0)
+  active        Boolean  @default(true)
+  createdById   String?  @map("created_by_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  versions TaxRuleVersion[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, operation, active])
+  @@map("tax_rules")
+}
+
+model TaxRuleVersion {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  ruleId          String    @map("rule_id") @db.Uuid
+  version         Int
+  status          String    @default("DRAFT") // DRAFT | PENDING_APPROVAL | APPROVED | SUPERSEDED
+  validFrom       DateTime  @map("valid_from")
+  validTo         DateTime? @map("valid_to")
+  config          Json
+  sourceReference String    @map("source_reference") // base legal / orientação do contador (obrigatório)
+  createdById     String?   @map("created_by_id") @db.Uuid
+  approvedById    String?   @map("approved_by_id") @db.Uuid
+  approvedAt      DateTime? @map("approved_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  rule TaxRule @relation(fields: [tenantId, ruleId], references: [tenantId, id])
+
+  @@unique([ruleId, version])
+  @@unique([tenantId, id])
+  @@map("tax_rule_versions")
+}
+
+// Retrato reprodutível de um cálculo: entradas, saídas, versões de regra e versão do motor.
+model TaxCalculation {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  operation      String
+  engineVersion  String   @map("engine_version")
+  inputs         Json
+  outputs        Json
+  ruleVersionIds String[] @map("rule_version_ids")
+  pendencies     Json     @default("[]")
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([tenantId, id])
+  @@index([tenantId, createdAt])
+  @@map("tax_calculations")
+}
+
+// ───────────────────────── Fase 7: financeiro, relatórios e logística ─────────────────────────
+
+model FinancialAccount {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  name           String
+  kind           String // BANK | CASH | WALLET
+  bankName       String?  @map("bank_name")
+  agency         String?
+  accountNumber  String?  @map("account_number")
+  openingBalance Decimal  @default(0) @map("opening_balance") @db.Decimal(14, 2)
+  openingDate    DateTime @default(now()) @map("opening_date")
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  settlements FinancialSettlement[]
+  statements  BankStatementLine[]
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, id])
+  @@map("financial_accounts")
+}
+
+model FinancialCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  kind      String // REVENUE | DEDUCTION | COGS | VARIABLE_EXPENSE | OPERATING_EXPENSE | FINANCIAL | OTHER
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  titles FinancialTitle[]
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, id])
+  @@map("financial_categories")
+}
+
+model CostCenter {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  titles FinancialTitle[]
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, id])
+  @@map("cost_centers")
+}
+
+// Contas a pagar e a receber em uma só estrutura (direction). Baixas ficam em financial_settlements (imutáveis).
+model FinancialTitle {
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  direction        String // PAYABLE | RECEIVABLE
+  status           String    @default("OPEN") // OPEN | PARTIAL | PAID | CANCELLED
+  counterpartyKind String    @default("OTHER") @map("counterparty_kind") // SUPPLIER | CUSTOMER | SALESPERSON | MARKETPLACE | OTHER
+  supplierId       String?   @map("supplier_id") @db.Uuid
+  customerId       String?   @map("customer_id") @db.Uuid
+  salespersonId    String?   @map("salesperson_id") @db.Uuid
+  connectionId     String?   @map("connection_id") @db.Uuid
+  counterpartyName String?   @map("counterparty_name")
+  description      String
+  documentRef      String?   @map("document_ref")
+  installmentNo    Int       @default(1) @map("installment_no")
+  installmentTotal Int       @default(1) @map("installment_total")
+  issueDate        DateTime? @map("issue_date")
+  dueDate          DateTime  @map("due_date")
+  amount           Decimal   @db.Decimal(14, 2)
+  paidPrincipal    Decimal   @default(0) @map("paid_principal") @db.Decimal(14, 2)
+  categoryId       String?   @map("category_id") @db.Uuid
+  costCenterId     String?   @map("cost_center_id") @db.Uuid
+  origin           String    @default("MANUAL") // MANUAL | FISCAL_XML | SALES_ORDER | COMMISSION | MARKETPLACE
+  originRef        String?   @map("origin_ref")
+  approvedById     String?   @map("approved_by_id") @db.Uuid
+  approvedAt       DateTime? @map("approved_at")
+  cancelledAt      DateTime? @map("cancelled_at")
+  cancelReason     String?   @map("cancel_reason")
+  notes            String?
+  createdById      String?   @map("created_by_id") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  category    FinancialCategory?    @relation(fields: [tenantId, categoryId], references: [tenantId, id])
+  costCenter  CostCenter?           @relation(fields: [tenantId, costCenterId], references: [tenantId, id])
+  settlements FinancialSettlement[]
+
+  @@unique([tenantId, origin, originRef])
+  @@unique([tenantId, id])
+  @@index([tenantId, direction, status, dueDate])
+  @@map("financial_titles")
+}
+
+model FinancialSettlement {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  titleId      String   @map("title_id") @db.Uuid
+  accountId    String   @map("account_id") @db.Uuid
+  kind         String   @default("SETTLEMENT") // SETTLEMENT | REVERSAL
+  amount       Decimal  @db.Decimal(14, 2) // dinheiro que entrou/saiu (negativo no estorno)
+  principal    Decimal  @db.Decimal(14, 2) // parte que quita o título
+  interest     Decimal  @default(0) @db.Decimal(14, 2)
+  fine         Decimal  @default(0) @db.Decimal(14, 2)
+  discount     Decimal  @default(0) @db.Decimal(14, 2)
+  paidAt       DateTime @map("paid_at")
+  reversalOfId String?  @unique @map("reversal_of_id") @db.Uuid
+  note         String?
+  createdById  String?  @map("created_by_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  title   FinancialTitle   @relation(fields: [tenantId, titleId], references: [tenantId, id])
+  account FinancialAccount @relation(fields: [tenantId, accountId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@index([tenantId, accountId, paidAt])
+  @@index([tenantId, titleId])
+  @@map("financial_settlements")
+}
+
+model BankStatementLine {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  accountId    String    @map("account_id") @db.Uuid
+  fitid        String
+  postedAt     DateTime  @map("posted_at")
+  amount       Decimal   @db.Decimal(14, 2) // com sinal: crédito + / débito −
+  description  String
+  settlementId String?   @map("settlement_id") @db.Uuid
+  matchedAt    DateTime? @map("matched_at")
+  matchedById  String?   @map("matched_by_id") @db.Uuid
+  batch        String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  account FinancialAccount @relation(fields: [tenantId, accountId], references: [tenantId, id])
+
+  @@unique([accountId, fitid])
+  @@unique([settlementId])
+  @@index([tenantId, accountId, postedAt])
+  @@map("bank_statement_lines")
+}
+
+// Linhas de relatório de liquidação do canal (importadas de arquivo): o dinheiro recebido ≠ total dos pedidos.
+model MarketplaceSettlement {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  connectionId    String    @map("connection_id") @db.Uuid
+  reportRef       String    @map("report_ref")
+  externalOrderId String    @map("external_order_id")
+  gross           Decimal   @db.Decimal(14, 2)
+  commission      Decimal   @default(0) @db.Decimal(14, 2)
+  fixedFee        Decimal   @default(0) @map("fixed_fee") @db.Decimal(14, 2)
+  paymentFee      Decimal   @default(0) @map("payment_fee") @db.Decimal(14, 2)
+  shipping        Decimal   @default(0) @db.Decimal(14, 2)
+  adjustments     Decimal   @default(0) @db.Decimal(14, 2)
+  refunds         Decimal   @default(0) @db.Decimal(14, 2)
+  netReported     Decimal   @map("net_reported") @db.Decimal(14, 2)
+  expectedDate    DateTime? @map("expected_date")
+  receivedDate    DateTime? @map("received_date")
+  status          String    @default("IMPORTED") // IMPORTED | UNLINKED | DIVERGENT | RECONCILED
+  salesOrderId    String?   @map("sales_order_id") @db.Uuid
+  titleId         String?   @map("title_id") @db.Uuid
+  divergence      Json      @default("[]")
+  note            String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@unique([connectionId, reportRef, externalOrderId])
+  @@index([tenantId, connectionId, status])
+  @@map("marketplace_settlements")
+}
+
+model Packaging {
+  id         String  @id @default(uuid()) @db.Uuid
+  tenantId   String  @map("tenant_id") @db.Uuid
+  name       String
+  lengthMm   Int     @map("length_mm")
+  widthMm    Int     @map("width_mm")
+  heightMm   Int     @map("height_mm")
+  maxWeightG Int     @map("max_weight_g")
+  tareG      Int     @default(0) @map("tare_g")
+  active     Boolean @default(true)
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, id])
+  @@map("packagings")
+}
+
+model Shipment {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  salesOrderId String    @map("sales_order_id") @db.Uuid
+  carrier      String // CORREIOS | OUTRA
+  service      String?
+  trackingCode String?   @map("tracking_code")
+  status       String    @default("PENDING") // PENDING | POSTED | IN_TRANSIT | DELIVERED | PROBLEM | CANCELLED
+  packagingId  String?   @map("packaging_id") @db.Uuid
+  weightG      Int?      @map("weight_g")
+  lengthMm     Int?      @map("length_mm")
+  widthMm      Int?      @map("width_mm")
+  heightMm     Int?      @map("height_mm")
+  cost         Decimal?  @db.Decimal(14, 2)
+  postedAt     DateTime? @map("posted_at")
+  deliveredAt  DateTime? @map("delivered_at")
+  createdById  String?   @map("created_by_id") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  order  SalesOrder      @relation(fields: [tenantId, salesOrderId], references: [tenantId, id])
+  events ShipmentEvent[]
+
+  @@unique([tenantId, carrier, trackingCode])
+  @@unique([tenantId, id])
+  @@index([tenantId, status])
+  @@map("shipments")
+}
+
+model ShipmentEvent {
+  id          BigInt   @id @default(autoincrement())
+  tenantId    String   @map("tenant_id") @db.Uuid
+  shipmentId  String   @map("shipment_id") @db.Uuid
+  occurredAt  DateTime @map("occurred_at")
+  status      String
+  description String
+  location    String?
+  source      String   @default("MANUAL")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  shipment Shipment @relation(fields: [tenantId, shipmentId], references: [tenantId, id])
+
+  @@index([tenantId, shipmentId, occurredAt])
+  @@map("shipment_events")
+}
+
+model ReportExport {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  report      String
+  format      String
+  filters     Json     @default("{}")
+  status      String   @default("PENDING") // PENDING | READY | FAILED
+  rowCount    Int?     @map("row_count")
+  fileName    String?  @map("file_name")
+  content     Bytes?
+  error       String?
+  createdById String?  @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  expiresAt   DateTime @map("expires_at")
+
+  @@index([tenantId, createdAt])
+  @@map("report_exports")
+}
+
+// Histórico de assinatura do tenant. Escrita somente pelo administrador da plataforma (funções SECURITY DEFINER).
+model Subscription {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  planId      String    @map("plan_id") @db.Uuid
+  status      String // TRIALING | ACTIVE | PAST_DUE | CANCELLED | SUSPENDED
+  periodStart DateTime  @default(now()) @map("period_start")
+  periodEnd   DateTime? @map("period_end")
+  note        String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  plan   Plan   @relation(fields: [planId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@map("subscriptions")
+}
+
+// Administradores da plataforma (não pertencem a tenants). Concessão somente por script com acesso direto ao banco.
+model PlatformAdmin {
+  userId    String   @id @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("platform_admins")
+}
+
+model PlatformAuditLog {
+  id          BigInt   @id @default(autoincrement())
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  action      String
+  tenantId    String?  @map("tenant_id") @db.Uuid
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("platform_audit_log")
+}

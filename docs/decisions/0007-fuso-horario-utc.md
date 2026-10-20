@@ -1,0 +1,2 @@
+# ADR-0007 — Sessões do runtime sempre em UTC
+O Prisma grava `timestamp` sem fuso em UTC, enquanto `DEFAULT now()` segue o fuso da sessão. Com o servidor em outro fuso, comparações como `run_at <= now()` ficavam deslocadas (jobs ficavam "no futuro"). Por isso o papel `dh_app` e o banco usam `timezone = 'UTC'` (migração `runtime_utc` e `db:setup`). Em bancos de desenvolvimento antigos, linhas criadas antes dessa correção por defaults do banco podem ter horário deslocado; em produção o banco deve nascer já em UTC.

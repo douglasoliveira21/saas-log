@@ -1,0 +1,17 @@
+{
+  "name": "distribuihub-erp",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "db:start": "node scripts/dev-db.mjs start",
+    "db:stop": "node scripts/dev-db.mjs stop",
+    "db:setup": "npm run db:setup -w apps/api",
+    "dev:api": "npm run start:dev -w apps/api",
+    "dev:web": "npm run dev -w apps/web",
+    "test": "npm run test -w apps/api",
+    "test:e2e": "npm run test:e2e -w apps/api",
+    "build": "npm run build -w apps/api && npm run build -w apps/web"
+  },
+  "engines": { "node": ">=20" }
+}

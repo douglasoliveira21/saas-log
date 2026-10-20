@@ -1,0 +1,13 @@
+node_modules
+dist
+.next
+.data
+.env
+.env.local
+*.pfx
+*.p12
+*.pem
+*.log
+coverage
+backups
+*.tsbuildinfo

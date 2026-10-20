@@ -1,0 +1,5 @@
+# ADR-0006 — Fila de jobs em PostgreSQL (em vez de Redis/BullMQ) nesta etapa
+**Contexto:** a especificação sugere Redis + BullMQ. O ambiente não tem Redis nem Docker, e o volume atual não justifica mais uma peça de infraestrutura.
+**Decisão:** fila durável na tabela `background_jobs`: `FOR UPDATE SKIP LOCKED`, retentativas com backoff exponencial + jitter, `retry-after` do provedor, estado `DEAD` como fila de falhas definitivas, chave de idempotência por tenant, recuperação de jobs de workers que morreram.
+**Isolamento:** o worker precisa ver jobs de todos os tenants sem receber `BYPASSRLS`. Duas funções `SECURITY DEFINER` estreitas (`claim_background_jobs`, `list_active_connections`) fazem só isso; todo processamento do job volta a ocorrer com o contexto RLS do tenant.
+**Consequências:** transações do banco podem ser combinadas com o enfileiramento (outbox natural); a API é a mesma para trocar por BullMQ (`JobQueue.enqueue` + registro de handlers) se a escala exigir; throughput é limitado ao do PostgreSQL (suficiente para o porte inicial).
