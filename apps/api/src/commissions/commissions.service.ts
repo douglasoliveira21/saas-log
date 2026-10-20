@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { CommissionRule, CommissionStatus, Prisma, SalesChannel } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AuthContext } from '../common/auth';
+import { normalizeContact } from '../common/phone';
 import { PrismaService } from '../prisma/prisma.service';
 import { CommissionEvent, SettingsService } from '../settings/settings.service';
 
@@ -68,7 +69,7 @@ export class CommissionsService {
       if (dto.supervisorId && !(await tx.salesperson.findFirst({ where: { id: dto.supervisorId, tenantId: ctx.tenantId! } }))) {
         throw new BadRequestException('Supervisor inválido.');
       }
-      const row = await tx.salesperson.create({ data: { ...dto, tenantId: ctx.tenantId! } }).catch((e) => {
+      const row = await tx.salesperson.create({ data: { ...normalizeContact(dto), tenantId: ctx.tenantId! } }).catch((e) => {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('Este usuário já está vinculado a um vendedor.');
         throw e;
       });
@@ -80,7 +81,7 @@ export class CommissionsService {
   updateSalesperson(ctx: AuthContext, id: string, dto: { name?: string; email?: string; phone?: string; active?: boolean }) {
     return this.prisma.withContext(ctx, async (tx) => {
       if (!(await tx.salesperson.findFirst({ where: { id, tenantId: ctx.tenantId! } }))) throw new NotFoundException('Vendedor não encontrado.');
-      const row = await tx.salesperson.update({ where: { id }, data: dto });
+      const row = await tx.salesperson.update({ where: { id }, data: normalizeContact(dto) });
       await this.audit.record(tx, ctx, { action: 'salesperson.updated', entity: 'salesperson', entityId: id, metadata: { fields: Object.keys(dto) } });
       return row;
     });

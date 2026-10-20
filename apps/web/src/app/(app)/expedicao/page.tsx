@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { dateBr } from '@/lib/format';
 import { PageHeader, Alert } from '@/components/ui';
+import { MaskedInput } from '@/components/fields';
 import { useSession } from '@/lib/session';
 
 interface QueueItem { id: string; number: number; status: string; channel: string; customer: string; city: string | null; state: string | null }
@@ -86,7 +87,7 @@ export default function ExpedicaoPage() {
             <div className="form-grid">
               <div><label htmlFor="c">Transportadora</label><select id="c" name="carrier" defaultValue="CORREIOS"><option value="CORREIOS">Correios</option><option value="OUTRA">Outra</option></select></div>
               <div><label htmlFor="s">Serviço</label><input id="s" name="service" placeholder="SEDEX, PAC…" /></div>
-              <div><label htmlFor="t">Código de rastreio (ex.: AA123456789BR)</label><input id="t" name="trackingCode" /></div>
+              <div><label htmlFor="t">Código de rastreio (ex.: AA123456789BR)</label><MaskedInput id="t" name="trackingCode" kind="tracking" /></div>
               <div><label htmlFor="p">Embalagem</label><select id="p" name="packagingId" defaultValue=""><option value="">—</option>{packs.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.lengthMm}×{p.widthMm}×{p.heightMm} mm)</option>)}</select></div>
               <div><label htmlFor="w">Peso (g)</label><input id="w" name="weightG" type="number" min={1} /></div>
               <div><label htmlFor="co">Custo do frete</label><input id="co" name="cost" inputMode="decimal" /></div>
@@ -118,7 +119,7 @@ export default function ExpedicaoPage() {
                 <div><label htmlFor="es">Novo status</label><select id="es" name="status" defaultValue="POSTED">{Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
                 <div><label htmlFor="ed">Descrição *</label><input id="ed" name="description" required minLength={2} /></div>
                 <div><label htmlFor="el">Local</label><input id="el" name="location" /></div>
-                <div><label htmlFor="et">Código de rastreio</label><input id="et" name="trackingCode" defaultValue={detail.trackingCode ?? ''} /></div>
+                <div><label htmlFor="et">Código de rastreio</label><MaskedInput id="et" name="trackingCode" kind="tracking" defaultValue={detail.trackingCode ?? ''} /></div>
                 <div style={{ alignSelf: 'end' }}><button className="btn primary">Registrar evento</button></div>
               </form>
             )}

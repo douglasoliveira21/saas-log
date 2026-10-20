@@ -4,6 +4,7 @@ import {
   ValidatorConstraint, ValidatorConstraintInterface,
 } from 'class-validator';
 import { isValidCnpj, isValidCpf } from '../common/cnpj';
+import { IsBrPhone } from '../common/phone';
 
 @ValidatorConstraint({ name: 'cpfCnpj', async: false })
 export class CpfCnpjConstraint implements ValidatorConstraintInterface {
@@ -83,7 +84,7 @@ export class SupplierFields {
   @IsOptional() @Validate(CpfCnpjConstraint) document?: string;
   @IsOptional() @IsString() @MaxLength(30) stateRegistration?: string;
   @IsOptional() @IsEmail() email?: string;
-  @IsOptional() @IsString() @MaxLength(30) phone?: string;
+  @IsOptional() @IsBrPhone() @MaxLength(30) phone?: string;
   @IsOptional() @IsString() @MaxLength(200) paymentTerms?: string;
   @IsOptional() @IsInt() @Min(0) @Max(365) leadTimeDays?: number;
   @IsOptional() @IsString() @MaxLength(2000) notes?: string;

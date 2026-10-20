@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } fr
 import { api } from '@/lib/api';
 import { brl } from '@/lib/format';
 import { useUi, PageHeader, Alert, Skeleton } from '@/components/ui';
+import { formatAccessKey, formatCnpj } from '@/lib/format';
 import { useSession } from '@/lib/session';
 
 type Tab = 'config' | 'inbound' | 'rules' | 'outgoing';
@@ -137,7 +138,7 @@ function ConfigTab({ act, can }: TabProps) {
           <section className="card">
             <h2>Certificado digital A1</h2>
             {view.certificate ? (
-              <p>{view.certificate.subject}<br /><span className="muted">CNPJ {view.certificate.cnpj ?? '—'} · série {view.certificate.serial} · vence em {new Date(view.certificate.notAfter).toLocaleDateString('pt-BR')} ({view.certificate.daysToExpire} dia(s))</span>{view.certificate.expiringSoon && <span className="badge warn" style={{ marginLeft: 8 }}>vence em breve</span>}</p>
+              <p>{view.certificate.subject}<br /><span className="muted">CNPJ {view.certificate.cnpj ? formatCnpj(view.certificate.cnpj) : '—'} · série {view.certificate.serial} · vence em {new Date(view.certificate.notAfter).toLocaleDateString('pt-BR')} ({view.certificate.daysToExpire} dia(s))</span>{view.certificate.expiringSoon && <span className="badge warn" style={{ marginLeft: 8 }}>vence em breve</span>}</p>
             ) : <p className="muted">Nenhum certificado cadastrado.</p>}
             {manage && (
               <form onSubmit={upload}>
@@ -206,7 +207,7 @@ function InboundTab({ act, can }: TabProps) {
             <h2>NF-e {sel.number}/{sel.series} — {sel.emitterName}</h2>
             {!sel.supplierId && can('suppliers.manage') && <button className="btn" onClick={() => act(() => api(`/fiscal/inbound/${sel.id}/supplier`, 'POST'), 'Fornecedor cadastrado a partir do emitente.', reload)}>Cadastrar fornecedor</button>}
           </div>
-          <p className="muted">Chave {sel.accessKey} · fornecedor {sel.supplier?.legalName ?? 'não vinculado'}</p>
+          <p className="muted">Chave <span className="mono">{formatAccessKey(sel.accessKey)}</span> · fornecedor {sel.supplier?.legalName ?? 'não vinculado'}</p>
           <IssueList issues={sel.issues} />
           <div className="table-wrap"><table>
             <thead><tr><th>#</th><th>Código</th><th>Descrição</th><th>Qtd. XML</th><th>Un.</th><th>Total</th><th>NCM</th><th>Produto do ERP</th><th>Estoque</th></tr></thead>
@@ -418,7 +419,7 @@ function OutgoingTab({ act, can }: TabProps) {
             )}
           </div>
           {sel.status === 'PENDING_CONSULT' && <div className="alert error">A resposta da transmissão é desconhecida. <strong>Não reenvie</strong>: use “Consultar situação” para evitar nota duplicada.</div>}
-          {sel.accessKey && <p className="muted">Chave {sel.accessKey} · protocolo {sel.authProtocol ?? '—'}</p>}
+          {sel.accessKey && <p className="muted">Chave <span className="mono">{formatAccessKey(sel.accessKey)}</span> · protocolo {sel.authProtocol ?? '—'}</p>}
           <IssueList issues={sel.issues} />
           <div className="table-wrap"><table>
             <thead><tr><th>#</th><th>Descrição</th><th>NCM</th><th>CFOP</th><th>Total</th><th>Impostos calculados (regra aprovada)</th></tr></thead>

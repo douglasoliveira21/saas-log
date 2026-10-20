@@ -14,6 +14,7 @@ import {
   ValidatorConstraintInterface,
 } from 'class-validator';
 import { isValidCnpj } from '../common/cnpj';
+import { IsBrPhone } from '../common/phone';
 
 @ValidatorConstraint({ name: 'cnpj', async: false })
 export class CnpjConstraint implements ValidatorConstraintInterface {
@@ -33,7 +34,7 @@ export class CreateCompanyDto {
   @IsOptional() @Validate(CnpjConstraint) cnpj?: string;
   @IsOptional() @IsEnum(TaxRegime) taxRegime?: TaxRegime;
   @IsOptional() @IsEmail() contactEmail?: string;
-  @IsOptional() @IsString() @MaxLength(30) contactPhone?: string;
+  @IsOptional() @IsBrPhone() @MaxLength(30) contactPhone?: string;
   @IsOptional() @IsString() @MaxLength(120) responsible?: string;
 }
 
@@ -43,7 +44,7 @@ export class UpdateCompanyDto {
   @IsOptional() @Validate(CnpjConstraint) cnpj?: string;
   @IsOptional() @IsEnum(TaxRegime) taxRegime?: TaxRegime;
   @IsOptional() @IsEmail() contactEmail?: string;
-  @IsOptional() @IsString() @MaxLength(30) contactPhone?: string;
+  @IsOptional() @IsBrPhone() @MaxLength(30) contactPhone?: string;
   @IsOptional() @IsString() @MaxLength(120) responsible?: string;
   @IsOptional() @IsBoolean() active?: boolean;
 }

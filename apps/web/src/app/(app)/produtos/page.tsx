@@ -4,6 +4,7 @@ import { Search, Plus } from 'lucide-react';
 import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useUi, PageHeader, Alert, Skeleton, EmptyState, SortTh, useSort } from '@/components/ui';
+import { formatNcm } from '@/lib/format';
 import { useSession } from '@/lib/session';
 
 interface Product { id: string; sku: string; name: string; barcode: string | null; brand: string | null; saleUnit: string; costPrice: string | null; suggestedPrice: string | null; minStock: number; ncm: string | null; active: boolean; fiscalPending: boolean; category: { name: string } | null }
@@ -150,7 +151,7 @@ export default function ProdutosPage() {
                 <tr key={p.id} style={p.active ? undefined : { opacity: 0.55 }}>
                   <td className="mono">{p.sku}</td><td>{p.name}{p.brand && <span className="muted"> · {p.brand}</span>}</td><td>{p.category?.name ?? '—'}</td>
                   <td className="num">{brl(p.costPrice)}</td><td className="num">{brl(p.suggestedPrice)}</td><td className="num">{p.minStock}</td>
-                  <td>{p.fiscalPending ? <span className="badge warn">NCM pendente</span> : <span className="badge ok">NCM {p.ncm}</span>}</td>
+                  <td>{p.fiscalPending ? <span className="badge warn">NCM pendente</span> : <span className="badge ok">NCM {formatNcm(p.ncm)}</span>}</td>
                   <td className="actions">{manage && <button className="btn sm" onClick={() => toggle(p)}>{p.active ? 'Inativar' : 'Reativar'}</button>}</td>
                 </tr>
               ))}

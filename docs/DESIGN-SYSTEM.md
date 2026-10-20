@@ -31,3 +31,12 @@ Telas conferidas no navegador (claro, escuro e 375 px): login, painel, produtos 
 - Formulários longos (fiscal, integrações) ainda são painéis em cartão, não páginas em seções; as validações de campo seguem as do navegador + mensagens da API.
 - Nenhum teste automatizado de interface (E2E de navegador) foi criado.
 - Busca global e central de notificações ainda não existem.
+
+## Máscaras, formatação e consulta de CNPJ/CEP
+- **Máscaras** (`components/fields.tsx`): `MaskedInput` (CPF, CNPJ, CPF/CNPJ, telefone, CEP, CNAE, código de rastreio), `UfSelect` (lista fixa de UFs). Funções de exibição em `lib/format.ts` (`formatCnpj/Cpf/Phone/Cep/Cnae/Ncm/AccessKey`, `docOrDash`).
+- **Gravação:** o servidor guarda documentos, telefone e CEP **só com dígitos** (`normalizeContact`); a formatação é feita ao exibir. Telefone exige DDD (10 ou 11 dígitos; aceita +55). Dados antigos com máscara continuam exibindo corretamente.
+- **Consulta de CNPJ** (`DocumentField`): ao completar 14 dígitos válidos, busca na BrasilAPI (base pública da Receita Federal) e preenche **apenas campos vazios**; o botão de lupa refaz a consulta e substitui. Mostra a situação cadastral (alerta se não for "ativa"). **Não traz** inscrição estadual nem regime tributário (não são dados públicos confiáveis; seguem manuais e validados pelo contador). CPF não tem consulta pública: só máscara e validação.
+- **Consulta de CEP** (`CepField`): BrasilAPI (v2) com ViaCEP como segunda fonte; preenche logradouro, bairro, município e UF e leva o cursor ao campo "Número".
+- **Onde:** empresa, estabelecimento, clientes e fornecedores (consulta de CNPJ); empresa/estabelecimento/clientes (CEP); código de rastreio na expedição.
+- **Como funciona por trás:** o navegador chama `GET /api/lookup/cnpj/:cnpj` e `/lookup/cep/:cep` (exigem login e permissão `company.view`; limite de 20 e 40 consultas/min). O servidor valida os dígitos antes de qualquer chamada externa, consulta com tempo limite de 8 s e guarda o resultado em memória por 24 h. Só o número consultado sai do servidor. Se o serviço externo cair, responde 503 e o cadastro segue manual. Endereços das APIs configuráveis por `LOOKUP_BRASILAPI_BASE` / `LOOKUP_VIACEP_BASE`.
+- **Atenção:** são serviços públicos de terceiros, sem garantia de disponibilidade nem de atualização; sempre confira os dados preenchidos. O servidor precisa de saída para a internet.

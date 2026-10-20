@@ -4,13 +4,15 @@ import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, Length, Matches, MaxL
 import { AuditService } from '../audit/audit.service';
 import { AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
 import { onlyDigits } from '../common/cnpj';
+import { IsBrPhone } from '../common/phone';
+import { normalizeContact } from '../common/phone';
 import { CpfCnpjConstraint } from '../catalog/catalog.dto';
 import { PrismaService } from '../prisma/prisma.service';
 
 class CustomerFields {
   @IsOptional() @IsString() @MaxLength(30) stateRegistration?: string;
   @IsOptional() @IsEmail() email?: string;
-  @IsOptional() @IsString() @MaxLength(30) phone?: string;
+  @IsOptional() @IsBrPhone() @MaxLength(30) phone?: string;
   @IsOptional() @Matches(/^\d{5}-?\d{3}$/, { message: 'CEP inválido.' }) zipCode?: string;
   @IsOptional() @IsString() @MaxLength(200) street?: string;
   @IsOptional() @IsString() @MaxLength(20) number?: string;
@@ -48,7 +50,7 @@ export class CustomersService {
   create(ctx: AuthContext, dto: CreateCustomerDto) {
     return this.prisma.withContext(ctx, async (tx) => {
       const row = await tx.customer
-        .create({ data: { ...dto, document: dto.document ? onlyDigits(dto.document) : undefined, state: dto.state?.toUpperCase(), tenantId: ctx.tenantId! } })
+        .create({ data: { ...normalizeContact(dto), document: dto.document ? onlyDigits(dto.document) : undefined, state: dto.state?.toUpperCase(), tenantId: ctx.tenantId! } })
         .catch(dup);
       await this.audit.record(tx, ctx, { action: 'customer.created', entity: 'customer', entityId: row.id, metadata: { name: row.name, kind: row.kind } });
       return row;
@@ -58,7 +60,7 @@ export class CustomersService {
   update(ctx: AuthContext, id: string, dto: UpdateCustomerDto) {
     return this.prisma.withContext(ctx, async (tx) => {
       if (!(await tx.customer.findFirst({ where: { id, tenantId: ctx.tenantId! } }))) throw new NotFoundException('Cliente não encontrado.');
-      const row = await tx.customer.update({ where: { id }, data: { ...dto, document: dto.document ? onlyDigits(dto.document) : undefined, state: dto.state?.toUpperCase() } }).catch(dup);
+      const row = await tx.customer.update({ where: { id }, data: { ...normalizeContact(dto), document: dto.document ? onlyDigits(dto.document) : undefined, state: dto.state?.toUpperCase() } }).catch(dup);
       await this.audit.record(tx, ctx, { action: 'customer.updated', entity: 'customer', entityId: id, metadata: { fields: Object.keys(dto) } });
       return row;
     });

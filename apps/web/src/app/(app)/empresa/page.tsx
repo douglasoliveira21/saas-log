@@ -4,6 +4,8 @@ import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { PageHeader, Alert, Skeleton } from '@/components/ui';
+import { CepField, DocumentField, MaskedInput, UfSelect } from '@/components/fields';
+import { formatCnpj } from '@/lib/format';
 import { useSession } from '@/lib/session';
 
 interface Warehouse { id: string; code: string; name: string; kind: string; active: boolean }
@@ -71,12 +73,13 @@ export default function EmpresaPage() {
         <form className="card" style={{ marginBottom: 16 }} onSubmit={(e) => submit(e, '/companies', 'Empresa cadastrada.')}>
           <h2>Nova empresa</h2>
           <div className="form-grid">
+            <div><label htmlFor="cnpj">CNPJ</label><DocumentField id="cnpj" name="cnpj" kind="cnpj" fill={{ legalName: 'legalName', tradeName: 'tradeName', contactEmail: 'email', contactPhone: 'phone' }} /></div>
             <div><label htmlFor="legalName">Razão social *</label><input id="legalName" name="legalName" required /></div>
             <div><label htmlFor="tradeName">Nome fantasia</label><input id="tradeName" name="tradeName" /></div>
-            <div><label htmlFor="cnpj">CNPJ</label><input id="cnpj" name="cnpj" placeholder="00.000.000/0000-00" /></div>
             <div><label htmlFor="taxRegime">Regime tributário</label><select id="taxRegime" name="taxRegime" defaultValue=""><option value="">Selecione…</option>{REGIMES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
             <div><label htmlFor="responsible">Responsável</label><input id="responsible" name="responsible" /></div>
             <div><label htmlFor="contactEmail">E-mail de contato</label><input id="contactEmail" name="contactEmail" type="email" /></div>
+            <div><label htmlFor="contactPhone">Telefone de contato</label><MaskedInput id="contactPhone" name="contactPhone" kind="phone" /></div>
           </div>
           <p className="muted">O regime tributário informado aqui deve ser validado pelo seu contador (assistente fiscal na Fase 6).</p>
           <div className="row"><button className="btn primary">Salvar</button><button type="button" className="btn" onClick={() => setForm(null)}>Cancelar</button></div>
@@ -89,13 +92,17 @@ export default function EmpresaPage() {
           <div className="form-grid">
             <div><label htmlFor="companyId">Empresa *</label><select id="companyId" name="companyId" required>{tree?.map((c) => <option key={c.id} value={c.id}>{c.legalName}</option>)}</select></div>
             <div><label htmlFor="kind">Tipo *</label><select id="kind" name="kind" required>{KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
+            <div><label htmlFor="ecnpj">CNPJ do estabelecimento</label><DocumentField id="ecnpj" name="cnpj" kind="cnpj" fill={{name: 'displayName',cnae: 'cnae',zipCode: 'zipCode',street: 'street',number: 'number',complement: 'complement',district: 'district',city: 'city',state: 'state'}} /></div>
             <div><label htmlFor="name">Nome *</label><input id="name" name="name" required /></div>
-            <div><label htmlFor="ecnpj">CNPJ do estabelecimento</label><input id="ecnpj" name="cnpj" /></div>
-            <div><label htmlFor="stateRegistration">Inscrição estadual</label><input id="stateRegistration" name="stateRegistration" /></div>
-            <div><label htmlFor="cnae">CNAE</label><input id="cnae" name="cnae" placeholder="0000-0/00" /></div>
-            <div><label htmlFor="zipCode">CEP</label><input id="zipCode" name="zipCode" placeholder="00000-000" /></div>
+            <div><label htmlFor="stateRegistration">Inscrição estadual</label><input id="stateRegistration" name="stateRegistration" inputMode="numeric" /><div className="hint muted" style={{ fontSize: '0.78rem', marginTop: 4 }}>Não consta na consulta pública: informe conforme o cadastro estadual.</div></div>
+            <div><label htmlFor="cnae">CNAE principal</label><MaskedInput id="cnae" name="cnae" kind="cnae" /></div>
+            <div><label htmlFor="zipCode">CEP</label><CepField id="zipCode" fill={{ street: 'street', district: 'district', city: 'city', state: 'state' }} /></div>
+            <div><label htmlFor="street">Logradouro</label><input id="street" name="street" /></div>
+            <div><label htmlFor="number">Número</label><input id="number" name="number" /></div>
+            <div><label htmlFor="complement">Complemento</label><input id="complement" name="complement" /></div>
+            <div><label htmlFor="district">Bairro</label><input id="district" name="district" /></div>
             <div><label htmlFor="city">Município</label><input id="city" name="city" /></div>
-            <div><label htmlFor="state">UF</label><input id="state" name="state" maxLength={2} /></div>
+            <div><label htmlFor="state">UF</label><UfSelect id="state" /></div>
           </div>
           <div className="row" style={{ marginTop: 12 }}><button className="btn primary">Salvar</button><button type="button" className="btn" onClick={() => setForm(null)}>Cancelar</button></div>
         </form>
@@ -119,7 +126,7 @@ export default function EmpresaPage() {
       {tree?.map((c) => (
         <section className="card" key={c.id} style={{ marginBottom: 16 }}>
           <h2>{c.legalName} {c.taxRegime && <span className="badge">{REGIMES.find(([v]) => v === c.taxRegime)?.[1]}</span>}</h2>
-          <p className="muted">{c.tradeName ?? '—'} · CNPJ {c.cnpj ?? 'não informado'}</p>
+          <p className="muted">{c.tradeName ?? '—'} · CNPJ {c.cnpj ? formatCnpj(c.cnpj) : 'não informado'}</p>
           {c.establishments.length === 0 && <div className="empty">Sem estabelecimentos.</div>}
           {c.establishments.map((e) => (
             <div key={e.id} style={{ marginTop: 12 }}>

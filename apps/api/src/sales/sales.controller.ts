@@ -5,6 +5,7 @@ import {
   ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsEmail, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateNested,
 } from 'class-validator';
 import { AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
+import { IsBrPhone } from '../common/phone';
 import { CommissionsService } from '../commissions/commissions.service';
 import { SalesService } from './sales.service';
 
@@ -46,7 +47,7 @@ class ReturnDto {
 class SalespersonDto {
   @IsString() @Length(2, 120) name: string;
   @IsOptional() @IsEmail() email?: string;
-  @IsOptional() @IsString() @MaxLength(30) phone?: string;
+  @IsOptional() @IsBrPhone() @MaxLength(30) phone?: string;
   @IsOptional() @IsUUID() userId?: string;
   @IsOptional() @IsString() @Length(3, 20) employment?: string;
   @IsOptional() @IsUUID() supervisorId?: string;
@@ -54,7 +55,7 @@ class SalespersonDto {
 class SalespersonUpdateDto {
   @IsOptional() @IsString() @Length(2, 120) name?: string;
   @IsOptional() @IsEmail() email?: string;
-  @IsOptional() @IsString() @MaxLength(30) phone?: string;
+  @IsOptional() @IsBrPhone() @MaxLength(30) phone?: string;
   @IsOptional() @IsBoolean() active?: boolean;
 }
 class RuleDto {

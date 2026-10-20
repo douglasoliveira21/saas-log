@@ -1,4 +1,5 @@
 import { assertWithinPlan } from '../billing/limits';
+import { normalizeContact } from '../common/phone';
 import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
@@ -219,7 +220,7 @@ export class CatalogService {
   createSupplier(ctx: AuthContext, dto: CreateSupplierDto) {
     return this.prisma.withContext(ctx, async (tx) => {
       const row = await tx.supplier
-        .create({ data: { ...dto, document: dto.document ? onlyDigits(dto.document) : undefined, tenantId: ctx.tenantId! } })
+        .create({ data: { ...normalizeContact(dto), document: dto.document ? onlyDigits(dto.document) : undefined, tenantId: ctx.tenantId! } })
         .catch((e) => conflict(e, 'Já existe um fornecedor com este documento.'));
       await this.audit.record(tx, ctx, { action: 'supplier.created', entity: 'supplier', entityId: row.id, metadata: { legalName: row.legalName } });
       return row;
@@ -230,7 +231,7 @@ export class CatalogService {
     return this.prisma.withContext(ctx, async (tx) => {
       if (!(await tx.supplier.findFirst({ where: { id, tenantId: ctx.tenantId! }, select: { id: true } }))) throw new NotFoundException('Fornecedor não encontrado.');
       const row = await tx.supplier
-        .update({ where: { id }, data: { ...dto, document: dto.document ? onlyDigits(dto.document) : undefined } })
+        .update({ where: { id }, data: { ...normalizeContact(dto), document: dto.document ? onlyDigits(dto.document) : undefined } })
         .catch((e) => conflict(e, 'Já existe um fornecedor com este documento.'));
       await this.audit.record(tx, ctx, { action: 'supplier.updated', entity: 'supplier', entityId: id, metadata: { fields: Object.keys(dto) } });
       return row;

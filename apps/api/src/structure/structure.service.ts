@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AuthContext } from '../common/auth';
 import { onlyDigits } from '../common/cnpj';
+import { normalizeContact } from '../common/phone';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateCompanyDto,
@@ -46,7 +47,7 @@ export class StructureService {
   async createCompany(ctx: AuthContext, dto: CreateCompanyDto) {
     return this.prisma.withContext(ctx, async (tx) => {
       const row = await tx.company
-        .create({ data: { ...dto, cnpj: cnpjOrUndef(dto.cnpj), tenantId: ctx.tenantId! } })
+        .create({ data: { ...normalizeContact(dto), cnpj: cnpjOrUndef(dto.cnpj), tenantId: ctx.tenantId! } })
         .catch((e) => mapUnique(e, 'Já existe uma empresa com este CNPJ.'));
       await this.audit.record(tx, ctx, { action: 'company.created', entity: 'company', entityId: row.id, metadata: { legalName: row.legalName } });
       return row;
@@ -57,7 +58,7 @@ export class StructureService {
     return this.prisma.withContext(ctx, async (tx) => {
       await this.mustExist(tx.company.findFirst({ where: { id, tenantId: ctx.tenantId! }, select: { id: true } }));
       const row = await tx.company
-        .update({ where: { id }, data: { ...dto, cnpj: cnpjOrUndef(dto.cnpj) } })
+        .update({ where: { id }, data: { ...normalizeContact(dto), cnpj: cnpjOrUndef(dto.cnpj) } })
         .catch((e) => mapUnique(e, 'Já existe uma empresa com este CNPJ.'));
       await this.audit.record(tx, ctx, { action: 'company.updated', entity: 'company', entityId: id, metadata: { fields: Object.keys(dto) } });
       return row;
@@ -69,7 +70,7 @@ export class StructureService {
       await this.mustExist(tx.company.findFirst({ where: { id: dto.companyId, tenantId: ctx.tenantId! }, select: { id: true } }));
       await this.enforceLimit(tx, ctx, 'establishments', () => tx.establishment.count({ where: { tenantId: ctx.tenantId!, active: true } }));
       const row = await tx.establishment
-        .create({ data: { ...upperUf(dto), cnpj: cnpjOrUndef(dto.cnpj), tenantId: ctx.tenantId! } })
+        .create({ data: { ...normalizeContact(upperUf(dto)), cnpj: cnpjOrUndef(dto.cnpj), tenantId: ctx.tenantId! } })
         .catch((e) => mapUnique(e, 'Já existe um estabelecimento com este CNPJ.'));
       await this.audit.record(tx, ctx, { action: 'establishment.created', entity: 'establishment', entityId: row.id, metadata: { name: row.name, kind: row.kind } });
       return row;
@@ -80,7 +81,7 @@ export class StructureService {
     return this.prisma.withContext(ctx, async (tx) => {
       await this.mustExist(tx.establishment.findFirst({ where: { id, tenantId: ctx.tenantId! }, select: { id: true } }));
       const row = await tx.establishment
-        .update({ where: { id }, data: { ...upperUf(dto), cnpj: cnpjOrUndef(dto.cnpj) } })
+        .update({ where: { id }, data: { ...normalizeContact(upperUf(dto)), cnpj: cnpjOrUndef(dto.cnpj) } })
         .catch((e) => mapUnique(e, 'Já existe um estabelecimento com este CNPJ.'));
       await this.audit.record(tx, ctx, { action: 'establishment.updated', entity: 'establishment', entityId: id, metadata: { fields: Object.keys(dto) } });
       return row;
