@@ -44,6 +44,9 @@ export interface ConnectorInfo {
   displayName: string;
   docsUrl: string;
   authType: 'OAUTH2' | 'API_KEY' | 'SIGNED_OAUTH2';
+  /** Agrupamento na galeria de canais (padrão: MARKETPLACE). */
+  category?: 'MARKETPLACE' | 'STORE_PLATFORM' | 'HUB';
+  region?: 'BR' | 'GLOBAL';
   /** Verdadeiro somente para o conector de testes. */
   sandbox?: boolean;
   notes?: string;

@@ -1,37 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { getConfig } from '../config/app.config';
+import { PLANNED_CHANNELS, PlannedConnector } from './catalog';
 import { MercadoLivreConnector } from './mercado-livre.connector';
 import {
   BaseConnector, CapabilityMatrix, ConnectionContext, Connector, ConnectorInfo, Credentials, ExternalOrder, fail, OpResult, okResult,
 } from './connector';
-
-const PLANNED: CapabilityMatrix = {
-  authorization: 'PLANNED', orders: 'PLANNED', catalog: 'PLANNED', publishing: 'PLANNED', price: 'PLANNED', inventory: 'PLANNED', shipments: 'PLANNED', webhooks: 'PLANNED',
-};
-
-/**
- * Amazon e Shopee: a ESTRUTURA existe (cadastro da conexão, estados, credenciais, fila, webhooks, logs),
- * mas o conector ainda não implementa nenhuma chamada ao provedor. Isso depende de (1) leitura da documentação oficial
- * vigente, (2) credenciais/aprovação do aplicativo no provedor e (3) testes em sandbox — Fase 5.
- * Todas as operações herdadas devolvem NOT_IMPLEMENTED; a matriz abaixo é "PLANNED", nunca "SUPPORTED".
- */
-class AmazonConnector extends BaseConnector {
-  readonly info: ConnectorInfo = {
-    provider: 'AMAZON', displayName: 'Amazon (Selling Partner API)', authType: 'OAUTH2',
-    docsUrl: 'https://developer-docs.amazon.com/sp-api/lang-pt_BR/docs/sp-api-endpoints',
-    notes: 'Requer registro como desenvolvedor na SP-API, aplicativo aprovado e autorização do vendedor no Seller Central.',
-  };
-  getCapabilities() { return PLANNED; }
-}
-
-class ShopeeConnector extends BaseConnector {
-  readonly info: ConnectorInfo = {
-    provider: 'SHOPEE', displayName: 'Shopee', authType: 'SIGNED_OAUTH2',
-    docsUrl: 'https://open.shopee.com/',
-    notes: 'Requer conta no Shopee Open Platform e aplicativo aprovado; a documentação vigente deve ser confirmada antes da implementação.',
-  };
-  getCapabilities() { return PLANNED; }
-}
 
 /** Opções de comportamento do conector de testes, lidas de `config.sandbox`. */
 export interface SandboxBehavior {
@@ -130,7 +103,7 @@ export class ConnectorRegistry {
   private readonly map = new Map<string, Connector>();
 
   constructor() {
-    for (const c of [new MercadoLivreConnector(), new AmazonConnector(), new ShopeeConnector()]) this.map.set(c.info.provider, c);
+    for (const c of [new MercadoLivreConnector(), ...PLANNED_CHANNELS.map((i) => new PlannedConnector(i))]) this.map.set(c.info.provider, c);
     if (getConfig().sandboxConnector) this.map.set('SANDBOX', new SandboxConnector());
   }
 

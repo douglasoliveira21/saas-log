@@ -4,9 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useUi, PageHeader, Alert, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
+import { ChannelGallery, type Provider, type Support } from './gallery';
 
-type Support = 'SUPPORTED' | 'IMPLEMENTED_UNVERIFIED' | 'PLANNED' | 'UNSUPPORTED';
-interface Provider { provider: string; displayName: string; docsUrl: string; authType: string; sandbox?: boolean; notes?: string; capabilities: Record<string, Support> }
 interface Connection {
   id: string; provider: string; label: string; status: string; externalAccountId: string | null; warehouseId: string | null; config: Record<string, unknown>;
   tokenExpiresAt: string | null; testedAt: string | null; lastSyncAt: string | null; lastError: string | null; failedJobs: number; queuedJobs: number;
@@ -60,8 +59,6 @@ export default function IntegracoesPage() {
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [secret, setSecret] = useState<{ path: string; secret: string } | null>(null);
-  const [newProv, setNewProv] = useState('');
-  const [label, setLabel] = useState('');
 
   const load = useCallback(() => { api<Connection[]>('/integrations/connections').then(setConns).catch((e) => setError(e.message)); }, []);
   const loadDetail = useCallback((id: string) => {
@@ -78,10 +75,16 @@ export default function IntegracoesPage() {
     load();
     api<Cat[]>('/categories').then(setCats).catch(() => undefined);
     api<{ items: ProductLite[] }>('/products?limit=200').then((r) => setProducts(r.items)).catch(() => undefined);
-    api<Provider[]>('/integrations/providers').then((p) => { setProviders(p); setNewProv(p[0]?.provider ?? ''); }).catch(() => undefined);
+    api<Provider[]>('/integrations/providers').then(setProviders).catch(() => undefined);
     api<{ establishments: { warehouses: { id: string; code: string; name: string; active: boolean }[] }[] }[]>('/structure').then((t) => setWhs(t.flatMap((c) => c.establishments.flatMap((e) => e.warehouses)).filter((w) => w.active))).catch(() => undefined);
     const q = new URLSearchParams(window.location.search);
-    if (q.get('connected')) { setOk('Conta autorizada. Execute o teste de conexão para continuar.'); setSel(q.get('connected')); }
+    if (q.get('connected')) {
+      const id = q.get('connected')!;
+      setSel(id); setOk('Conta autorizada. Testando a conexão…');
+      api(`/integrations/connections/${id}/test`, 'POST')
+        .then(() => { setOk('Conta autorizada e testada com sucesso. Clique em “Ativar” para começar a importar pedidos.'); load(); loadDetail(id); })
+        .catch((e) => { setOk(''); setError(`Conta autorizada, mas o teste falhou: ${(e as Error).message}`); load(); loadDetail(id); });
+    }
     if (q.get('error')) setError(q.get('error')!);
     window.history.replaceState(null, '', '/integracoes');
   }, [load]);
@@ -93,12 +96,21 @@ export default function IntegracoesPage() {
   };
   const post = (id: string, action: string) => api(`/integrations/connections/${id}/${action}`, 'POST');
 
-  async function create() {
+  /** Um passo: cria a conexão, grava o depósito e leva o usuário à autorização no canal (o teste roda ao voltar). */
+  async function connect(p: Provider, label: string, warehouseId: string) {
     setError(''); setOk('');
+    let created: (Connection & { webhook: { path: string; secret: string } }) | null = null;
     try {
-      const c = await api<Connection & { webhook: { path: string; secret: string } }>('/integrations/connections', 'POST', { provider: newProv, label });
-      setSecret(c.webhook); setLabel(''); setSel(c.id); load();
-    } catch (e) { setError((e as Error).message); }
+      created = await api<Connection & { webhook: { path: string; secret: string } }>('/integrations/connections', 'POST', { provider: p.provider, label });
+      setSel(created.id); load();
+      await api(`/integrations/connections/${created.id}/config`, 'PUT', { warehouseId });
+      const r = await api<{ authorizationUrl: string }>(`/integrations/connections/${created.id}/authorize`, 'POST');
+      window.location.href = r.authorizationUrl;
+    } catch (e) {
+      if (created) setSecret(created.webhook);
+      setError(`${(e as Error).message}${created ? ' A conexão foi criada; corrija o problema e use "Autorizar" em Gerenciar.' : ''}`);
+      load();
+    }
   }
 
   async function authorize(c: Connection) {
@@ -135,27 +147,7 @@ export default function IntegracoesPage() {
         </div>
       )}
 
-      <section className="card" style={{ marginBottom: 16 }}>
-        <h2>Canais disponíveis</h2>
-        <div className="grid cols-2">
-          {providers.map((p) => (
-            <div key={p.provider} className="card" style={{ background: 'var(--surface-2)' }}>
-              <div className="row" style={{ justifyContent: 'space-between' }}>
-                <strong>{p.displayName}</strong>{p.sandbox ? <span className="badge warn">Sandbox (testes)</span> : <a href={p.docsUrl} target="_blank" rel="noreferrer">Documentação oficial</a>}
-              </div>
-              <p className="muted" style={{ margin: '6px 0' }}>{p.notes}</p>
-              <div className="row">{Object.entries(p.capabilities).map(([k, v]) => <span key={k} className={`badge ${v === 'SUPPORTED' ? 'ok' : ''}`} title={SUP[v]}>{CAP[k]}: {SUP[v]}</span>)}</div>
-            </div>
-          ))}
-        </div>
-        {manage && (
-          <div className="row" style={{ marginTop: 14 }}>
-            <select aria-label="Canal" value={newProv} onChange={(e) => setNewProv(e.target.value)} style={{ maxWidth: 260 }}>{providers.map((p) => <option key={p.provider} value={p.provider}>{p.displayName}</option>)}</select>
-            <input aria-label="Nome da conexão" placeholder="Nome (ex.: Loja principal)" value={label} onChange={(e) => setLabel(e.target.value)} style={{ maxWidth: 260 }} />
-            <button className="btn primary" onClick={create} disabled={!newProv || label.trim().length < 2}>Adicionar conexão</button>
-          </div>
-        )}
-      </section>
+      <ChannelGallery providers={providers} warehouses={whs} manage={manage} onConnect={connect} />
 
       <section className="card" style={{ marginBottom: 16 }}>
         <h2>Conexões</h2>

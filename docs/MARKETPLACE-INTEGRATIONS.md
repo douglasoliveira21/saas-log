@@ -94,3 +94,11 @@ Datas de verificação: Mercado Livre — 20/10/2026, **parcial** (busca em pág
 
 ## Pendências da central
 Notificações ao usuário (e-mail/in-app) para token expirado e falhas; mapeamento de categorias/atributos; preço por canal e margem mínima; estoque por canal (segurança, teto, reserva exclusiva); regras fiscais por canal; Redis/BullMQ (se o volume exigir); coleta de métricas externas (Prometheus).
+
+
+## Galeria de canais (catálogo ampliado)
+- A tela **Marketplaces** mostra 20 canais em abas (marketplaces, lojas virtuais, ERPs/integradores) com busca. **Só o Mercado Livre conecta hoje** (e ainda sem validação com conta real); os outros 19 estão **planejados**: aparecem com "Em breve", requisitos, autenticação prevista e link da documentação oficial, mas **não executam nenhuma chamada** (matriz de capacidades "planejado", e o backend responde 501 se alguém forçar a autorização).
+- **Conectar em um passo** (canais disponíveis): o usuário informa o nome e o depósito de origem, é levado ao canal para autorizar e, ao voltar, o teste de conexão roda sozinho; falta apenas clicar em "Ativar".
+- **Catálogo:** `apps/api/src/integrations/catalog.ts` (canal, categoria, região, autenticação prevista, documentação). Endereços de documentação conferidos como acessíveis em 20/10/2026; Americanas e Casas Bahia ficaram sem link público localizado. As formas de autenticação dos canais planejados vêm da documentação pública e **precisam ser confirmadas** antes de implementar.
+- **Logotipos:** ícones genéricos do pacote simple-icons (CC0) para os canais que têm (Shopee, AliExpress, TikTok, eBay, Etsy, Shopify, WooCommerce, VTEX); os demais mostram a sigla na cor da marca. Para usar o logotipo **oficial**, coloque o arquivo em `apps/web/public/marketplaces/<chave>.svg|png` (ex.: `mercado_livre.svg`, `magalu.png`) — ele passa a ter prioridade, sem mudar código. Os logotipos pertencem aos titulares e só identificam o canal; use arquivos que você tem direito de usar.
+- **O que depende de você para cada canal virar real:** conta de desenvolvedor/aplicativo aprovado no canal, credenciais, e leitura da documentação vigente; hoje só o Mercado Livre tem conector (e exige ML_CLIENT_ID/ML_CLIENT_SECRET no servidor).

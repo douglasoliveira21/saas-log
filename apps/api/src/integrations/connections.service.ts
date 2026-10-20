@@ -70,7 +70,7 @@ export class ConnectionsService {
   ) {}
 
   providers() {
-    return this.registry.list().map((c) => ({ ...c.info, capabilities: c.getCapabilities() }));
+    return this.registry.list().map((c) => ({ ...c.info, category: c.info.category ?? 'MARKETPLACE', region: c.info.region ?? 'BR', capabilities: c.getCapabilities() }));
   }
 
   private connector(provider: string): Connector {

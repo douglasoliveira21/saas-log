@@ -1,0 +1,1 @@
+Coloque aqui os logotipos oficiais (svg/png/webp) com o nome da chave do canal em minúsculas: mercado_livre.svg, amazon.svg, magalu.png… Eles têm prioridade sobre os ícones genéricos.
