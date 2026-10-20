@@ -1,0 +1,16 @@
+# NÃO TESTADO: Docker não estava disponível no ambiente de desenvolvimento. Contexto de build = raiz do repositório.
+FROM node:22-slim
+ENV NODE_ENV=production
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/web/package.json apps/web/
+RUN npm ci -w apps/web --include-workspace-root --include=dev
+COPY apps/web apps/web
+# Endereço interno da API (o Next.js grava no build para onde encaminhar /api). Sobrescreva com --build-arg / "Build args" do Easypanel.
+ARG API_URL=http://api:3001
+ENV API_URL=$API_URL
+RUN npm run build -w apps/web && chown -R node:node /app
+USER node
+WORKDIR /app/apps/web
+EXPOSE 3000
+CMD ["npx", "next", "start", "-p", "3000"]

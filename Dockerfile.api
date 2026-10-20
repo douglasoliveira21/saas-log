@@ -1,0 +1,16 @@
+# NÃO TESTADO: Docker não estava disponível no ambiente de desenvolvimento. Contexto de build = raiz do repositório.
+FROM node:22-slim
+ENV NODE_ENV=production
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends openssl postgresql-client && rm -rf /var/lib/apt/lists/*
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/
+# Instala também as ferramentas de desenvolvimento (tsx/prisma): o início do container roda as migrações com elas.
+RUN npm ci -w apps/api --include-workspace-root --include=dev
+COPY apps/api apps/api
+RUN npx -w apps/api prisma generate && npm run build -w apps/api && chown -R node:node /app
+USER node
+WORKDIR /app/apps/api
+EXPOSE 3001
+# 1) migrações + papel dh_app (usa DIRECT_URL, o dono do banco)  2) sobe a API (usa DATABASE_URL, o papel dh_app)
+CMD ["sh", "-c", "npx tsx scripts/db-setup.ts && node dist/main.js"]
