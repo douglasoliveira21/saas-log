@@ -14,7 +14,8 @@ export function AuthShell({ children }: { children: ReactNode }) {
   return (
     <div className="auth-wrap">
       <aside className="auth-side" aria-hidden="true">
-        <div className="sidebar-head" style={{ padding: 0 }}><div className="logo">{BRAND.name.slice(0, 1)}</div><span className="brand">{BRAND.name}</span></div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="sys-logo full on-dark" src="/brand/logo.png" alt={BRAND.name} />
         <div>
           <h2>Gestão completa para a sua distribuidora.</h2>
           <ul>{POINTS.map(({ icon: I, text }) => <li key={text}><I />{text}</li>)}</ul>

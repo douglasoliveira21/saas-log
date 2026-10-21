@@ -350,6 +350,14 @@ th[aria-sort] .sort { opacity: 1; color: var(--brand); }
 .logo-preview { width: 220px; height: 84px; border: 1px dashed var(--border-strong); border-radius: var(--radius); display: grid; place-items: center; background: #fff; padding: 8px; flex: none; }
 .logo-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .logo-preview.empty-logo { background: var(--surface-2); color: var(--muted); font-size: 0.82rem; text-align: center; }
+.sys-logo { display: block; object-fit: contain; object-position: left center; }
+.sys-logo.full { height: 30px; width: auto; max-width: 100%; }
+.sys-logo.mini { display: none; height: 32px; width: 32px; object-position: center; }
+.collapsed .sys-logo.full { display: none; }
+.collapsed .sys-logo.mini { display: block; }
+:root[data-theme='dark'] .sys-logo { filter: invert(1); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .sys-logo { filter: invert(1); } }
+.sys-logo.on-dark { filter: invert(1) !important; height: 34px; }
 .tenant-logo { display: block; max-width: 100%; max-height: 44px; object-fit: contain; object-position: left center; }
 .collapsed .tenant-logo { max-width: 38px; max-height: 38px; object-position: center; }
 

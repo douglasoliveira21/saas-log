@@ -72,8 +72,10 @@ function Shell({ children }: { children: ReactNode }) {
             <img className="tenant-logo" src={`/api/branding/logo?v=${me.tenant!.logoVersion}`} alt={me.tenant!.name} onError={() => setLogoFailed(true)} />
           ) : (
             <>
-              <div className="logo" aria-hidden>{BRAND.name.slice(0, 1)}</div>
-              <span className="brand">{BRAND.name}</span>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img className="sys-logo full" src="/brand/logo.png" alt={BRAND.name} />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img className="sys-logo mini" src="/brand/icon.png" alt="" aria-hidden />
             </>
           )}
         </div>
