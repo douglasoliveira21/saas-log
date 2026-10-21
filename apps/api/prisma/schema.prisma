@@ -389,6 +389,12 @@ model Product {
   taxOrigin        Int?        @map("tax_origin")
   taxUnit          String?     @map("tax_unit")
   taxGtin          String?     @map("tax_gtin")
+  // Dados de anúncio (padrão de marketplace): título comercial, condição, garantia, código do fabricante e ficha técnica.
+  title            String?
+  condition        String      @default("NEW") // NEW | USED | REFURBISHED
+  warrantyMonths   Int?        @map("warranty_months")
+  mpn              String?
+  attributes       Json        @default("[]") // [{ name, value }]
   createdAt        DateTime    @default(now()) @map("created_at")
   updatedAt        DateTime    @updatedAt @map("updated_at")
 
@@ -404,6 +410,8 @@ model Product {
   goodsReceiptItems   GoodsReceiptItem[]
   channelListings     ChannelListing[]
   fiscalDocumentItems FiscalDocumentItem[]
+  images              ProductImage[]
+  channelItems        ChannelItem[]
 
   @@unique([tenantId, sku])
   @@unique([tenantId, barcode])
@@ -967,6 +975,7 @@ model MarketplaceConnection {
   jobs                    BackgroundJob[]
   externalOrders          ExternalOrder[]
   channelListings         ChannelListing[]
+  channelItems            ChannelItem[]
   channelCategoryMappings ChannelCategoryMapping[]
 
   @@unique([tenantId, provider, externalAccountId])
@@ -1663,4 +1672,54 @@ model TenantBranding {
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@map("tenant_branding")
+}
+
+// Fotos do produto (as mesmas que vão ao anúncio). Guardadas no banco com limite de tamanho; ordem = position (0 = principal).
+model ProductImage {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  position    Int      @default(0)
+  contentType String   @map("content_type")
+  content     Bytes
+  width       Int
+  height      Int
+  bytes       Int
+  alt         String?
+  sourceUrl   String?  @map("source_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  product Product @relation(fields: [tenantId, productId], references: [tenantId, id])
+
+  @@index([tenantId, productId, position])
+  @@map("product_images")
+}
+
+// Itens encontrados no canal (staging da importação "do canal para a base"). Não é produto: só vira produto/vínculo por ação do usuário.
+model ChannelItem {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  connectionId  String   @map("connection_id") @db.Uuid
+  externalId    String   @map("external_id")
+  title         String?
+  sku           String?
+  gtin          String?
+  price         Decimal? @db.Decimal(14, 2)
+  quantity      Int?
+  channelStatus String?  @map("channel_status")
+  permalink     String?
+  snapshot      Json     @default("{}")
+  status        String   @default("NEW") // NEW | LINKED | IMPORTED | IGNORED
+  productId     String?  @map("product_id") @db.Uuid
+  matchedBy     String?  @map("matched_by") // SKU | GTIN
+  lastSeenAt    DateTime @default(now()) @map("last_seen_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  connection MarketplaceConnection @relation(fields: [tenantId, connectionId], references: [tenantId, id])
+  product    Product?              @relation(fields: [tenantId, productId], references: [tenantId, id])
+
+  @@unique([connectionId, externalId])
+  @@index([tenantId, connectionId, status])
+  @@map("channel_items")
 }

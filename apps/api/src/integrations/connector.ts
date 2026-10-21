@@ -50,6 +50,8 @@ export interface ConnectorInfo {
   /** Verdadeiro somente para o conector de testes. */
   sandbox?: boolean;
   notes?: string;
+  /** Domínios (sufixos) de onde as fotos do canal podem ser baixadas na importação. Vazio = não baixa fotos. */
+  imageHosts?: string[];
 }
 
 export interface ConnectionContext {
@@ -85,6 +87,52 @@ export interface ExternalOrder {
   raw?: unknown;
 }
 
+/** Produto/anúncio normalizado de um canal (leitura). Campos ausentes no canal ficam indefinidos — nada é inventado. */
+export interface ExternalProduct {
+  externalId: string;
+  title: string;
+  description?: string;
+  sku?: string | null;
+  gtin?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  price?: number;
+  quantity?: number;
+  condition?: 'NEW' | 'USED' | 'REFURBISHED';
+  status?: string;
+  permalink?: string;
+  categoryId?: string;
+  pictures?: string[];
+  attributes?: { name: string; value: string }[];
+  raw?: unknown;
+}
+
+/** Anúncio a publicar, montado a partir do cadastro do produto (o mesmo conteúdo para qualquer canal; cada conector converte). */
+export interface ItemDraft {
+  sku: string;
+  title: string;
+  description: string;
+  price: number;
+  quantity: number;
+  condition: 'NEW' | 'USED' | 'REFURBISHED';
+  brand?: string;
+  model?: string;
+  gtin?: string;
+  mpn?: string;
+  warrantyMonths?: number;
+  /** Categoria do canal (vem do mapeamento da categoria interna). */
+  categoryId?: string;
+  attributes: { name: string; value: string }[];
+  /** URLs públicas temporárias das fotos, na ordem (a primeira é a principal). */
+  pictures: { url: string; width: number; height: number }[];
+  weightG?: number;
+  heightMm?: number;
+  widthMm?: number;
+  lengthMm?: number;
+  /** Configuração do canal na conexão (ex.: tipo de anúncio). */
+  channelConfig?: Record<string, unknown>;
+}
+
 export interface Connector {
   readonly info: ConnectorInfo;
   getCapabilities(): CapabilityMatrix;
@@ -98,8 +146,12 @@ export interface Connector {
 
   // dados
   fetchOrders(ctx: ConnectionContext, p: { since?: Date; cursor?: string }): Promise<OpResult<{ orders: ExternalOrder[]; nextCursor?: string }>>;
-  fetchProducts(ctx: ConnectionContext, p: { cursor?: string }): Promise<OpResult<{ products: unknown[]; nextCursor?: string }>>;
-  publishProduct(ctx: ConnectionContext, p: { productId: string; payload: unknown; idempotencyKey: string }): Promise<OpResult<{ externalId: string }>>;
+  fetchProducts(ctx: ConnectionContext, p: { cursor?: string }): Promise<OpResult<{ products: ExternalProduct[]; nextCursor?: string }>>;
+  /** Um anúncio completo (inclui a descrição, que muitos canais só entregam por chamada separada). */
+  fetchProductDetail(ctx: ConnectionContext, p: { externalId: string }): Promise<OpResult<ExternalProduct>>;
+  /** Regras do canal que dá para checar ANTES de publicar (sem chamar o canal). Devolve os problemas encontrados. */
+  validateDraft?(draft: ItemDraft): string[];
+  publishProduct(ctx: ConnectionContext, p: { productId: string; payload: unknown; idempotencyKey: string }): Promise<OpResult<{ externalId: string; permalink?: string }>>;
   updateProduct(ctx: ConnectionContext, p: { externalId: string; payload: unknown }): Promise<OpResult<null>>;
   updatePrice(ctx: ConnectionContext, p: { externalId: string; price: number }): Promise<OpResult<null>>;
   updateInventory(ctx: ConnectionContext, p: { externalId: string; quantity: number }): Promise<OpResult<null>>;
@@ -130,8 +182,9 @@ export abstract class BaseConnector implements Connector {
   refreshAuthorization(_c: ConnectionContext): Promise<OpResult<Credentials>> { return Promise.resolve(this.notImplemented('refreshAuthorization')); }
   revokeAuthorization(_c: ConnectionContext): Promise<OpResult<null>> { return Promise.resolve(this.notImplemented('revokeAuthorization')); }
   fetchOrders(_c: ConnectionContext, _p: { since?: Date; cursor?: string }): Promise<OpResult<{ orders: ExternalOrder[]; nextCursor?: string }>> { return Promise.resolve(this.notImplemented('fetchOrders')); }
-  fetchProducts(_c: ConnectionContext, _p: { cursor?: string }): Promise<OpResult<{ products: unknown[]; nextCursor?: string }>> { return Promise.resolve(this.notImplemented('fetchProducts')); }
-  publishProduct(_c: ConnectionContext, _p: { productId: string; payload: unknown; idempotencyKey: string }): Promise<OpResult<{ externalId: string }>> { return Promise.resolve(this.notImplemented('publishProduct')); }
+  fetchProducts(_c: ConnectionContext, _p: { cursor?: string }): Promise<OpResult<{ products: ExternalProduct[]; nextCursor?: string }>> { return Promise.resolve(this.notImplemented('fetchProducts')); }
+  fetchProductDetail(_c: ConnectionContext, _p: { externalId: string }): Promise<OpResult<ExternalProduct>> { return Promise.resolve(this.notImplemented('fetchProductDetail')); }
+  publishProduct(_c: ConnectionContext, _p: { productId: string; payload: unknown; idempotencyKey: string }): Promise<OpResult<{ externalId: string; permalink?: string }>> { return Promise.resolve(this.notImplemented('publishProduct')); }
   updateProduct(_c: ConnectionContext, _p: { externalId: string; payload: unknown }): Promise<OpResult<null>> { return Promise.resolve(this.notImplemented('updateProduct')); }
   updatePrice(_c: ConnectionContext, _p: { externalId: string; price: number }): Promise<OpResult<null>> { return Promise.resolve(this.notImplemented('updatePrice')); }
   updateInventory(_c: ConnectionContext, _p: { externalId: string; quantity: number }): Promise<OpResult<null>> { return Promise.resolve(this.notImplemented('updateInventory')); }

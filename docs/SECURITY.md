@@ -37,6 +37,9 @@
 ## Exclusão de cadastros estruturais
 - Empresa, estabelecimento e depósito podem ser editados (campos vazios limpam o valor) e excluídos **somente sem uso**: as chaves estrangeiras RESTRICT impedem apagar o que tem estoque, pedidos, compras, inventário ou integração; a aplicação também recusa estabelecimento com depósitos, documentos/numeração/certificado fiscal ou configuração fiscal já enviada ao contador. O resto se **desativa**. Estabelecimento com documentos fiscais não troca CNPJ, UF nem IE. Toda exclusão é auditada com o retrato do registro; o papel de runtime só recebeu DELETE nessas tabelas (e na configuração fiscal em rascunho).
 
+## Fotos e importação de anúncios
+- Fotos: só PNG/JPG/WebP validados pelos bytes (SVG recusado), até 3 MB e 12 por produto; entrega pública apenas por **URL assinada com expiração** (404 sem dizer o motivo). Importação de fotos do canal com defesa contra SSRF (HTTPS, domínios declarados pelo conector, sem redirecionamento, IP público, 10 s, 3 MB). Publicação no Mercado Livre desligada por padrão (`ML_PUBLISH_ENABLED`).
+
 ## Pendências / não implementado
 - MFA, recuperação de senha, convite por e-mail, verificação de e-mail.
 - Rotação de chaves JWT, criptografia de campos sensíveis e cofre de certificados (Fase 6).

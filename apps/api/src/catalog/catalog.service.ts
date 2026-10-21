@@ -57,7 +57,7 @@ export class CatalogService {
       const [items, total] = await Promise.all([
         tx.product.findMany({
           where, orderBy: { name: 'asc' }, take: q.limit ?? 50, skip: q.offset ?? 0,
-          select: { id: true, sku: true, name: true, barcode: true, brand: true, saleUnit: true, costPrice: true, suggestedPrice: true, minStock: true, ncm: true, active: true, category: { select: { name: true } } },
+          select: { id: true, sku: true, name: true, barcode: true, brand: true, saleUnit: true, costPrice: true, suggestedPrice: true, minStock: true, ncm: true, active: true, title: true, category: { select: { name: true } }, _count: { select: { images: true } }, images: { where: { position: 0 }, select: { id: true }, take: 1 } },
         }),
         tx.product.count({ where }),
       ]);
@@ -81,7 +81,7 @@ export class CatalogService {
       await this.assertCategory(tx, ctx, dto.categoryId);
       await assertWithinPlan(tx, ctx.tenantId!, 'products');
       const row = await tx.product
-        .create({ data: { ...dto, tenantId: ctx.tenantId! } })
+        .create({ data: { ...dto, attributes: dto.attributes as unknown as Prisma.InputJsonValue | undefined, tenantId: ctx.tenantId! } })
         .catch((e) => conflict(e, 'Já existe um produto com este SKU ou código de barras.'));
       await this.audit.record(tx, ctx, { action: 'product.created', entity: 'product', entityId: row.id, metadata: { sku: row.sku } });
       return withFiscalFlag(row);
@@ -93,7 +93,7 @@ export class CatalogService {
       const current = await tx.product.findFirst({ where: { id, tenantId: ctx.tenantId! } });
       if (!current) throw new NotFoundException('Produto não encontrado.');
       await this.assertCategory(tx, ctx, dto.categoryId);
-      const row = await tx.product.update({ where: { id }, data: dto }).catch((e) => conflict(e, 'Já existe um produto com este código de barras.'));
+      const row = await tx.product.update({ where: { id }, data: { ...dto, attributes: dto.attributes as unknown as Prisma.InputJsonValue | undefined } }).catch((e) => conflict(e, 'Já existe um produto com este código de barras.'));
       // Preço/custo/fiscal são campos sensíveis: registramos o antes e o depois.
       const sensitive = ['costPrice', 'extraCost', 'suggestedPrice', 'minPrice', 'ncm', 'cest', 'taxOrigin', 'taxGtin'] as const;
       const changes = sensitive

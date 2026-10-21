@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
 import {
-  IsBoolean, IsEmail, IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, Validate,
+  ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, Validate, ValidateIf, ValidateNested,
   ValidatorConstraint, ValidatorConstraintInterface,
 } from 'class-validator';
 import { isValidCnpj, isValidCpf } from '../common/cnpj';
@@ -22,7 +22,19 @@ export class CreateCategoryDto {
   @IsString() @Length(2, 80) name: string;
 }
 
+export class AttributeDto {
+  @IsString() @Length(1, 60) name: string;
+  @IsString() @Length(1, 255) value: string;
+}
+
 export class ProductFields {
+  /** Título comercial do anúncio (marketplaces limitam; o Mercado Livre usa 60 caracteres). Vazio = usa o nome interno. */
+  @IsOptional() @IsString() @MaxLength(150) title?: string;
+  @ValidateIf((o: ProductFields) => o.condition !== undefined) @IsIn(['NEW', 'USED', 'REFURBISHED'], { message: 'Condição inválida (NEW, USED ou REFURBISHED).' }) condition?: string;
+  @IsOptional() @IsInt() @Min(0) @Max(240) warrantyMonths?: number;
+  @IsOptional() @IsString() @MaxLength(60) mpn?: string;
+  /** Ficha técnica: pares nome/valor (cor, voltagem, material…). */
+  @ValidateIf((o: ProductFields) => o.attributes !== undefined) @IsArray() @ArrayMaxSize(50) @ValidateNested({ each: true }) @Type(() => AttributeDto) attributes?: AttributeDto[];
   @IsOptional() @IsString() @Length(8, 14) @Matches(/^\d+$/, { message: 'Código de barras deve conter apenas dígitos.' }) barcode?: string;
   @IsOptional() @IsString() @MaxLength(300) shortDescription?: string;
   @IsOptional() @IsString() @MaxLength(5000) description?: string;

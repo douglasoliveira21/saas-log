@@ -82,6 +82,14 @@ Os relatórios de marketplace são CSVs sintéticos e o OFX é gerado pelo teste
 - Backup: pg_dump + restauração em banco temporário com comparação de linhas, RLS e isolamento como `dh_app`; backup cifrado; adulteração e chave errada rejeitadas.
 - Revisão estrutural: enumeração de todas as rotas (nenhuma sem proteção), RLS forçada em toda tabela com `tenant_id`, `dh_app` sem BYPASSRLS, imutabilidade, cookies/CSRF/cabeçalhos.
 
+## Cobertura de produto no padrão marketplace (`product-media.e2e-spec.ts`, 8 testes; `channel-products.e2e-spec.ts`, 15 testes)
+Servidores **simulados** (loja de fotos do canal e API do Mercado Livre) e conector Sandbox: provam o nosso código, não o comportamento real dos canais.
+- Fotos: tipo/dimensões de PNG/JPEG/WebP pelos bytes, ordem e principal, limite de 12 também sob concorrência, recusa de SVG disfarçado/tipo divergente/tamanho/dimensões, permissões e isolamento, URL pública assinada (adulterada, de outra imagem, sem assinatura, expirada).
+- Qualidade do cadastro e novos campos (título, condição, garantia, ficha técnica) com validação.
+- Canal → base: varredura paginada e idempotente, correspondência por SKU/GTIN, importação com fotos e vínculo, conflito pede vínculo, fotos perigosas (domínio, redirecionamento, HTML disfarçado) viram aviso, importar em lote, ignorar/restaurar, falha do canal, permissões e isolamento.
+- Base → canal: pré-visualização com bloqueios, publicação (fotos por URL assinada, categoria mapeada), recusa/incerteza do canal, 3 publicações simultâneas ⇒ 1, canal sem publicação.
+- Defesas e conector ML: SSRF (domínio, HTTP, credenciais, redirecionamento, IPs privados), normalização do anúncio, corpo do `POST /items`, varredura por rolagem + multiget, publicação desligada por padrão (nenhuma chamada de criação).
+
 ## Não coberto ainda
 Throttling (desligado em `NODE_ENV=test`), UI (sem testes de componente/E2E de navegador), **qualquer chamada à API real do Mercado Livre ou da SEFAZ**, conformidade do leiaute da NF-e e a API real dos Correios, formatos reais de extrato/relatório de liquidação, UI gateway de pagamento, MFA, carga/desempenho e pentest.
 

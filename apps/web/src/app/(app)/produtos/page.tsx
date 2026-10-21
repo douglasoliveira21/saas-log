@@ -1,13 +1,14 @@
 'use client';
 
-import { Search, Plus } from 'lucide-react';
+import { Search, Plus, Pencil, ImageOff } from 'lucide-react';
+import Link from 'next/link';
 import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useUi, PageHeader, Alert, Skeleton, EmptyState, SortTh, useSort } from '@/components/ui';
 import { formatNcm } from '@/lib/format';
 import { useSession } from '@/lib/session';
 
-interface Product { id: string; sku: string; name: string; barcode: string | null; brand: string | null; saleUnit: string; costPrice: string | null; suggestedPrice: string | null; minStock: number; ncm: string | null; active: boolean; fiscalPending: boolean; category: { name: string } | null }
+interface Product { id: string; sku: string; name: string; title: string | null; _count: { images: number }; images: { id: string }[]; barcode: string | null; brand: string | null; saleUnit: string; costPrice: string | null; suggestedPrice: string | null; minStock: number; ncm: string | null; active: boolean; fiscalPending: boolean; category: { name: string } | null }
 interface Category { id: string; name: string }
 interface ImportReport { committed: boolean; created: number; updated: number; initialized: number; errors: { line: number; message: string }[] }
 
@@ -25,7 +26,7 @@ export default function ProdutosPage() {
   const [fiscal, setFiscal] = useState(false);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
-  const [panel, setPanel] = useState<'new' | 'import' | null>(null);
+  const [panel, setPanel] = useState<'import' | null>(null);
   const [csv, setCsv] = useState('');
   const [skipInvalid, setSkipInvalid] = useState(false);
   const [report, setReport] = useState<ImportReport | null>(null);
@@ -42,23 +43,6 @@ export default function ProdutosPage() {
 
   const { rows: sortedItems, sort, toggle: toggleSort } = useSort(items, { sku: (p) => p.sku, name: (p) => p.name, cat: (p) => p.category?.name, cost: (p) => (p.costPrice == null ? null : Number(p.costPrice)), price: (p) => (p.suggestedPrice == null ? null : Number(p.suggestedPrice)), min: (p) => p.minStock });
   const sortProps = { sort, toggle: toggleSort };
-
-  async function create(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError(''); setOk('');
-    const f = Object.fromEntries([...new FormData(e.currentTarget).entries()].filter(([, v]) => String(v).trim() !== ''));
-    for (const k of ['costPrice', 'suggestedPrice', 'minStock']) if (f[k] !== undefined) f[k] = Number(String(f[k]).replace(',', '.')) as never;
-    try {
-      await api('/products', 'POST', f);
-      setOk('Produto cadastrado.'); setPanel(null); load();
-    } catch (err) { setError((err as Error).message); }
-  }
-
-  async function newCategory() {
-    const name = await ui.prompt({ title: 'Nova categoria', label: 'Nome da categoria', confirmLabel: 'Criar categoria' });
-    if (!name) return;
-    try { await api('/categories', 'POST', { name }); setCats(await api<Category[]>('/categories')); } catch (err) { setError((err as Error).message); }
-  }
 
   async function toggle(p: Product) {
     try { await api(`/products/${p.id}`, 'PATCH', { active: !p.active }); load(); } catch (err) { setError((err as Error).message); }
@@ -88,30 +72,10 @@ export default function ProdutosPage() {
   return (
     <>
       <PageHeader title="Produtos e catálogo" description={<>Cadastro mestre por SKU. Dados fiscais nunca são preenchidos automaticamente: produto sem NCM aparece como pendente.</>} actions={<>
-          {manage && <div className="row"><button className="btn" onClick={() => setPanel('import')}>Importar planilha</button><button className="btn primary" onClick={() => setPanel('new')}><Plus aria-hidden />Produto</button></div>}
+          {manage && <div className="row"><button className="btn" onClick={() => setPanel('import')}>Importar planilha</button><Link className="btn primary" href="/produtos/novo"><Plus aria-hidden />Produto</Link></div>}
         </>} />
       {error && <Alert kind="error">{error}</Alert>}
       {ok && <Alert kind="ok">{ok}</Alert>}
-
-      {panel === 'new' && (
-        <form className="card" style={{ marginBottom: 16 }} onSubmit={create}>
-          <h2>Novo produto</h2>
-          <div className="form-grid">
-            <div><label htmlFor="sku">SKU *</label><input id="sku" name="sku" required /></div>
-            <div><label htmlFor="name">Nome *</label><input id="name" name="name" required minLength={2} /></div>
-            <div><label htmlFor="barcode">Código de barras (GTIN)</label><input id="barcode" name="barcode" inputMode="numeric" /></div>
-            <div><label htmlFor="brand">Marca</label><input id="brand" name="brand" /></div>
-            <div><label htmlFor="categoryId">Categoria <button type="button" className="btn sm" onClick={newCategory}><Plus aria-hidden />nova</button></label>
-              <select id="categoryId" name="categoryId" defaultValue=""><option value="">Sem categoria</option>{cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-            <div><label htmlFor="saleUnit">Unidade</label><input id="saleUnit" name="saleUnit" defaultValue="UN" maxLength={6} /></div>
-            <div><label htmlFor="costPrice">Custo (R$)</label><input id="costPrice" name="costPrice" inputMode="decimal" /></div>
-            <div><label htmlFor="suggestedPrice">Preço sugerido (R$)</label><input id="suggestedPrice" name="suggestedPrice" inputMode="decimal" /></div>
-            <div><label htmlFor="minStock">Estoque mínimo</label><input id="minStock" name="minStock" inputMode="numeric" /></div>
-            <div><label htmlFor="ncm">NCM (validar com o contador)</label><input id="ncm" name="ncm" inputMode="numeric" maxLength={8} /></div>
-          </div>
-          <div className="row" style={{ marginTop: 12 }}><button className="btn primary">Salvar</button><button type="button" className="btn" onClick={() => setPanel(null)}>Cancelar</button></div>
-        </form>
-      )}
 
       {panel === 'import' && (
         <section className="card" style={{ marginBottom: 16 }}>
@@ -143,16 +107,16 @@ export default function ProdutosPage() {
         </div>
         <div className="table-wrap">
           <table>
-            <thead><tr><SortTh label="SKU" k="sku" {...sortProps} /><SortTh label="Produto" k="name" {...sortProps} /><SortTh label="Categoria" k="cat" {...sortProps} /><SortTh label="Custo" k="cost" className="num" {...sortProps} /><SortTh label="Preço sugerido" k="price" className="num" {...sortProps} /><SortTh label="Mín." k="min" className="num" {...sortProps} /><th>Fiscal</th><th><span className="sr-only">Ações</span></th></tr></thead>
+            <thead><tr><th style={{ width: 56 }}><span className="sr-only">Foto</span></th><SortTh label="SKU" k="sku" {...sortProps} /><SortTh label="Produto" k="name" {...sortProps} /><SortTh label="Categoria" k="cat" {...sortProps} /><SortTh label="Custo" k="cost" className="num" {...sortProps} /><SortTh label="Preço sugerido" k="price" className="num" {...sortProps} /><SortTh label="Mín." k="min" className="num" {...sortProps} /><th>Fotos</th><th>Fiscal</th><th><span className="sr-only">Ações</span></th></tr></thead>
             <tbody>
-              {!items && !error && <tr><td colSpan={8}><Skeleton rows={3} /></td></tr>}
-              {items?.length === 0 && <tr><td colSpan={8}><EmptyState title={search || fiscal ? 'Nenhum produto com esses filtros' : 'Nenhum produto cadastrado'}>{search || fiscal ? 'Ajuste a busca ou limpe os filtros.' : manage ? 'Cadastre manualmente ou importe uma planilha.' : 'Peça a um gestor para cadastrar os produtos.'}</EmptyState></td></tr>}
+              {!items && !error && <tr><td colSpan={10}><Skeleton rows={3} /></td></tr>}
+              {items?.length === 0 && <tr><td colSpan={10}><EmptyState title={search || fiscal ? 'Nenhum produto com esses filtros' : 'Nenhum produto cadastrado'}>{search || fiscal ? 'Ajuste a busca ou limpe os filtros.' : manage ? 'Cadastre manualmente ou importe uma planilha.' : 'Peça a um gestor para cadastrar os produtos.'}</EmptyState></td></tr>}
               {sortedItems?.map((p) => (
                 <tr key={p.id} style={p.active ? undefined : { opacity: 0.55 }}>
-                  <td className="mono">{p.sku}</td><td>{p.name}{p.brand && <span className="muted"> · {p.brand}</span>}</td><td>{p.category?.name ?? '—'}</td>
-                  <td className="num">{brl(p.costPrice)}</td><td className="num">{brl(p.suggestedPrice)}</td><td className="num">{p.minStock}</td>
+                  <td>{p.images[0] ? <Link href={`/produtos/${p.id}`} aria-label={`Abrir ${p.name}`}>{/* eslint-disable-next-line @next/next/no-img-element */}<img className="thumb" src={`/api/products/${p.id}/images/${p.images[0].id}/file`} alt="" loading="lazy" /></Link> : <span className="thumb empty" title="Sem foto"><ImageOff size={16} aria-hidden /></span>}</td><td className="mono">{p.sku}</td><td><Link href={`/produtos/${p.id}`} style={{ fontWeight: 600 }}>{p.title || p.name}</Link>{p.brand && <span className="muted"> · {p.brand}</span>}</td><td>{p.category?.name ?? '—'}</td>
+                  <td className="num">{brl(p.costPrice)}</td><td className="num">{brl(p.suggestedPrice)}</td><td className="num">{p.minStock}</td><td>{p._count.images > 0 ? <span className="badge">{p._count.images}</span> : <span className="badge warn">0</span>}</td>
                   <td>{p.fiscalPending ? <span className="badge warn">NCM pendente</span> : <span className="badge ok">NCM {formatNcm(p.ncm)}</span>}</td>
-                  <td className="actions">{manage && <button className="btn sm" onClick={() => toggle(p)}>{p.active ? 'Inativar' : 'Reativar'}</button>}</td>
+                  <td className="actions"><span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}><Link className="btn sm" href={`/produtos/${p.id}`}><Pencil aria-hidden />{manage ? 'Editar' : 'Abrir'}</Link>{manage && <button className="btn sm" onClick={() => toggle(p)}>{p.active ? 'Inativar' : 'Reativar'}</button>}</span></td>
                 </tr>
               ))}
             </tbody>

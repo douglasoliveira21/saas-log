@@ -43,6 +43,9 @@ import { BillingController, BillingService, PlatformController, PlatformService 
 import { AllExceptionsFilter, ObservabilityController, requestObserver } from './observability/observability';
 import { LookupController, LookupService } from './lookup/lookup.service';
 import { BrandingController, BrandingService } from './branding/branding.service';
+import { MediaController, ProductImagesController, ProductImagesService } from './catalog/product-images.service';
+import { ProductQualityController, ProductQualityService } from './catalog/product-quality';
+import { ChannelProductsController, ChannelProductsService } from './integrations/channel-products.service';
 import { BankService } from './finance/bank.service';
 import { FinanceController } from './finance/finance.controller';
 import { FinanceService } from './finance/finance.service';
@@ -75,7 +78,7 @@ class HealthController {
       skipIf: () => process.env.NODE_ENV === 'test',
     }),
   ],
-  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, FinanceController, ReportsController, LogisticsController, BillingController, PlatformController, ObservabilityController, LookupController, BrandingController],
+  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, FinanceController, ReportsController, LogisticsController, BillingController, PlatformController, ObservabilityController, LookupController, BrandingController, ProductImagesController, MediaController, ProductQualityController, ChannelProductsController],
   providers: [
     AuthService,
     StructureService,
@@ -110,6 +113,9 @@ class HealthController {
     BillingService,
     LookupService,
     BrandingService,
+    ProductImagesService,
+    ProductQualityService,
+    ChannelProductsService,
     PlatformService,
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     // Provedor de transmissão: enquanto não houver implementação real, nenhuma emissão é simulada.

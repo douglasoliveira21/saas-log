@@ -1,7 +1,7 @@
 import { createHash, createHmac } from 'node:crypto';
 import { getConfig } from '../config/app.config';
 import {
-  BaseConnector, CapabilityMatrix, ConnectionContext, ConnectorInfo, Credentials, ErrorCode, ExternalOrder, ExternalOrderItem, fail, okResult, OpResult,
+  BaseConnector, CapabilityMatrix, ConnectionContext, ConnectorInfo, Credentials, ErrorCode, ExternalOrder, ExternalOrderItem, ExternalProduct, fail, ItemDraft, okResult, OpResult,
 } from './connector';
 
 /**
@@ -20,6 +20,10 @@ export const ML = {
   clientSecret: () => process.env.ML_CLIENT_SECRET ?? '',
   usePkce: () => process.env.ML_USE_PKCE === 'true', // [CONFIRMADO] PKCE só se habilitado no aplicativo
   pageSize: 50, // [A VALIDAR] limite máximo do parâmetro limit
+  itemsPageSize: 40, // ids por página de varredura (o multiget aceita poucos ids por chamada)
+  multigetMax: 20, // [A VALIDAR] máximo de ids em /items?ids=
+  /** Publicar anúncios cria anúncios REAIS e o contrato do POST /items não foi validado com conta real: desligado por padrão. */
+  publishEnabled: () => process.env.ML_PUBLISH_ENABLED === 'true',
   timeoutMs: 10_000,
 };
 
@@ -101,17 +105,69 @@ export function normalizeOrder(o: Json): ExternalOrder | null {
   };
 }
 
+const ml = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+
+/**
+ * Normaliza um anúncio do Mercado Livre (GET /items). [A VALIDAR] campos: id, title, price, available_quantity, condition, status, permalink,
+ * category_id, seller_custom_field, pictures[].secure_url|url, attributes[].id|name|value_name.
+ * SKU: seller_custom_field ou atributo SELLER_SKU; GTIN: atributo GTIN; marca/modelo: atributos BRAND/MODEL.
+ */
+export function normalizeItem(o: Json): ExternalProduct | null {
+  if (o.id === undefined || o.id === null || !ml(o.title)) return null;
+  const attrs = (Array.isArray(o.attributes) ? (o.attributes as Json[]) : []).map((a) => ({ id: String(a.id ?? ''), name: ml(a.name) ?? String(a.id ?? ''), value: ml(a.value_name) }));
+  const byId = (id: string) => attrs.find((a) => a.id === id)?.value;
+  const gtin = byId('GTIN')?.split(/[,\s]+/)[0];
+  const cond = String(o.condition ?? '');
+  return {
+    externalId: String(o.id),
+    title: String(o.title).trim(),
+    sku: ml(o.seller_custom_field) ?? byId('SELLER_SKU') ?? null,
+    gtin: gtin && /^\d{8,14}$/.test(gtin) ? gtin : null,
+    brand: byId('BRAND') ?? null,
+    model: byId('MODEL') ?? null,
+    price: o.price !== undefined ? Number(o.price) : undefined,
+    quantity: o.available_quantity !== undefined ? Number(o.available_quantity) : undefined,
+    condition: cond === 'used' ? 'USED' : 'NEW',
+    status: ml(o.status),
+    permalink: ml(o.permalink),
+    categoryId: ml(o.category_id),
+    pictures: (Array.isArray(o.pictures) ? (o.pictures as Json[]) : []).map((p) => ml(p.secure_url) ?? ml(p.url)).filter((u): u is string => !!u),
+    attributes: attrs.filter((a) => a.value && !['SELLER_SKU', 'GTIN', 'BRAND', 'MODEL'].includes(a.id)).map((a) => ({ name: a.name, value: a.value! })),
+    raw: { id: o.id, listing_type_id: o.listing_type_id ?? null, catalog_product_id: o.catalog_product_id ?? null },
+  };
+}
+
+/** Corpo do POST /items. [A VALIDAR] contrato completo; atributos próprios do produto vão na descrição (o canal só aceita IDs do seu catálogo). */
+export function buildItemBody(d: ItemDraft): Json {
+  const tech = d.attributes.length ? `\n\nFicha técnica:\n${d.attributes.map((a) => `- ${a.name}: ${a.value}`).join('\n')}` : '';
+  const attrs: Json[] = [];
+  if (d.brand) attrs.push({ id: 'BRAND', value_name: d.brand });
+  if (d.model) attrs.push({ id: 'MODEL', value_name: d.model });
+  if (d.gtin) attrs.push({ id: 'GTIN', value_name: d.gtin });
+  if (d.mpn) attrs.push({ id: 'MPN', value_name: d.mpn });
+  attrs.push({ id: 'SELLER_SKU', value_name: d.sku });
+  const body: Json = {
+    title: d.title, category_id: d.categoryId, price: d.price, currency_id: 'BRL', available_quantity: d.quantity, buying_mode: 'buy_it_now',
+    listing_type_id: typeof d.channelConfig?.listingTypeId === 'string' ? d.channelConfig.listingTypeId : 'gold_special',
+    condition: d.condition === 'USED' ? 'used' : 'new', seller_custom_field: d.sku,
+    pictures: d.pictures.map((p) => ({ source: p.url })), attributes: attrs, description: { plain_text: `${d.description}${tech}`.slice(0, 50_000) },
+  };
+  if (d.warrantyMonths) body.sale_terms = [{ id: 'WARRANTY_TYPE', value_name: 'Garantia do vendedor' }, { id: 'WARRANTY_TIME', value_name: `${d.warrantyMonths} meses` }];
+  return body;
+}
+
 export class MercadoLivreConnector extends BaseConnector {
   readonly info: ConnectorInfo = {
     provider: 'MERCADO_LIVRE', displayName: 'Mercado Livre', authType: 'OAUTH2',
     docsUrl: 'https://developers.mercadolivre.com.br/pt_br/api-docs-pt-br',
-    notes: 'Requer aplicativo no Mercado Livre Developers (ML_CLIENT_ID/ML_CLIENT_SECRET) e autorização do vendedor. Hoje: autorização, pedidos e notificações de pedidos; sem publicação, preço, estoque e envios.',
+    notes: 'Requer aplicativo no Mercado Livre Developers (ML_CLIENT_ID/ML_CLIENT_SECRET) e autorização do vendedor. Hoje: autorização, pedidos, notificações e leitura dos anúncios (importar para a base). Publicação de anúncios existe, mas fica desligada até ser validada com conta real (ML_PUBLISH_ENABLED); preço, estoque e envios ainda não.',
+    imageHosts: ['mlstatic.com'],
   };
 
   getCapabilities(): CapabilityMatrix {
     return {
       authorization: 'IMPLEMENTED_UNVERIFIED', orders: 'IMPLEMENTED_UNVERIFIED', webhooks: 'IMPLEMENTED_UNVERIFIED',
-      catalog: 'PLANNED', publishing: 'PLANNED', price: 'PLANNED', inventory: 'PLANNED', shipments: 'PLANNED',
+      catalog: 'IMPLEMENTED_UNVERIFIED', publishing: ML.publishEnabled() ? 'IMPLEMENTED_UNVERIFIED' : 'PLANNED', price: 'PLANNED', inventory: 'PLANNED', shipments: 'PLANNED',
     };
   }
 
@@ -178,6 +234,71 @@ export class MercadoLivreConnector extends BaseConnector {
     const total = Number(paging.total ?? 0);
     const next = offset + results.length;
     return okResult({ orders, nextCursor: results.length > 0 && next < total ? String(next) : undefined });
+  }
+
+  /**
+   * Varre os anúncios do vendedor: 1) ids por /users/{id}/items/search com search_type=scan (rolagem por scroll_id; [A VALIDAR]),
+   * 2) detalhes por /items?ids=… ([A VALIDAR] formato [{code, body}]). A descrição NÃO vem aqui (chamada separada em fetchProductDetail).
+   */
+  async fetchProducts(ctx: ConnectionContext, p: { cursor?: string }): Promise<OpResult<{ products: ExternalProduct[]; nextCursor?: string }>> {
+    const h = bearer(ctx);
+    if (!h || !ctx.externalAccountId) return fail('AUTH', 'Conexão sem credenciais.');
+    const q: Record<string, string> = { search_type: 'scan', limit: String(ML.itemsPageSize) };
+    if (p.cursor) q.scroll_id = p.cursor;
+    const ids = await request('GET', `${ML.apiBase()}/users/${encodeURIComponent(ctx.externalAccountId)}/items/search?${form(q)}`, { headers: h });
+    if (!ids.ok) return ids;
+    const list = (Array.isArray(ids.data.results) ? ids.data.results : []).map(String).filter((x) => /^[A-Za-z0-9]+$/.test(x));
+    const scroll = ml(ids.data.scroll_id);
+    const products: ExternalProduct[] = [];
+    for (let i = 0; i < list.length; i += ML.multigetMax) {
+      const r = await request('GET', `${ML.apiBase()}/items?ids=${list.slice(i, i + ML.multigetMax).join(',')}`, { headers: h });
+      if (!r.ok) return r;
+      const arr = (Array.isArray(r.data) ? (r.data as unknown as Json[]) : []);
+      for (const entry of arr) {
+        if (Number(entry.code) !== 200) continue; // anúncio indisponível: segue
+        const item = normalizeItem((entry.body ?? {}) as Json);
+        if (item) products.push(item);
+      }
+    }
+    return okResult({ products, nextCursor: list.length > 0 && scroll ? scroll : undefined });
+  }
+
+  async fetchProductDetail(ctx: ConnectionContext, p: { externalId: string }): Promise<OpResult<ExternalProduct>> {
+    const h = bearer(ctx);
+    if (!h) return fail('AUTH', 'Conexão sem credenciais.');
+    if (!/^[A-Za-z0-9]+$/.test(p.externalId)) return fail('VALIDATION', 'Identificador de anúncio inválido.');
+    const r = await request('GET', `${ML.apiBase()}/items/${p.externalId}`, { headers: h });
+    if (!r.ok) return r;
+    const item = normalizeItem(r.data);
+    if (!item) return fail('VALIDATION', 'Resposta de anúncio sem id/título.');
+    const d = await request('GET', `${ML.apiBase()}/items/${p.externalId}/description`, { headers: h }); // [A VALIDAR] plain_text
+    if (d.ok) item.description = ml(d.data.plain_text) ?? ml(d.data.text);
+    return okResult(item);
+  }
+
+  /** Regras conhecidas do canal checadas antes de publicar. [A VALIDAR] limites; a resposta do canal sempre prevalece. */
+  validateDraft(d: ItemDraft): string[] {
+    const out: string[] = [];
+    if (d.title.length > 60) out.push(`Mercado Livre: título com ${d.title.length} caracteres (máximo 60).`);
+    const main = d.pictures[0];
+    if (main && (main.width < 500 || main.height < 500)) out.push('Mercado Livre: a foto principal precisa ter ao menos 500 × 500 px.');
+    if (!ML.publishEnabled()) out.push('Publicação desligada no servidor (ML_PUBLISH_ENABLED): ainda não foi validada com uma conta real.');
+    return out;
+  }
+
+  async publishProduct(ctx: ConnectionContext, p: { productId: string; payload: unknown; idempotencyKey: string }): Promise<OpResult<{ externalId: string; permalink?: string }>> {
+    if (!ML.publishEnabled()) return fail('NOT_CONFIGURED', 'Publicação no Mercado Livre desligada neste servidor (ML_PUBLISH_ENABLED). Ela cria anúncios reais e ainda não foi validada com uma conta real.');
+    const h = bearer(ctx);
+    if (!h) return fail('AUTH', 'Conexão sem credenciais.');
+    const draft = p.payload as ItemDraft;
+    const problems = this.validateDraft(draft).filter((x) => !x.includes('ML_PUBLISH_ENABLED'));
+    if (!draft.categoryId) problems.push('Falta a categoria do canal.');
+    if (problems.length) return fail('VALIDATION', problems.join(' '));
+    const r = await request('POST', `${ML.apiBase()}/items`, { headers: { ...h, 'content-type': 'application/json' }, body: JSON.stringify(buildItemBody(draft)) }); // [A VALIDAR] POST /items
+    if (!r.ok) return r;
+    const id = ml(r.data.id);
+    if (!id) return fail('VALIDATION', 'O Mercado Livre respondeu sem o id do anúncio criado: confira no canal antes de repetir.');
+    return okResult({ externalId: id, permalink: ml(r.data.permalink) });
   }
 
   /** Busca um pedido pelo recurso recebido em notificação (ex.: /orders/123). */

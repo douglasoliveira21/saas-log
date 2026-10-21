@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useUi, PageHeader, Alert, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
+import { ChannelCatalog } from './catalog-import';
 import { ChannelGallery, type Provider, type Support } from './gallery';
 
 interface Connection {
@@ -215,7 +216,10 @@ export default function IntegracoesPage() {
             </form>
           )}
 
-          <h2>Anúncios e preços ({listings.length})</h2>
+          <h2>Produtos do canal</h2>
+          <ChannelCatalog connectionId={current.id} supported={['SUPPORTED', 'IMPLEMENTED_UNVERIFIED'].includes(meta(current.provider)?.capabilities.catalog ?? 'PLANNED')} manage={manage && can('products.manage')} canImport={can('products.manage')} />
+
+          <h2 style={{ marginTop: 24 }}>Anúncios e preços ({listings.length})</h2>
           <p className="muted">Estoque publicável = disponível do depósito − estoque de segurança (limitado pelo teto de publicação). Preço enviado = preço aprovado abaixo, revalidado no envio. O envio só acontece se o conector do canal implementar a operação — caso contrário o anúncio fica “Envio indisponível”, nunca “Sincronizado”.</p>
           {manage && (
             <form className="row" style={{ marginBottom: 8 }} onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); void act(() => api(`/integrations/connections/${current.id}/listings`, 'POST', { productId: f.get('product'), externalItemId: String(f.get('item') ?? '').trim() || undefined }), 'Anúncio salvo.'); }}>
