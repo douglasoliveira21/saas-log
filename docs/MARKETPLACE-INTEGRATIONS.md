@@ -102,3 +102,17 @@ Notificações ao usuário (e-mail/in-app) para token expirado e falhas; mapeame
 - **Catálogo:** `apps/api/src/integrations/catalog.ts` (canal, categoria, região, autenticação prevista, documentação). Endereços de documentação conferidos como acessíveis em 20/10/2026; Americanas e Casas Bahia ficaram sem link público localizado. As formas de autenticação dos canais planejados vêm da documentação pública e **precisam ser confirmadas** antes de implementar.
 - **Logotipos:** ícones genéricos do pacote simple-icons (CC0) para os canais que têm (Shopee, AliExpress, TikTok, eBay, Etsy, Shopify, WooCommerce, VTEX); os demais mostram a sigla na cor da marca. Para usar o logotipo **oficial**, coloque o arquivo em `apps/web/public/marketplaces/<chave>.svg|png` (ex.: `mercado_livre.svg`, `magalu.png`) — ele passa a ter prioridade, sem mudar código. Os logotipos pertencem aos titulares e só identificam o canal; use arquivos que você tem direito de usar.
 - **O que depende de você para cada canal virar real:** conta de desenvolvedor/aplicativo aprovado no canal, credenciais, e leitura da documentação vigente; hoje só o Mercado Livre tem conector (e exige ML_CLIENT_ID/ML_CLIENT_SECRET no servidor).
+
+
+## Magalu
+**Estado:** autorização, leitura de pedidos e leitura dos SKUs implementadas e testadas **só com servidor simulado** (`IMPLEMENTED_UNVERIFIED`). Publicação, preço, estoque, envios e notificações: **planejados** (nada é enviado ao Magalu).
+
+**Confirmado nas páginas oficiais (developers.magalu.com, 21/10/2026):** login em `https://id.magalu.com/login` com `client_id`, `redirect_uri`, `scope`, `response_type=code`, `choose_tenants=true` (sellers) e `state`; token em `https://id.magalu.com/oauth/token` (`authorization_code` com JSON; `refresh_token` em formulário; code vale 10 min, uso único; `access_token` ~7200 s); API de produção `https://api.magalu.com`; rotas `GET /seller/v1/orders` e `GET /seller/v1/portfolios/skus`; escopos `open:order-order-seller:read`, `open:order-delivery-seller:read`, `open:portfolio-skus-seller:read`, `open:portfolio-prices-seller:read`, `open:portfolio-stocks-seller:read`.
+
+**NÃO encontrado (por isso a leitura é tolerante e a validação real é obrigatória):** formato das respostas (nomes de campos), paginação, filtros de data/status, cabeçalhos extras (ex.: identificação da loja), vocabulário de status do pedido, domínio das fotos e lista de tópicos de webhook. Por isso:
+- O pedido só é tratado como **pago** se o status estiver em `MAGALU_PAID_STATUSES` (vazio por padrão = nada é importado como venda; os pedidos aparecem como "aguardando pagamento" com o status real do canal no motivo). Descubra os valores com uma conta real e preencha.
+- A próxima página só é seguida se a resposta trouxer `meta.links.next` do mesmo servidor.
+- Fotos dos SKUs não são baixadas (domínio não confirmado).
+- Sem endereço de revogação confirmado: desconectar descarta as credenciais localmente.
+
+**Como o aplicativo é criado:** não há formulário web; usa-se a ferramenta de linha de comando **idm** (`idm login`, `idm client create --name … --redirect-uris https://SEU-DOMINIO/api/integrations/callback --scopes "…" --audience …`). O Client Secret **não pode ser recuperado depois**. Webhooks do Magalu (assinatura `X-Signature-256`, HMAC de `timestamp.corpo`) exigem assinatura em `/v1/onboarding/signup` e **não foram implementados**: os pedidos entram pela reconciliação periódica.

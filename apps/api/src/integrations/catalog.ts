@@ -20,8 +20,6 @@ export const PLANNED_CHANNELS: ConnectorInfo[] = [
     notes: 'Requer registro como desenvolvedor na SP-API, aplicativo aprovado e autorização do vendedor no Seller Central.' },
   { provider: 'SHOPEE', displayName: 'Shopee', category: 'MARKETPLACE', region: 'GLOBAL', authType: 'SIGNED_OAUTH2', docsUrl: 'https://open.shopee.com/',
     notes: 'Requer conta no Shopee Open Platform e aplicativo aprovado; a documentação vigente deve ser confirmada antes da implementação.' },
-  { provider: 'MAGALU', displayName: 'Magalu', category: 'MARKETPLACE', region: 'BR', authType: 'OAUTH2', docsUrl: 'https://developers.magalu.com/',
-    notes: `Portal de desenvolvedores do Magalu (Marketplace). Requer ser seller aprovado e aplicativo cadastrado. ${AUTH_NOTE}` },
   { provider: 'AMERICANAS', displayName: 'Americanas', category: 'MARKETPLACE', region: 'BR', authType: 'API_KEY', docsUrl: '',
     notes: 'Documentação pública não localizada nesta revisão: consulte o canal ou um integrador homologado (ex.: Anymarket, Bling).' },
   { provider: 'CASAS_BAHIA', displayName: 'Casas Bahia / Ponto', category: 'MARKETPLACE', region: 'BR', authType: 'API_KEY', docsUrl: '',

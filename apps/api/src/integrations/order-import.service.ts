@@ -140,7 +140,7 @@ export class OrderImportService {
     const key = { connectionId_entityType_externalId: { connectionId, entityType: 'BUYER', externalId: buyer.id } };
     const map = await tx.externalEntityMapping.findUnique({ where: key });
     if (map?.internalId) return map.internalId;
-    const c = await tx.customer.create({ data: { tenantId, kind: 'PF', name: `${provider === 'MERCADO_LIVRE' ? 'Mercado Livre' : provider} — ${buyer.nickname ?? buyer.id}`.slice(0, 200) } });
+    const c = await tx.customer.create({ data: { tenantId, kind: 'PF', name: `${provider === 'MERCADO_LIVRE' ? 'Mercado Livre' : provider === 'MAGALU' ? 'Magalu' : provider} — ${buyer.nickname ?? buyer.id}`.slice(0, 200) } });
     await tx.externalEntityMapping.create({ data: { tenantId, connectionId, entityType: 'BUYER', externalId: buyer.id, internalId: c.id, metadata: { nickname: buyer.nickname ?? null } } });
     return c.id;
   }

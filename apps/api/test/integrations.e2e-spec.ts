@@ -99,12 +99,12 @@ describe('Fase 4 — central de integrações, fila, webhooks e credenciais', ()
         expect(Object.values(c.capabilities)).toEqual(Array(8).fill('PLANNED'));
         expect(c.docsUrl).toMatch(/^https:/);
       }
-      // catálogo ampliado: todos os canais além do Mercado Livre (e do sandbox) são PLANEJADOS e não podem se passar por disponíveis
+      // catálogo ampliado: todos os canais além do Mercado Livre e do Magalu (e do sandbox) são PLANEJADOS e não podem se passar por disponíveis
       const real = list.filter((x) => !x.sandbox);
       expect(real.length).toBeGreaterThanOrEqual(20);
       expect(new Set(real.map((x) => x.provider)).size).toBe(real.length);
       expect(new Set(real.map((x) => x.category))).toEqual(new Set(['MARKETPLACE', 'STORE_PLATFORM', 'HUB']));
-      for (const c of real.filter((x) => x.provider !== 'MERCADO_LIVRE')) {
+      for (const c of real.filter((x) => !['MERCADO_LIVRE', 'MAGALU'].includes(x.provider))) {
         expect(Object.values(c.capabilities)).toEqual(Array(8).fill('PLANNED'));
         expect(c.docsUrl === '' || /^https:/.test(c.docsUrl)).toBe(true);
         expect(c.notes).toBeTruthy();

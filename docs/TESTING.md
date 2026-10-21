@@ -96,6 +96,12 @@ Servidores **simulados** (loja de fotos do canal e API do Mercado Livre) e conec
 - Editar estoque (`POST /api/stock/set-on-hand`): sobe/desce gerando ajuste com histórico, recusa igual ao atual/sem motivo/negativo/abaixo do reservado, exige `stock.adjust`, isolamento entre empresas, idempotência e 4 edições simultâneas para o mesmo valor ⇒ só 1 aplicada.
 - "Excluir estoque" na tela é o mesmo endpoint levando o saldo a 0 (ajustes auditáveis; o histórico nunca é apagado).
 
+## Magalu (`magalu.e2e-spec.ts`, 7 testes — servidor simulado)
+Servidor **simulado** conforme as páginas oficiais lidas; prova o nosso código, não o comportamento real do Magalu.
+- Disponível "sem validação real", pendência clara sem `MAGALU_CLIENT_ID`, URL de login (`choose_tenants=true`, escopos só de leitura, redirect exato), troca do code em JSON, credenciais cifradas, renovação em formulário e refresh antigo invalidado.
+- Pedidos: paginação por `meta.links.next`, só o status configurado como pago importa, `paid` não listado não importa por engano, SKU sem produto pede atenção, cancelado registrado, repetir não duplica.
+- Catálogo: varredura paginada de SKUs, GTIN inválido descartado, sem título descartado; escrita (preço, estoque, publicação) segue NOT_IMPLEMENTED e nada é enviado.
+
 ## Não coberto ainda
 Throttling (desligado em `NODE_ENV=test`), UI (sem testes de componente/E2E de navegador), **qualquer chamada à API real do Mercado Livre ou da SEFAZ**, conformidade do leiaute da NF-e e a API real dos Correios, formatos reais de extrato/relatório de liquidação, UI gateway de pagamento, MFA, carga/desempenho e pentest.
 
