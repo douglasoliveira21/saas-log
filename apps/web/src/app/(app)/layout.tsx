@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronDown, ChevronsLeft, ChevronsRight, LogOut, Menu, Moon, Repeat, Sun } from 'lucide-react';
+import { Bell, ChevronDown, ChevronsLeft, ChevronsRight, LogOut, Menu, Moon, Repeat, Sun } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -24,9 +24,18 @@ function Shell({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [logoFailed, setLogoFailed] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [bell, setBell] = useState(false);
+  const bellRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!bell) return;
+    const onDown = (e: MouseEvent) => { if (!bellRef.current?.contains(e.target as Node)) setBell(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setBell(false); };
+    document.addEventListener('mousedown', onDown); document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [bell]);
 
   useEffect(() => { setCollapsed(safeStorage('get', 'dh-collapsed') === '1'); setTheme(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'); }, []);
-  useEffect(() => { setOpen(false); setMenu(false); }, [pathname]);
+  useEffect(() => { setOpen(false); setMenu(false); setBell(false); }, [pathname]);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
@@ -113,6 +122,14 @@ function Shell({ children }: { children: ReactNode }) {
               {trialLeft > 0 ? `Avaliação: ${trialLeft} dia(s)` : 'Avaliação encerrada'}
             </Link>
           )}
+          <div className="menu-wrap" ref={bellRef}>
+            <button className="btn ghost icon" onClick={() => setBell(!bell)} aria-haspopup="true" aria-expanded={bell} aria-label="Notificações" title="Notificações"><Bell /></button>
+            {bell && (
+              <div className="menu" role="dialog" aria-label="Notificações">
+                <div className="menu-head"><strong>Notificações</strong><div className="muted" style={{ fontSize: '0.84rem', marginTop: 4 }}>Você não tem notificações no momento.</div></div>
+              </div>
+            )}
+          </div>
           <button className="btn ghost icon" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Usar tema claro' : 'Usar tema escuro'} title="Alternar tema">{theme === 'dark' ? <Sun /> : <Moon />}</button>
           <div className="menu-wrap" ref={menuRef}>
             <button className="btn ghost user-chip" onClick={() => setMenu(!menu)} aria-haspopup="menu" aria-expanded={menu}>

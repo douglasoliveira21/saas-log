@@ -135,27 +135,6 @@ export class ChannelCatalogService {
     });
   }
 
-  /** Simulador: avalia preços e recomenda o preço da margem-alvo. Perfil de tarifas: o da conexão ou o informado. */
-  simulate(ctx: AuthContext, dto: { productId: string; connectionId?: string; fees?: Partial<FeeProfile>; prices?: number[]; targetMarginPct?: number }) {
-    return this.prisma.withContext(ctx, async (tx) => {
-      const p = await tx.product.findFirst({ where: { id: dto.productId, tenantId: ctx.tenantId! } });
-      if (!p) throw new NotFoundException('Produto não encontrado.');
-      if (num(p.costPrice) === null) throw new UnprocessableEntityException('O produto não tem custo cadastrado: informe o custo para simular.');
-      const base = dto.connectionId ? normalizeFees(((await this.conn(tx, ctx, dto.connectionId)).config as { fees?: unknown }).fees) : normalizeFees(undefined);
-      const fees = normalizeFees({ ...base, ...(dto.fees ?? {}) });
-      const cost = { cost: num(p.costPrice)!, extraCost: num(p.extraCost) ?? 0 };
-      const target = dto.targetMarginPct ?? (num(p.targetMarginPct) ?? undefined);
-      return {
-        product: { sku: p.sku, name: p.name, cost: cost.cost, extraCost: cost.extraCost, minPrice: num(p.minPrice), suggestedPrice: num(p.suggestedPrice) },
-        fees, note: 'Tributos (taxPct) são uma ESTIMATIVA informada por você; o cálculo tributário oficial chega com o módulo Fiscal.',
-        breakEvenPrice: breakEvenPrice(cost, fees),
-        recommendedPrice: target !== undefined ? priceForMargin(target, cost, fees) : null,
-        targetMarginPct: target ?? null,
-        evaluations: (dto.prices ?? (num(p.suggestedPrice) !== null ? [num(p.suggestedPrice)!] : [])).map((price) => ({ ...evaluate(price, cost, fees), check: checkPrice(price, { cost: cost.cost, extraCost: cost.extraCost, minPrice: num(p.minPrice) }, fees) })),
-      };
-    });
-  }
-
   // ───────────── categorias ─────────────
 
   listCategoryMap(ctx: AuthContext, connectionId: string) {

@@ -71,13 +71,6 @@ class CategoryMapDto {
   @IsString() @Length(1, 60) externalCategoryId: string;
   @IsOptional() @IsString() @MaxLength(200) externalCategoryName?: string;
 }
-class SimulateDto {
-  @IsUUID() productId: string;
-  @IsOptional() @IsUUID() connectionId?: string;
-  @IsOptional() @IsObject() fees?: Record<string, number>;
-  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsNumber(money, { each: true }) prices?: number[];
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(99) targetMarginPct?: number;
-}
 class MappingDto {
   @IsString() @Length(1, 60) externalItemId: string;
   @IsUUID() productId: string;
@@ -173,9 +166,6 @@ export class IntegrationsController {
 
   @Post('connections/:id/sync') @HttpCode(200) @RequirePermissions('integrations.manage')
   sync(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.catalog.requestSync(ctx, id); }
-
-  @Post('pricing/simulate') @HttpCode(200) @RequirePermissions('pricing.view')
-  simulate(@CurrentAuth() ctx: AuthContext, @Body() dto: SimulateDto) { return this.catalog.simulate(ctx, dto); }
 
   @Get('jobs') @RequirePermissions('integrations.view')
   listJobs(@CurrentAuth() ctx: AuthContext, @Query() q: JobsQuery) { return this.jobs.list(ctx, q); }

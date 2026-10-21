@@ -95,30 +95,9 @@ describe('Fase 5b — anúncios, preço, estoque publicável, categorias e sincr
   beforeEach(() => { SandboxConnector.pushed.length = 0; });
 
   describe('simulador de preços e perfil de tarifas', () => {
-    it('calcula equilíbrio, preço recomendado (margem sobre a venda) e avaliações; tributos são estimativa informada', async () => {
+    it('permissões e validação das tarifas', async () => {
       const conn = await sandbox(A);
       await A.users.commercial_manager.put(`/api/integrations/connections/${conn}/fees`).set(H).send(fees).expect(200);
-      const p = await product(A, { minPrice: 100 });
-      const r = (await A.users.commercial_manager.post('/api/integrations/pricing/simulate').set(H).send({ productId: p, connectionId: conn, prices: [90, 150], targetMarginPct: 20 }).expect(200)).body;
-      expect(r.breakEvenPrice).toBe(94.6);
-      expect(r.recommendedPrice).toBe(129.63);
-      expect(r.evaluations[1]).toMatchObject({ price: 150, contribution: 41, marginPct: 27.33, markupPct: 78.85 });
-      expect(r.evaluations[0].check).toMatchObject({ ok: false });
-      expect(r.note).toMatch(/ESTIMATIVA/);
-      // meta impossível
-      const imp = (await A.owner.post('/api/integrations/pricing/simulate').set(H).send({ productId: p, connectionId: conn, targetMarginPct: 80 }).expect(200)).body;
-      expect(imp.recommendedPrice).toBeNull();
-      // sobrescrita pontual do perfil não altera o salvo
-      const alt = (await A.owner.post('/api/integrations/pricing/simulate').set(H).send({ productId: p, connectionId: conn, fees: { commissionPct: 0, paymentPct: 0, taxPct: 0, fixedFee: 0, shippingSubsidy: 0, packaging: 0 }, prices: [100] }).expect(200)).body;
-      expect(alt.evaluations[0].contribution).toBe(48);
-      expect((await A.owner.get(`/api/integrations/connections/${conn}/fees`).expect(200)).body.commissionPct).toBe(16);
-    });
-
-    it('produto sem custo não é simulado; permissões e validação das tarifas', async () => {
-      const conn = await sandbox(A);
-      const semCusto = (await A.owner.post('/api/products').set(H).send({ sku: `SC-${uid()}`, name: 'Sem custo' }).expect(201)).body.id;
-      await A.owner.post('/api/integrations/pricing/simulate').set(H).send({ productId: semCusto, prices: [10] }).expect(422);
-      await A.users.stock_operator.post('/api/integrations/pricing/simulate').set(H).send({ productId: semCusto }).expect(403);
       await A.users.ops_manager.put(`/api/integrations/connections/${conn}/fees`).set(H).send(fees).expect(403); // só consulta preços
       await A.owner.put(`/api/integrations/connections/${conn}/fees`).set(H).send({ ...fees, commissionPct: -1 }).expect(400);
       await A.owner.put(`/api/integrations/connections/${conn}/fees`).set(H).send({ ...fees, taxPct: 101 }).expect(400);

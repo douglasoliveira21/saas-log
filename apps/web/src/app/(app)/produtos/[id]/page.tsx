@@ -180,7 +180,7 @@ export default function ProdutoEditorPage() {
               {attrs.length < 50 && manage && <p style={{ margin: '10px 0 0' }}><button type="button" className="btn sm" onClick={() => { setAttrs([...attrs, { name: '', value: '' }]); setDirty(true); }}><Plus aria-hidden />Adicionar atributo</button></p>}
             </Card>
 
-            <Card id="preco" title="Preço e custo" why="O preço de venda por canal é aprovado em Preços e margens; aqui fica o preço sugerido e o custo que alimenta a margem.">
+            <Card id="preco" title="Preço e custo" why="O preço de venda por canal é aprovado na conexão do canal (Marketplaces); aqui fica o preço sugerido e o custo que alimenta a margem.">
               <div className="form-grid">
                 <Field id="costPrice" label="Custo (R$)"><input id="costPrice" name="costPrice" inputMode="decimal" defaultValue={v('costPrice')} /></Field>
                 <Field id="extraCost" label="Custos extras (R$)" hint="Embalagem, frete de compra, etc."><input id="extraCost" name="extraCost" inputMode="decimal" defaultValue={v('extraCost')} /></Field>

@@ -1,6 +1,6 @@
 import {
-  BarChart3, Bell, Building2, ClipboardCheck, CreditCard, Handshake, LayoutDashboard, type LucideIcon, Package, PackageSearch,
-  Percent, Plug, ReceiptText, ScrollText, Settings2, ShieldCheck, ShoppingCart, Store, Tag, Truck, Users, Wallet, Warehouse,
+  BarChart3, Building2, ClipboardCheck, CreditCard, Handshake, LayoutDashboard, type LucideIcon, Package, PackageSearch,
+  Percent, Plug, ReceiptText, ScrollText, Settings2, ShieldCheck, ShoppingCart, Store, Truck, Users, Wallet, Warehouse,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -20,12 +20,10 @@ export const NAV_GROUPS = ['Geral', 'Comercial', 'Suprimentos', 'Canais e logís
 
 export const NAV: NavItem[] = [
   { href: '/dashboard', label: 'Visão geral', icon: LayoutDashboard, group: 'Geral', implemented: true },
-  { href: '/m/notificacoes', label: 'Notificações', icon: Bell, group: 'Geral', implemented: false, phase: 4 },
 
   { href: '/vendas', label: 'Vendas e pedidos', icon: ShoppingCart, group: 'Comercial', permission: 'sales.view', implemented: true },
   { href: '/clientes', label: 'Clientes', icon: Users, group: 'Comercial', permission: 'customers.view', implemented: true },
   { href: '/comissoes', label: 'Vendedores e comissões', icon: Percent, group: 'Comercial', permission: 'commissions.view', implemented: true },
-  { href: '/precos', label: 'Preços e margens', icon: Tag, group: 'Comercial', permission: 'pricing.view', implemented: true },
 
   { href: '/produtos', label: 'Produtos e catálogo', icon: Package, group: 'Suprimentos', permission: 'products.view', implemented: true },
   { href: '/estoque', label: 'Estoque', icon: Warehouse, group: 'Suprimentos', permission: 'stock.view', implemented: true },
