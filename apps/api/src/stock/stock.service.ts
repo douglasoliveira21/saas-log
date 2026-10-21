@@ -68,6 +68,29 @@ export class StockService {
     }));
   }
 
+  /**
+   * "Editar estoque": leva o saldo FÍSICO de um produto em um depósito a uma quantidade informada.
+   * Não sobrescreve nada: registra um ajuste (ADJUSTMENT) com a diferença, motivo e histórico, calculado sob trava do saldo
+   * (movimentos simultâneos não distorcem o resultado). Não desce abaixo de reservado + bloqueado.
+   */
+  async setOnHand(ctx: AuthContext, dto: { productId: string; warehouseId: string; newOnHand: number; reason: string; idempotencyKey?: string }) {
+    if (!ctx.permissions.has('stock.adjust')) throw new ForbiddenException('Você não tem permissão para esta ação.');
+    if (!dto.reason?.trim()) throw new BadRequestException('Informe o motivo.');
+    return this.idempotent(ctx, dto.idempotencyKey, async (tx) => {
+      await this.assertProductAndWarehouse(tx, ctx, dto.productId, dto.warehouseId);
+      await this.lockBalances(tx, ctx, dto.productId, [dto.warehouseId]);
+      const cur = await tx.stockBalance.findFirstOrThrow({ where: { tenantId: ctx.tenantId!, productId: dto.productId, warehouseId: dto.warehouseId } });
+      const delta = dto.newOnHand - cur.onHand;
+      if (delta === 0) throw new BadRequestException('A quantidade informada é igual ao saldo atual.');
+      if (dto.newOnHand < cur.reserved + cur.blocked) {
+        throw new ConflictException(`Não é possível ficar com ${dto.newOnHand}: há ${cur.reserved} reservado(s) e ${cur.blocked} bloqueado(s). Libere as reservas/bloqueios antes.`);
+      }
+      const movement = await this.applyMovement(tx, ctx, { productId: dto.productId, warehouseId: dto.warehouseId, type: 'ADJUSTMENT', quantity: delta, reason: dto.reason.trim(), idempotencyKey: dto.idempotencyKey });
+      await this.audit.record(tx, ctx, { action: 'stock.set_on_hand', entity: 'product', entityId: dto.productId, metadata: { warehouseId: dto.warehouseId, from: cur.onHand, to: dto.newOnHand, delta, reason: dto.reason.trim() } });
+      return { movement, from: cur.onHand, to: dto.newOnHand, delta };
+    });
+  }
+
   async transfer(
     ctx: AuthContext,
     dto: { productId: string; fromWarehouseId: string; toWarehouseId: string; quantity: number; reason?: string; idempotencyKey?: string },

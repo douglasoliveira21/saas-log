@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { useUi, PageHeader, Alert, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
+import { StockDialog, type StockProduct } from './stock-dialog';
 
 interface Row { productId: string; sku: string; name: string; minStock: number; onHand: number; reserved: number; blocked: number; available: number }
 interface Warehouse { id: string; code: string; name: string; active: boolean }
@@ -29,6 +30,7 @@ export default function EstoquePage() {
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [panel, setPanel] = useState<'move' | 'transfer' | null>(null);
+  const [edit, setEdit] = useState<{ mode: 'edit' | 'delete'; product: StockProduct } | null>(null);
 
   const load = useCallback(() => {
     const qs = new URLSearchParams({ limit: '100' });
@@ -71,7 +73,7 @@ export default function EstoquePage() {
 
   return (
     <>
-      <PageHeader title="Estoque" description={<>Disponível = físico − reservado − bloqueado. Movimentos confirmados não são editados: erros são corrigidos com estorno.</>} actions={<>
+      <PageHeader title="Estoque" description={<>Disponível = físico − reservado − bloqueado. Editar e excluir geram ajustes registrados no histórico (nada é apagado); lançamentos errados são corrigidos com estorno.</>} actions={<>
           {canMove && <div className="row"><button className="btn" onClick={() => setPanel('transfer')}>Transferir</button><button className="btn primary" onClick={() => setPanel('move')}>Movimentar</button></div>}
         </>} />
       {error && <Alert kind="error">{error}</Alert>}
@@ -112,15 +114,21 @@ export default function EstoquePage() {
         </div>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>SKU</th><th>Produto</th><th>Físico</th><th>Reservado</th><th>Bloqueado</th><th>Disponível</th><th>Mínimo</th></tr></thead>
+            <thead><tr><th>SKU</th><th>Produto</th><th>Físico</th><th>Reservado</th><th>Bloqueado</th><th>Disponível</th><th>Mínimo</th>{canAdjust && <th />}</tr></thead>
             <tbody>
-              {!rows && !error && <tr><td colSpan={7}><Skeleton rows={3} /></td></tr>}
-              {rows?.length === 0 && <tr><td colSpan={7} className="empty">Nenhum produto para exibir. Cadastre produtos em “Produtos e catálogo”.</td></tr>}
+              {!rows && !error && <tr><td colSpan={8}><Skeleton rows={3} /></td></tr>}
+              {rows?.length === 0 && <tr><td colSpan={8} className="empty">Nenhum produto para exibir. Cadastre produtos em “Produtos e catálogo”.</td></tr>}
               {rows?.map((r) => (
                 <tr key={r.productId}>
                   <td>{r.sku}</td><td>{r.name}</td><td>{r.onHand}</td><td>{r.reserved}</td><td>{r.blocked}</td>
                   <td><strong>{r.available}</strong> {r.available <= 0 ? <span className="badge warn">sem estoque</span> : r.available < r.minStock ? <span className="badge warn">abaixo do mínimo</span> : null}</td>
                   <td>{r.minStock}</td>
+                  {canAdjust && (
+                    <td className="actions"><span className="row" style={{ gap: 6, flexWrap: 'nowrap', justifyContent: 'flex-end' }}>
+                      <button className="btn sm" onClick={() => setEdit({ mode: 'edit', product: r })}>Editar</button>
+                      <button className="btn sm ghost" disabled={r.onHand === 0} title={r.onHand === 0 ? 'Já está sem estoque' : 'Zerar o estoque deste produto'} onClick={() => setEdit({ mode: 'delete', product: r })}>Excluir</button>
+                    </span></td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -139,13 +147,14 @@ export default function EstoquePage() {
                 <tr key={m.id}>
                   <td>{new Date(m.createdAt).toLocaleString('pt-BR')}</td><td>{m.product.sku}</td><td>{m.warehouse.code}</td><td>{LABEL[m.type] ?? m.type}</td>
                   <td>{m.quantity > 0 ? `+${m.quantity}` : m.quantity}</td><td>{m.balanceBefore} → {m.balanceAfter}</td><td className="muted">{m.reason ?? ''}</td>
-                  <td>{canAdjust && !['REVERSAL', 'TRANSFER_IN', 'TRANSFER_OUT'].includes(m.type) && <button className="btn sm" onClick={() => reverse(m)}>Estornar</button>}</td>
+                  <td>{canAdjust && !['REVERSAL', 'TRANSFER_IN', 'TRANSFER_OUT'].includes(m.type) && <button className="btn sm" onClick={() => reverse(m)} title="Cria um lançamento inverso; o histórico é mantido">Excluir lançamento</button>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </section>
+      {edit && <StockDialog mode={edit.mode} product={edit.product} warehouses={whs} onClose={() => setEdit(null)} onDone={(msg) => { setEdit(null); setOk(msg); load(); }} />}
     </>
   );
 }

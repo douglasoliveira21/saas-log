@@ -19,6 +19,13 @@ class MoveDto {
   @IsOptional() @IsString() @MaxLength(100) reference?: string;
   @IsOptional() @IsString() @MaxLength(100) idempotencyKey?: string;
 }
+class SetOnHandDto {
+  @IsUUID() productId: string;
+  @IsUUID() warehouseId: string;
+  @IsInt() @Min(0) @Max(MAXQ) newOnHand: number;
+  @IsString() @IsNotEmpty() @MaxLength(300) reason: string;
+  @IsOptional() @IsString() @MaxLength(100) idempotencyKey?: string;
+}
 class TransferDto {
   @IsUUID() productId: string;
   @IsUUID() fromWarehouseId: string;
@@ -90,6 +97,9 @@ export class StockController {
 
   @Post('stock/movements') @RequirePermissions('stock.move')
   move(@CurrentAuth() ctx: AuthContext, @Body() dto: MoveDto) { return this.stock.move(ctx, dto); }
+
+  @Post('stock/set-on-hand') @RequirePermissions('stock.adjust')
+  setOnHand(@CurrentAuth() ctx: AuthContext, @Body() dto: SetOnHandDto) { return this.stock.setOnHand(ctx, dto); }
 
   @Post('stock/transfers') @RequirePermissions('stock.move')
   transfer(@CurrentAuth() ctx: AuthContext, @Body() dto: TransferDto) { return this.stock.transfer(ctx, dto); }

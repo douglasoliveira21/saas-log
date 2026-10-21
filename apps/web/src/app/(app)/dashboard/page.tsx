@@ -7,6 +7,7 @@ import { Alert, PageHeader, Skeleton, StatCard } from '@/components/ui';
 import { api } from '@/lib/api';
 import { brl } from '@/lib/format';
 import { useSession } from '@/lib/session';
+import { OrdersPanel } from './orders-panel';
 
 interface Metrics { products: number; belowMin: number; outOfStock: number; stockValue: string; fiscalPending: number }
 interface Overview {
@@ -48,6 +49,8 @@ export default function DashboardPage() {
             <StatCard label="Depósitos" value={data.counts.warehouses} icon={<Boxes />} />
             <StatCard label="Usuários ativos" value={data.counts.users} icon={<Users />} />
           </section>
+
+          {can('sales.view') && <OrdersPanel />}
 
           {m && (
             <section aria-label="Estoque">

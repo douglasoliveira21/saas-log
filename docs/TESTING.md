@@ -90,6 +90,12 @@ Servidores **simulados** (loja de fotos do canal e API do Mercado Livre) e conec
 - Base → canal: pré-visualização com bloqueios, publicação (fotos por URL assinada, categoria mapeada), recusa/incerteza do canal, 3 publicações simultâneas ⇒ 1, canal sem publicação.
 - Defesas e conector ML: SSRF (domínio, HTTP, credenciais, redirecionamento, IPs privados), normalização do anúncio, corpo do `POST /items`, varredura por rolagem + multiget, publicação desligada por padrão (nenhuma chamada de criação).
 
+## Visão geral de pedidos e edição de estoque (`orders-dashboard.e2e-spec.ts`, 9 testes)
+- Dashboard de pedidos (`GET /api/dashboard/orders`): zerado no início, novos/a enviar/em trânsito/entregues, atraso de envio (aprovado há mais de N horas) e de entrega (enviado há mais de N dias) com datas retroativas gravadas direto no banco, prazos configuráveis (`orders.shippingSlaHours`, `orders.deliverySlaDays`) com validação, período 7/30/90 e recusa de valores inválidos.
+- Escopo: vendedor sem `sales.view_all` vê só os próprios pedidos; outra empresa não vê nada (RLS).
+- Editar estoque (`POST /api/stock/set-on-hand`): sobe/desce gerando ajuste com histórico, recusa igual ao atual/sem motivo/negativo/abaixo do reservado, exige `stock.adjust`, isolamento entre empresas, idempotência e 4 edições simultâneas para o mesmo valor ⇒ só 1 aplicada.
+- "Excluir estoque" na tela é o mesmo endpoint levando o saldo a 0 (ajustes auditáveis; o histórico nunca é apagado).
+
 ## Não coberto ainda
 Throttling (desligado em `NODE_ENV=test`), UI (sem testes de componente/E2E de navegador), **qualquer chamada à API real do Mercado Livre ou da SEFAZ**, conformidade do leiaute da NF-e e a API real dos Correios, formatos reais de extrato/relatório de liquidação, UI gateway de pagamento, MFA, carga/desempenho e pentest.
 

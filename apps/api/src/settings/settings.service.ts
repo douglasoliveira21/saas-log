@@ -13,6 +13,8 @@ export interface TenantSettings {
   'sales.maxDiscountPct': number;
   'purchases.approvalLimit': number;
   'finance.paymentApprovalLimit': number;
+  'orders.shippingSlaHours': number;
+  'orders.deliverySlaDays': number;
 }
 
 /** Valores padrão documentados em docs/COMMERCIAL.md. "Recebimento confirmado"/"faturada" dependem de Financeiro/Fiscal. */
@@ -21,6 +23,8 @@ export const DEFAULT_SETTINGS: TenantSettings = {
   'sales.maxDiscountPct': 10,
   'purchases.approvalLimit': 5000,
   'finance.paymentApprovalLimit': 10000,
+  'orders.shippingSlaHours': 24,
+  'orders.deliverySlaDays': 7,
 };
 
 function validate(key: string, value: unknown): unknown {
@@ -35,6 +39,12 @@ function validate(key: string, value: unknown): unknown {
     case 'finance.paymentApprovalLimit':
       if (typeof value === 'number' && value >= 0 && value <= 1e9) return value;
       throw new BadRequestException('Limite de aprovação inválido.');
+    case 'orders.shippingSlaHours':
+      if (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 720) return value;
+      throw new BadRequestException('Prazo de envio deve ser de 1 a 720 horas.');
+    case 'orders.deliverySlaDays':
+      if (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 90) return value;
+      throw new BadRequestException('Prazo de entrega deve ser de 1 a 90 dias.');
     default:
       throw new BadRequestException(`Configuração desconhecida: ${key}`);
   }
