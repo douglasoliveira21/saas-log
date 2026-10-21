@@ -22,6 +22,7 @@ function Shell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [menu, setMenu] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [logoFailed, setLogoFailed] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setCollapsed(safeStorage('get', 'dh-collapsed') === '1'); setTheme(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'); }, []);
@@ -56,8 +57,16 @@ function Shell({ children }: { children: ReactNode }) {
       {open && <div className="scrim" onClick={() => setOpen(false)} aria-hidden />}
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="sidebar-head">
-          <div className="logo" aria-hidden>{BRAND.name.slice(0, 1)}</div>
-          <span className="brand">{BRAND.name}</span>
+          {me.tenant!.logoVersion && !logoFailed ? (
+            // Logotipo da empresa do tenant no lugar do nome/ícone do software (a versão na URL força atualizar após um novo envio).
+            // eslint-disable-next-line @next/next/no-img-element
+            <img className="tenant-logo" src={`/api/branding/logo?v=${me.tenant!.logoVersion}`} alt={me.tenant!.name} onError={() => setLogoFailed(true)} />
+          ) : (
+            <>
+              <div className="logo" aria-hidden>{BRAND.name.slice(0, 1)}</div>
+              <span className="brand">{BRAND.name}</span>
+            </>
+          )}
         </div>
         <div className="sidebar-scroll">
           <nav className="nav" aria-label="Navegação principal">

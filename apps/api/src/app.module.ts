@@ -42,6 +42,7 @@ import { TaxRulesService } from './fiscal/tax-rules.service';
 import { BillingController, BillingService, PlatformController, PlatformService } from './billing/billing.service';
 import { AllExceptionsFilter, ObservabilityController, requestObserver } from './observability/observability';
 import { LookupController, LookupService } from './lookup/lookup.service';
+import { BrandingController, BrandingService } from './branding/branding.service';
 import { BankService } from './finance/bank.service';
 import { FinanceController } from './finance/finance.controller';
 import { FinanceService } from './finance/finance.service';
@@ -74,7 +75,7 @@ class HealthController {
       skipIf: () => process.env.NODE_ENV === 'test',
     }),
   ],
-  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, FinanceController, ReportsController, LogisticsController, BillingController, PlatformController, ObservabilityController, LookupController],
+  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, FinanceController, ReportsController, LogisticsController, BillingController, PlatformController, ObservabilityController, LookupController, BrandingController],
   providers: [
     AuthService,
     StructureService,
@@ -108,6 +109,7 @@ class HealthController {
     LogisticsService,
     BillingService,
     LookupService,
+    BrandingService,
     PlatformService,
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     // Provedor de transmissão: enquanto não houver implementação real, nenhuma emissão é simulada.

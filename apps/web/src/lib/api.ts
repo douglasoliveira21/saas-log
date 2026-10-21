@@ -34,7 +34,7 @@ export async function api<T>(path: string, method = 'GET', body?: unknown): Prom
 
 export interface Me {
   user: { id: string; name: string; email: string };
-  tenant: { id: string; name: string; slug: string; status: string; plan: string | null; trialEndsAt?: string | null } | null;
+  tenant: { id: string; name: string; slug: string; status: string; plan: string | null; trialEndsAt?: string | null; logoVersion?: number | null } | null;
   role: { key: string; name: string } | null;
   permissions: string[];
   platformAdmin: boolean;

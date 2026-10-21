@@ -215,3 +215,43 @@ export function SortTh({ label, k, sort, toggle, className }: { label: string; k
     </th>
   );
 }
+
+/* ───────────────────────── diálogo com conteúdo livre (formulários longos) ───────────────────────── */
+
+/** Janela modal com foco preso, Esc para fechar e rolagem interna. O conteúdo (ex.: <form>) fica por conta de quem chama. */
+export function Dialog({ title, description, onClose, children, wide }: { title: string; description?: ReactNode; onClose: () => void; children: ReactNode; wide?: boolean }) {
+  const titleId = useId();
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const prev = document.activeElement as HTMLElement | null;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    ref.current?.querySelector<HTMLElement>('input:not([disabled]), select:not([disabled]), textarea')?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key === 'Tab' && ref.current) {
+        const els = [...ref.current.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href]')].filter((el) => !el.hasAttribute('disabled'));
+        if (!els.length) return;
+        const [a, b] = [els[0], els[els.length - 1]];
+        if (e.shiftKey && document.activeElement === a) { e.preventDefault(); b.focus(); }
+        else if (!e.shiftKey && document.activeElement === b) { e.preventDefault(); a.focus(); }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prevOverflow; prev?.focus(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div className="modal-back" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className={`modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId} ref={ref}>
+        <div className="modal-head">
+          <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap', alignItems: 'flex-start' }}>
+            <div><h2 id={titleId}>{title}</h2>{description && <p className="muted" style={{ margin: '4px 0 0', fontSize: '0.88rem' }}>{description}</p>}</div>
+            <button type="button" className="btn ghost icon sm" onClick={onClose} aria-label="Fechar"><X /></button>
+          </div>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}

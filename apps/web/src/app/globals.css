@@ -256,6 +256,12 @@ th[aria-sort] .sort { opacity: 1; color: var(--brand); }
 /* ─────────── diálogos e toasts ─────────── */
 .modal-back { position: fixed; inset: 0; background: var(--scrim); z-index: var(--z-modal); display: grid; place-items: center; padding: 16px; animation: fade 0.12s ease-out; }
 .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); width: 100%; max-width: 460px; max-height: calc(100vh - 32px); overflow: auto; animation: pop 0.14s ease-out; }
+.modal.wide { max-width: 780px; }
+.form-section { margin: 4px 0 18px; }
+.form-section > h3 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 4px; font-weight: 650; }
+.form-section > p.why { margin: 0 0 12px; font-size: 0.84rem; color: var(--muted); }
+.modal form .modal-foot { padding: 14px 0 4px; border-top: 1px solid var(--border); margin-top: 6px; }
+.modal .modal-body { padding-bottom: 8px; }
 .modal-head { padding: 18px 20px 4px; }
 .modal-head h2 { margin: 0; font-size: 1.08rem; }
 .modal-body { padding: 8px 20px 4px; color: var(--text-2); }
@@ -314,3 +320,35 @@ th[aria-sort] .sort { opacity: 1; color: var(--brand); }
   .hide-sm { display: none !important; }
   .modal-foot .btn { flex: 1; }
 }
+
+/* ─────────── estrutura da empresa (passo a passo, hierarquia) ─────────── */
+.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; counter-reset: step; }
+.step { display: flex; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.step .num-badge { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; flex: none; font-weight: 700; font-size: 0.85rem; background: var(--surface-3); color: var(--text-2); }
+.step.done .num-badge { background: var(--ok); color: #fff; }
+.step.todo { border-color: color-mix(in srgb, var(--brand) 45%, var(--border)); background: var(--brand-soft); }
+.step.todo .num-badge { background: var(--brand); color: var(--brand-ink); }
+.step h3 { margin: 0 0 2px; font-size: 0.92rem; }
+.step p { margin: 0 0 8px; font-size: 0.82rem; color: var(--muted); }
+.org { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm); margin-bottom: 18px; overflow: hidden; }
+.org-head { display: flex; gap: 14px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; padding: 16px 18px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+.org-head h2 { margin: 0 0 4px; font-size: 1.12rem; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.84rem; color: var(--muted); }
+.meta b { color: var(--text-2); font-weight: 600; }
+.level { padding: 14px 18px 4px; }
+.level-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 650; color: var(--muted); margin-bottom: 10px; }
+.est { border: 1px solid var(--border); border-left: 3px solid var(--brand); border-radius: var(--radius); margin-bottom: 14px; background: var(--surface); }
+.est-head { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; padding: 12px 14px; }
+.est-head strong { font-size: 0.98rem; }
+.wh-list { border-top: 1px solid var(--border); padding: 6px 14px 10px; }
+.wh { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px dashed var(--border); flex-wrap: wrap; }
+.wh:last-child { border-bottom: 0; }
+.wh .code { font-family: var(--mono); font-size: 0.8rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; }
+.wh .grow { flex: 1; min-width: 160px; }
+.hint-empty { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius); font-size: 0.86rem; color: var(--muted); margin-bottom: 12px; }
+.brand-box { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.logo-preview { width: 220px; height: 84px; border: 1px dashed var(--border-strong); border-radius: var(--radius); display: grid; place-items: center; background: #fff; padding: 8px; flex: none; }
+.logo-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.logo-preview.empty-logo { background: var(--surface-2); color: var(--muted); font-size: 0.82rem; text-align: center; }
+.tenant-logo { display: block; max-width: 100%; max-height: 44px; object-fit: contain; object-position: left center; }
+.collapsed .tenant-logo { max-width: 38px; max-height: 38px; object-position: center; }

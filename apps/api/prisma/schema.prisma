@@ -135,6 +135,7 @@ model Tenant {
   marketplaceConnections MarketplaceConnection[]
   backgroundJobs         BackgroundJob[]
   subscriptions          Subscription[]
+  branding               TenantBranding?
 
   @@map("tenants")
 }
@@ -1649,4 +1650,17 @@ model PlatformAuditLog {
 
   @@index([createdAt])
   @@map("platform_audit_log")
+}
+
+// Identidade visual do tenant (logotipo). Um registro por tenant; só PNG/JPEG/WebP (SVG é recusado: pode carregar script).
+model TenantBranding {
+  tenantId    String   @id @map("tenant_id") @db.Uuid
+  logo        Bytes
+  contentType String   @map("content_type")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+  updatedById String?  @map("updated_by_id") @db.Uuid
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("tenant_branding")
 }

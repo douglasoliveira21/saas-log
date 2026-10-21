@@ -175,13 +175,13 @@ export class AuthService {
       select: { id: true, name: true, email: true },
     });
     const tenants = await this.listTenants(ctx.userId);
-    let tenant: { id: string; name: string; slug: string; status: string; plan: string | null; trialEndsAt: Date | null } | null = null;
+    let tenant: { id: string; name: string; slug: string; status: string; plan: string | null; trialEndsAt: Date | null; logoVersion: number | null } | null = null;
     let role: { key: string; name: string } | null = null;
     if (ctx.tenantId) {
       const t = await this.prisma.withContext(ctx, (tx) =>
-        tx.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId! }, include: { plan: true } }),
+        tx.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId! }, include: { plan: true, branding: { select: { updatedAt: true } } } }),
       );
-      tenant = { id: t.id, name: t.name, slug: t.slug, status: t.status, plan: t.plan?.name ?? null, trialEndsAt: t.trialEndsAt };
+      tenant = { id: t.id, name: t.name, slug: t.slug, status: t.status, plan: t.plan?.name ?? null, trialEndsAt: t.trialEndsAt, logoVersion: t.branding?.updatedAt.getTime() ?? null };
       role = tenants.find((x) => x.id === ctx.tenantId)?.role ?? null;
     }
     const [{ is_admin: platformAdmin }] = await this.prisma.withContext({ tenantId: null, userId: ctx.userId }, (tx) => tx.$queryRaw<{ is_admin: boolean }[]>`SELECT platform_is_admin() AS is_admin`);
