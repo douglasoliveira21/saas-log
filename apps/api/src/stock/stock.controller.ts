@@ -5,7 +5,6 @@ import {
   ArrayMaxSize, IsArray, IsEnum, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested,
 } from 'class-validator';
 import { AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
-import { InventoryService } from './inventory.service';
 import { StockService } from './stock.service';
 
 const MAXQ = 1_000_000;
@@ -62,25 +61,10 @@ class MovementsQuery {
   @IsOptional() @IsUUID() cursor?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit?: number;
 }
-class CreateCountDto {
-  @IsUUID() warehouseId: string;
-  @IsString() @IsNotEmpty() @MaxLength(120) name: string;
-  @IsOptional() @IsArray() @ArrayMaxSize(5000) @IsUUID('all', { each: true }) productIds?: string[];
-}
-class CountEntry {
-  @IsOptional() @IsUUID() productId?: string;
-  @IsOptional() @IsString() @MaxLength(60) code?: string;
-  @IsInt() @Min(0) @Max(MAXQ) countedQty: number;
-}
-class CountEntriesDto {
-  @IsArray() @ArrayMaxSize(1000) @ValidateNested({ each: true }) @Type(() => CountEntry) entries: CountEntry[];
-}
-
 @Controller()
 export class StockController {
   constructor(
     private readonly stock: StockService,
-    private readonly inv: InventoryService,
   ) {}
 
   @Get('stock/overview') @RequirePermissions('stock.view')
@@ -118,26 +102,4 @@ export class StockController {
 
   @Post('stock/reservations/:id/consume') @RequirePermissions('stock.move')
   consume(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.stock.consume(ctx, id); }
-
-  // Inventário
-  @Get('inventory/counts') @RequirePermissions('stock.view')
-  counts(@CurrentAuth() ctx: AuthContext) { return this.inv.list(ctx); }
-
-  @Post('inventory/counts') @RequirePermissions('inventory.count')
-  createCount(@CurrentAuth() ctx: AuthContext, @Body() dto: CreateCountDto) { return this.inv.create(ctx, dto); }
-
-  @Get('inventory/counts/:id') @RequirePermissions('stock.view')
-  count(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.inv.detail(ctx, id); }
-
-  @Put('inventory/counts/:id/items') @RequirePermissions('inventory.count')
-  enter(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CountEntriesDto) { return this.inv.enterCounts(ctx, id, dto.entries); }
-
-  @Post('inventory/counts/:id/submit') @RequirePermissions('inventory.count')
-  submit(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.inv.submit(ctx, id); }
-
-  @Post('inventory/counts/:id/approve') @RequirePermissions('stock.approve')
-  approve(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.inv.approve(ctx, id); }
-
-  @Post('inventory/counts/:id/reject') @RequirePermissions('stock.approve')
-  reject(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.inv.reject(ctx, id); }
 }

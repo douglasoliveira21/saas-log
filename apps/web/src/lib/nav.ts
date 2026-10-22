@@ -1,5 +1,5 @@
 import {
-  BarChart3, Building2, ClipboardCheck, CreditCard, Handshake, LayoutDashboard, type LucideIcon, Package, PackageSearch,
+  BarChart3, Building2, CreditCard, Handshake, LayoutDashboard, type LucideIcon, Package, PackageSearch,
   Navigation, Percent, Plug, ReceiptText, Route, ScrollText, Settings2, ShieldCheck, ShoppingCart, Store, Truck, Users, Wallet, Warehouse,
 } from 'lucide-react';
 
@@ -27,7 +27,6 @@ export const NAV: NavItem[] = [
 
   { href: '/produtos', label: 'Produtos e catálogo', icon: Package, group: 'Suprimentos', permission: 'products.view', implemented: true },
   { href: '/estoque', label: 'Estoque', icon: Warehouse, group: 'Suprimentos', permission: 'stock.view', implemented: true },
-  { href: '/inventario', label: 'Inventário', icon: ClipboardCheck, group: 'Suprimentos', permission: 'stock.view', implemented: true },
   { href: '/compras', label: 'Compras', icon: PackageSearch, group: 'Suprimentos', permission: 'purchases.view', implemented: true },
   { href: '/fornecedores', label: 'Fornecedores', icon: Handshake, group: 'Suprimentos', permission: 'suppliers.view', implemented: true },
 

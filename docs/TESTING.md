@@ -16,7 +16,6 @@ Pré-requisito do e2e: PostgreSQL acessível em `DIRECT_URL` (padrão: `npm run 
 - Concorrência: 15 reservas simultâneas com 10 em estoque (exatamente 10 passam), 15 saídas simultâneas (nunca negativa), transferências opostas simultâneas (sem deadlock/500).
 - Idempotência: mesmo evento/reserva repetido em paralelo gera um único efeito; consumo/liberação ocorrem uma vez; estorno único.
 - Banco: razão imutável, CHECK de disponível negativo.
-- Inventário: contagem por código de barras → aprovação com ajuste auditável; conflito com reservas não aplica nada; aprovador precisa de permissão.
 - Importação CSV: simulação, 422 com erros, saldo inicial auditável, reimportação, permissão de saldo inicial.
 - Isolamento entre tenants (produtos, movimentos, reservas, estornos, fornecedores), permissões, validação de CNPJ/CPF e pendência fiscal.
 - Unitários: parser de CSV, números BR, CPF.

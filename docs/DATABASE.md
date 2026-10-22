@@ -19,7 +19,7 @@ Fonte da verdade: `apps/api/prisma/schema.prisma` + migrations em `apps/api/pris
 | `stock_balances` | RLS + CHECKs | físico/reservado/bloqueado por produto×depósito; disponível nunca negativo |
 | `stock_movements` | RLS, append-only | razão com saldo antes/depois, chave idempotente, estorno único |
 | `stock_reservations` | RLS | ACTIVE/RELEASED/CONSUMED, chave idempotente |
-| `inventory_counts`, `inventory_count_items` | RLS | contagem com retrato do sistema e divergência |
+| `inventory_counts`, `inventory_count_items` | RLS | contagem com retrato do sistema e divergência (recurso removido; tabelas mantidas) |
 | `customers`, `salespeople` | RLS | CPF/CNPJ único por tenant; vendedor pode ser vinculado a um usuário |
 | `sales_orders`, `sales_order_items` | RLS + CHECKs | numeração por tenant; preços/descontos em decimais de 2 casas; reserva por item |
 | `return_requests`, `return_items` | RLS, append-only | devoluções parciais/totais |

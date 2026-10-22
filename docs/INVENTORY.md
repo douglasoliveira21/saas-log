@@ -10,7 +10,9 @@
 - **Bloqueio**: `POST /stock/blocks` (permissão `stock.adjust`), reduz o disponível sem alterar o físico.
 - Estoque negativo não é permitido (ainda não existe fluxo de autorização para isso).
 
-## Inventário
+## Inventário (removido)
+> **Removido do produto:** a tela, as rotas (`/api/inventory/counts`), o serviço e a permissão `inventory.count` foram retirados porque não serão usados. As tabelas `inventory_counts` e `inventory_count_items` permanecem no banco (vazias de uso) para não perder histórico; o texto abaixo descreve o que existia.
+
 `OPEN → SUBMITTED → APPROVED | REJECTED`. Abertura grava o retrato do sistema; contagem por produto ou leitura de código de barras/SKU; relatório de divergência. Aprovação (`stock.approve`) gera um `ADJUSTMENT` por divergência *contra o saldo atual*, tudo numa transação: se conflitar com reservas/bloqueios, nada é aplicado. Hoje não há exigência de que o aprovador seja outra pessoa (configuração prevista).
 
 ## Importação por planilha

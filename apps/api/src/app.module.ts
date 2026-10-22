@@ -15,7 +15,6 @@ import { StructureController } from './structure/structure.controller';
 import { StructureService } from './structure/structure.service';
 import { CatalogController } from './catalog/catalog.controller';
 import { CatalogService } from './catalog/catalog.service';
-import { InventoryService } from './stock/inventory.service';
 import { StockController } from './stock/stock.controller';
 import { StockService } from './stock/stock.service';
 import { CommissionsService } from './commissions/commissions.service';
@@ -93,7 +92,6 @@ class HealthController {
     AuditService,
     CatalogService,
     StockService,
-    InventoryService,
     CustomersService,
     SettingsService,
     CommissionsService,

@@ -180,41 +180,6 @@ describe('Fase 2 — catálogo, estoque, reservas, inventário e importação', 
     });
   });
 
-  describe('inventário', () => {
-    it('contagem por código de barras → envio → aprovação gera ajustes auditáveis', async () => {
-      const barcode = `789${Date.now().toString().slice(-10)}`;
-      const p1 = await newProduct(A, { barcode });
-      const p2 = await newProduct(A);
-      await entry(A, p1, 10).expect(201);
-      await entry(A, p2, 5).expect(201);
-      const operator = await loginAs(A, 'stock_operator');
-      const manager = await loginAs(A, 'ops_manager');
-      const c = (await operator.post('/api/inventory/counts').set(H).send({ warehouseId: A.wh1, name: `Ciclo ${uid()}` }).expect(201)).body;
-      await operator.put(`/api/inventory/counts/${c.id}/items`).set(H).send({ entries: [{ code: barcode, countedQty: 8 }, { productId: p2, countedQty: 5 }] }).expect(200);
-      await operator.post(`/api/inventory/counts/${c.id}/submit`).set(H).expect(201);
-      await operator.post(`/api/inventory/counts/${c.id}/approve`).set(H).expect(403);
-      const report = (await operator.get(`/api/inventory/counts/${c.id}`).expect(200)).body;
-      expect(report.items.find((i: any) => i.productId === p1).divergence).toBe(-2);
-      expect((await manager.post(`/api/inventory/counts/${c.id}/approve`).set(H).expect(201)).body.adjusted).toBe(1);
-      await manager.post(`/api/inventory/counts/${c.id}/approve`).set(H).expect(409);
-      expect(await balance(A, p1)).toMatchObject({ onHand: 8 });
-      expect(await balance(A, p2)).toMatchObject({ onHand: 5 });
-      const mv = (await A.owner.get(`/api/stock/movements?productId=${p1}`).expect(200)).body.items;
-      expect(mv[0]).toMatchObject({ type: 'ADJUSTMENT', quantity: -2, balanceBefore: 10, balanceAfter: 8 });
-    });
-
-    it('aprovação é recusada (e nada é aplicado) se a contagem conflita com reservas', async () => {
-      const p = await newProduct(A);
-      await entry(A, p, 10).expect(201);
-      await A.owner.post('/api/stock/reservations').set(H).send({ productId: p, warehouseId: A.wh1, quantity: 8, idempotencyKey: `r-${uid()}` }).expect(201);
-      const c = (await A.owner.post('/api/inventory/counts').set(H).send({ warehouseId: A.wh1, name: `Conf ${uid()}`, productIds: [p] }).expect(201)).body;
-      await A.owner.put(`/api/inventory/counts/${c.id}/items`).set(H).send({ entries: [{ productId: p, countedQty: 3 }] }).expect(200);
-      await A.owner.post(`/api/inventory/counts/${c.id}/submit`).set(H).expect(201);
-      await A.owner.post(`/api/inventory/counts/${c.id}/approve`).set(H).expect(409);
-      expect(await balance(A, p)).toMatchObject({ onHand: 10 });
-    });
-  });
-
   describe('importação por planilha', () => {
     const csv = (lines: string[]) => ['sku;nome;codigo_barras;categoria;custo;preco_venda;estoque_minimo;ncm;deposito;saldo_inicial', ...lines].join('\n');
 

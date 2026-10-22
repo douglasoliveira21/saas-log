@@ -19,7 +19,6 @@ export const PERMISSIONS = {
   'stock.move': 'Registrar entradas, saídas, transferências e reservas',
   'stock.adjust': 'Ajustar e estornar movimentos de estoque',
   'stock.approve': 'Aprovar inventários e ajustes',
-  'inventory.count': 'Criar e lançar contagens de inventário',
   'customers.view': 'Consultar clientes',
   'customers.manage': 'Criar e editar clientes',
   'sales.view': 'Consultar os próprios pedidos de venda',
@@ -78,7 +77,7 @@ export const SYSTEM_ROLES: SystemRoleDef[] = [
     name: 'Gerente operacional',
     permissions: [
       ...operational, 'warehouse.manage', 'products.manage', 'suppliers.view', 'suppliers.manage', 'stock.move', 'stock.adjust', 'stock.approve',
-      'inventory.count', ...salesRead, 'sales.fulfill', 'sales.return', 'purchases.view', 'purchases.create', 'purchases.approve', 'purchases.receive', 'integrations.view', 'pricing.view', 'fiscal.view', 'fiscal.import', 'logistics.view', 'logistics.manage', 'routes.view', 'routes.manage', 'reports.view',
+      ...salesRead, 'sales.fulfill', 'sales.return', 'purchases.view', 'purchases.create', 'purchases.approve', 'purchases.receive', 'integrations.view', 'pricing.view', 'fiscal.view', 'fiscal.import', 'logistics.view', 'logistics.manage', 'routes.view', 'routes.manage', 'reports.view',
     ],
   },
   {
@@ -90,7 +89,7 @@ export const SYSTEM_ROLES: SystemRoleDef[] = [
   },
   { key: 'buyer', name: 'Comprador', permissions: [...operational, 'suppliers.view', 'suppliers.manage', 'purchases.view', 'purchases.create', 'fiscal.view', 'fiscal.import'] },
   { key: 'salesperson', name: 'Vendedor', permissions: [...operational, 'customers.view', 'customers.manage', 'sales.view', 'sales.create', 'commissions.view'] },
-  { key: 'stock_operator', name: 'Operador de estoque', permissions: [...operational, 'stock.move', 'inventory.count', 'sales.view', 'sales.view_all', 'sales.fulfill', 'purchases.view', 'purchases.receive', 'logistics.view'] },
+  { key: 'stock_operator', name: 'Operador de estoque', permissions: [...operational, 'stock.move', 'sales.view', 'sales.view_all', 'sales.fulfill', 'purchases.view', 'purchases.receive', 'logistics.view'] },
   { key: 'shipper', name: 'Expedidor', permissions: [...operational, 'stock.move', 'sales.view', 'sales.view_all', 'sales.fulfill', 'logistics.view', 'logistics.manage', 'routes.view', 'routes.manage'] },
   { key: 'driver', name: 'Motorista', permissions: ['delivery.perform'] },
   { key: 'finance', name: 'Financeiro', permissions: ['company.view', 'products.view', 'suppliers.view', ...salesRead, 'purchases.view', 'commissions.view', 'pricing.view', 'finance.view', 'finance.manage', 'finance.reconcile', 'reports.view', 'reports.export'] },
