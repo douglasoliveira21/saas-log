@@ -6,6 +6,8 @@ import { api } from '@/lib/api';
 import { brl, dateBr, PURCHASE_STATUS } from '@/lib/format';
 import { useUi, PageHeader, Alert, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
+import { SuggestionsTab } from './suggestions-tab';
+import { RfqTab } from './rfq-tab';
 
 interface Row { id: string; number: number; status: string; total: string; expectedDate: string | null; createdAt: string; supplier: { legalName: string }; warehouse: { code: string } }
 interface Detail extends Row {
@@ -34,6 +36,7 @@ export default function ComprasPage() {
   const [form, setForm] = useState<{ id?: string } | null>(null);
   const [meta, setMeta] = useState({ supplierId: '', warehouseId: '', freight: '', expectedDate: '' });
   const [lines, setLines] = useState<Line[]>([{ productId: '', quantity: '1', unitCost: '' }]);
+  const [tab, setTab] = useState<'ordens' | 'sugestao' | 'cotacoes'>('ordens');
   const [recv, setRecv] = useState<Record<string, string>>({});
   const [recvLot, setRecvLot] = useState<Record<string, { lot?: string; exp?: string; loc?: string }>>({});
 
@@ -85,6 +88,10 @@ export default function ComprasPage() {
       <PageHeader title="Compras" description={<>Ordens até o limite configurado são aprovadas na hora; acima dele, aguardam alçada. A conferência com o XML da nota está em Fiscal e as contas a pagar, em Financeiro.</>} actions={<>
           {can('purchases.create') && <button className="btn primary" onClick={() => startForm()} disabled={!suppliers.length || !whs.length}><Plus aria-hidden />Ordem de compra</button>}
         </>} />
+      <div className="tabs" role="tablist">{([['ordens', 'Ordens de compra'], ['sugestao', 'Sugestão de compra'], ['cotacoes', 'Cotações']] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`tab ${tab === k ? 'active' : ''}`} onClick={() => setTab(k)}>{l}</button>)}</div>
+      {tab === 'sugestao' && <SuggestionsTab canCreate={can('purchases.create')} onCreated={load} />}
+      {tab === 'cotacoes' && <RfqTab canCreate={can('purchases.create')} onCreated={load} />}
+      {tab === 'ordens' && <>
       {error && <Alert kind="error">{error}</Alert>}
       {ok && <Alert kind="ok">{ok}</Alert>}
       {!suppliers.length && can('purchases.create') && <div className="alert">Cadastre um fornecedor para criar ordens de compra.</div>}
@@ -175,6 +182,7 @@ export default function ComprasPage() {
           </>}
         </section>
       )}
+      </>}
     </>
   );
 }

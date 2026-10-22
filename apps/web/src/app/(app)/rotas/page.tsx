@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { brl, dateBr, formatPhone } from '@/lib/format';
 import { routeMapUrl } from '@/lib/maps';
 import { useSession } from '@/lib/session';
+import { RouteFleetCard } from './fleet-card';
 
 interface Driver { id: string; name: string; phone: string | null; vehicle: string | null; plate: string | null; active: boolean; openRoutes: number }
 interface Eligible { id: string; number: number; status: string; total: string; customerName: string; customerPhone: string | null; address: string; zipCode: string | null; city: string | null; state: string | null; addressComplete: boolean; dispatchDate: string | null }
@@ -217,6 +218,7 @@ export default function RotasPage() {
                   <button className="btn ghost" onClick={() => setDetail(null)}>Fechar</button>
                 </div>
               </div>
+              <RouteFleetCard routeId={detail.id} manage={manage} editable={editable} />
               <p className="muted" style={{ marginTop: 0 }}>Motorista: <strong>{detail.driver.name}</strong>{detail.driver.vehicle || detail.driver.plate ? ` · ${[detail.driver.vehicle, detail.driver.plate].filter(Boolean).join(' ')}` : ''}{detail.notes ? ` · ${detail.notes}` : ''}{detail.cancelReason ? ` · Cancelada: ${detail.cancelReason}` : ''}</p>
               <div className="grid cols-4" style={{ marginBottom: 12 }}>
                 <StatCard label="Paradas" value={detail.totals.stops - detail.totals.cancelled} />

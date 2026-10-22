@@ -59,7 +59,12 @@ export class PurchasingService {
   }
 
   create(ctx: AuthContext, dto: PurchaseInput) {
-    return this.prisma.withContext(ctx, async (tx) => {
+    return this.prisma.withContext(ctx, (tx) => this.createInTx(tx, ctx, dto));
+  }
+
+  /** Cria a ordem dentro de uma transação já aberta (para gerar várias ordens de uma vez, de uma sugestão ou cotação). */
+  async createInTx(tx: Tx, ctx: AuthContext, dto: PurchaseInput) {
+    {
       const data = await this.prepare(tx, ctx, dto);
       const number = await this.settings.nextNumber(tx, ctx, 'purchase_order');
       const po = await tx.purchaseOrder.create({
@@ -71,7 +76,7 @@ export class PurchasingService {
       await tx.purchaseOrderItem.createMany({ data: data.rows.map((r) => ({ ...r, orderId: po.id })) });
       await this.audit.record(tx, ctx, { action: 'purchase.created', entity: 'purchase_order', entityId: po.id, metadata: { number, total: data.total } });
       return { id: po.id, number };
-    });
+    }
   }
 
   update(ctx: AuthContext, id: string, dto: PurchaseInput) {

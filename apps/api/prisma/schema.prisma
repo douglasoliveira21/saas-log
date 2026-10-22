@@ -417,6 +417,7 @@ model Product {
   images              ProductImage[]
   channelItems        ChannelItem[]
   quoteItems QuoteItem[]
+  rfqItems RfqItem[]
   stockLots StockLot[]
   locationItems StockLocationItem[]
 
@@ -447,6 +448,7 @@ model Supplier {
   products        ProductSupplier[]
   purchaseOrders  PurchaseOrder[]
   fiscalDocuments FiscalDocument[]
+  rfqSuppliers RfqSupplier[]
 
   @@unique([tenantId, document])
   @@unique([tenantId, id])
@@ -1803,6 +1805,7 @@ model DeliveryRoute {
   number       Int
   routeDate    DateTime  @map("route_date") @db.Date
   driverId     String    @map("driver_id") @db.Uuid
+  vehicleId    String?   @map("vehicle_id") @db.Uuid
   status       String    @default("PLANNED") // PLANNED | IN_PROGRESS | COMPLETED | CANCELLED
   notes        String?
   startedAt    DateTime? @map("started_at")
@@ -1814,6 +1817,7 @@ model DeliveryRoute {
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
   driver Driver         @relation(fields: [tenantId, driverId], references: [tenantId, id])
+  vehicle Vehicle? @relation(fields: [tenantId, vehicleId], references: [tenantId, id])
   stops  DeliveryStop[]
 
   @@unique([tenantId, number])
@@ -2137,4 +2141,115 @@ model OrderCheck {
 
   @@index([tenantId, orderId])
   @@map("order_checks")
+}
+
+/// Cotação de compra entre fornecedores (RFQ): itens a comprar, propostas por fornecedor e as ordens geradas.
+model RfqRequest {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  number      Int
+  warehouseId String    @map("warehouse_id") @db.Uuid
+  status      String    @default("OPEN") // OPEN | CLOSED | CANCELLED
+  neededBy    DateTime? @map("needed_by") @db.Date
+  notes       String?
+  orderIds    Json      @default("[]") @map("order_ids")
+  createdById String?   @map("created_by_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+  closedAt    DateTime? @map("closed_at")
+
+  items     RfqItem[]
+  suppliers RfqSupplier[]
+
+  @@unique([tenantId, number])
+  @@unique([tenantId, id])
+  @@index([tenantId, status])
+  @@map("rfq_requests")
+}
+
+model RfqItem {
+  id        String @id @default(uuid()) @db.Uuid
+  tenantId  String @map("tenant_id") @db.Uuid
+  rfqId     String @map("rfq_id") @db.Uuid
+  productId String @map("product_id") @db.Uuid
+  quantity  Int
+
+  rfq     RfqRequest @relation(fields: [tenantId, rfqId], references: [tenantId, id])
+  product Product    @relation(fields: [tenantId, productId], references: [tenantId, id])
+
+  @@unique([rfqId, productId])
+  @@unique([tenantId, id])
+  @@map("rfq_items")
+}
+
+model RfqSupplier {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  rfqId         String    @map("rfq_id") @db.Uuid
+  supplierId    String    @map("supplier_id") @db.Uuid
+  leadTimeDays  Int?      @map("lead_time_days")
+  freight       Decimal   @default(0) @db.Decimal(14, 2)
+  paymentTerms  String?   @map("payment_terms")
+  notes         String?
+  respondedAt   DateTime? @map("responded_at")
+
+  rfq      RfqRequest @relation(fields: [tenantId, rfqId], references: [tenantId, id])
+  supplier Supplier   @relation(fields: [tenantId, supplierId], references: [tenantId, id])
+  prices   RfqPrice[]
+
+  @@unique([rfqId, supplierId])
+  @@unique([tenantId, id])
+  @@map("rfq_suppliers")
+}
+
+model RfqPrice {
+  id            String  @id @default(uuid()) @db.Uuid
+  tenantId      String  @map("tenant_id") @db.Uuid
+  rfqSupplierId String  @map("rfq_supplier_id") @db.Uuid
+  productId     String  @map("product_id") @db.Uuid
+  unitCost      Decimal @map("unit_cost") @db.Decimal(14, 4)
+
+  rfqSupplier RfqSupplier @relation(fields: [tenantId, rfqSupplierId], references: [tenantId, id])
+
+  @@unique([rfqSupplierId, productId])
+  @@map("rfq_prices")
+}
+
+/// Veículo da frota (capacidade para conferir a carga de cada viagem).
+model Vehicle {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  plate       String
+  description String
+  kind        String   @default("VAN") // MOTORCYCLE | VAN | TRUCK | OTHER
+  capacityKg  Int?     @map("capacity_kg")
+  active      Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  routes DeliveryRoute[]
+  costs  FleetCost[]
+
+  @@unique([tenantId, plate])
+  @@unique([tenantId, id])
+  @@map("vehicles")
+}
+
+/// Custo de operação da frota (combustível, pedágio, manutenção, motorista...), do veículo e, se for o caso, de uma viagem (rota).
+model FleetCost {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  vehicleId String   @map("vehicle_id") @db.Uuid
+  routeId   String?  @map("route_id") @db.Uuid
+  kind      String // FUEL | TOLL | MAINTENANCE | DRIVER | INSURANCE | OTHER
+  amount    Decimal  @db.Decimal(14, 2)
+  date      DateTime @db.Date
+  note      String?
+  createdById String? @map("created_by_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  vehicle Vehicle @relation(fields: [tenantId, vehicleId], references: [tenantId, id])
+
+  @@index([tenantId, vehicleId, date])
+  @@index([tenantId, routeId])
+  @@map("fleet_costs")
 }
