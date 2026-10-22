@@ -71,3 +71,14 @@ Relatórios: vendas, estoque, contas a receber, contas a pagar, comissões, liqu
 | DRE contábil, tributos e fechamento | Contador; motor fiscal validado |
 | Rateio entre centros de custo, orçamento × realizado, transferência entre contas | Não implementados |
 | Notificações de vencimento | Módulo de notificações (pendente) |
+
+## Inadimplência de clientes (bloqueio por dias de atraso)
+**Onde:** Financeiro → aba **Inadimplência** (`GET /api/finance/delinquency`).
+
+**Regra:** o usuário define **após quantos dias de atraso** o cliente é bloqueado (`finance.blockAfterDays`, de 1 a 365; **0 = desligado**, que é o padrão para não surpreender quem já usa). O atraso é do **título a receber em aberto ou parcial mais antigo** do cliente (dias desde o vencimento). Com 10, um título vencido há 10 dias ou mais bloqueia. Título pago, cancelado ou a pagar **não** conta; pagamento parcial reduz o valor em atraso.
+
+**Efeito:** cliente **bloqueado** não consegue **criar, editar nem enviar** pedido de venda (HTTP 422 com a mensagem: títulos, valor e dias). Rascunho criado antes do bloqueio também não segue. Pedidos **importados de marketplace** não são bloqueados (já vêm pagos no canal).
+
+**Situações:** *Atenção* (com atraso, abaixo do prazo), *Bloqueado*, *Liberado* (liberação manual por 1 a 90 dias, com **motivo obrigatório**; vale até a data mesmo que surjam novos atrasos; expira sozinha; pode ser cancelada). Liberar/cancelar exige `finance.approve`; configurar exige `finance.manage`; ver exige `finance.view`. Tudo fica na auditoria.
+
+**Não implementado:** bloqueio manual sem atraso, aviso/cobrança automática por e-mail ou WhatsApp, limite de crédito, juros/multa por atraso e bloqueio por valor mínimo em atraso.

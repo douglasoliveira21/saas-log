@@ -54,6 +54,7 @@ import { StatementsService } from './finance/statements.service';
 import { LogisticsController } from './logistics/logistics.controller';
 import { LogisticsService } from './logistics/logistics.service';
 import { OrdersDashboardController, OrdersDashboardService } from './sales/orders-dashboard';
+import { DelinquencyController, DelinquencyService } from './finance/delinquency';
 import { ReportsController } from './reports/reports.controller';
 import { ReportsService } from './reports/reports.service';
 import { UsersController, UsersService } from './users/users.service';
@@ -79,7 +80,7 @@ class HealthController {
       skipIf: () => process.env.NODE_ENV === 'test',
     }),
   ],
-  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, FinanceController, ReportsController, OrdersDashboardController, LogisticsController, BillingController, PlatformController, ObservabilityController, LookupController, BrandingController, ProductImagesController, MediaController, ProductQualityController, ChannelProductsController],
+  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, FinanceController, ReportsController, DelinquencyController, OrdersDashboardController, LogisticsController, BillingController, PlatformController, ObservabilityController, LookupController, BrandingController, ProductImagesController, MediaController, ProductQualityController, ChannelProductsController],
   providers: [
     AuthService,
     StructureService,
@@ -110,6 +111,7 @@ class HealthController {
     StatementsService,
     MarketplaceFinanceService,
     ReportsService,
+    DelinquencyService,
     OrdersDashboardService,
     LogisticsService,
     BillingService,

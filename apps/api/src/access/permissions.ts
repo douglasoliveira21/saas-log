@@ -45,7 +45,7 @@ export const PERMISSIONS = {
   'fiscal.emit': 'Preparar e transmitir documentos fiscais de saída',
   'finance.view': 'Consultar contas a pagar/receber, caixa e DRE',
   'finance.manage': 'Lançar títulos e registrar baixas/estornos; cadastros financeiros',
-  'finance.approve': 'Aprovar pagamentos acima do limite configurado',
+  'finance.approve': 'Aprovar pagamentos acima do limite configurado e liberar clientes bloqueados por inadimplência',
   'finance.reconcile': 'Importar extratos e conciliar bancos e marketplaces',
   'reports.view': 'Consultar a central de relatórios',
   'reports.export': 'Exportar relatórios (CSV/XLSX)',

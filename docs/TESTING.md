@@ -102,6 +102,9 @@ Servidor **simulado** conforme as páginas oficiais lidas; prova o nosso código
 - Pedidos: paginação por `meta.links.next`, só o status configurado como pago importa, `paid` não listado não importa por engano, SKU sem produto pede atenção, cancelado registrado, repetir não duplica.
 - Catálogo: varredura paginada de SKUs, GTIN inválido descartado, sem título descartado; escrita (preço, estoque, publicação) segue NOT_IMPLEMENTED e nada é enviado.
 
+## Inadimplência (`delinquency.e2e-spec.ts`, 8 testes)
+Desligado por padrão; validação (0–365) e permissões; só atenção abaixo do prazo e bloqueio no prazo (criar, editar e enviar pedido, inclusive rascunho antigo); pagamento parcial e total; título cancelado/a pagar ignorados; liberação manual com motivo/permissão/expiração/revogação e auditoria; desligar libera; isolamento entre empresas; resumo ordenado.
+
 ## Não coberto ainda
 Throttling (desligado em `NODE_ENV=test`), UI (sem testes de componente/E2E de navegador), **qualquer chamada à API real do Mercado Livre ou da SEFAZ**, conformidade do leiaute da NF-e e a API real dos Correios, formatos reais de extrato/relatório de liquidação, UI gateway de pagamento, MFA, carga/desempenho e pentest.
 

@@ -13,6 +13,7 @@ export interface TenantSettings {
   'sales.maxDiscountPct': number;
   'purchases.approvalLimit': number;
   'finance.paymentApprovalLimit': number;
+  'finance.blockAfterDays': number;
   'orders.shippingSlaHours': number;
   'orders.deliverySlaDays': number;
 }
@@ -23,6 +24,7 @@ export const DEFAULT_SETTINGS: TenantSettings = {
   'sales.maxDiscountPct': 10,
   'purchases.approvalLimit': 5000,
   'finance.paymentApprovalLimit': 10000,
+  'finance.blockAfterDays': 0,
   'orders.shippingSlaHours': 24,
   'orders.deliverySlaDays': 7,
 };
@@ -39,6 +41,9 @@ function validate(key: string, value: unknown): unknown {
     case 'finance.paymentApprovalLimit':
       if (typeof value === 'number' && value >= 0 && value <= 1e9) return value;
       throw new BadRequestException('Limite de aprovação inválido.');
+    case 'finance.blockAfterDays':
+      if (typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 365) return value;
+      throw new BadRequestException('Dias para bloqueio por inadimplência: de 0 (desligado) a 365.');
     case 'orders.shippingSlaHours':
       if (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 720) return value;
       throw new BadRequestException('Prazo de envio deve ser de 1 a 720 horas.');

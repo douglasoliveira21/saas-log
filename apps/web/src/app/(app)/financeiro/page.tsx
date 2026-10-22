@@ -6,8 +6,9 @@ import { api } from '@/lib/api';
 import { brl, dateBr } from '@/lib/format';
 import { useUi, PageHeader, Alert } from '@/components/ui';
 import { useSession } from '@/lib/session';
+import { Delinquency } from './delinquency';
 
-type Tab = 'pagar' | 'receber' | 'caixa' | 'dre' | 'contas' | 'banco' | 'marketplaces';
+type Tab = 'pagar' | 'receber' | 'inadimplencia' | 'caixa' | 'dre' | 'contas' | 'banco' | 'marketplaces';
 
 interface Title { id: string; description: string; counterpartyName: string | null; dueDate: string; amount: string; outstanding: string; status: string; overdue: boolean; daysOverdue: number; installmentNo: number; installmentTotal: number; origin: string; approvedAt: string | null; category?: { name: string } | null }
 interface Account { id: string; name: string; kind: string; active: boolean; balance: string; bankName?: string | null }
@@ -119,7 +120,7 @@ export default function FinanceiroPage() {
       }, ''));
   };
 
-  const tabs: [Tab, string, boolean][] = [['pagar', 'A pagar', true], ['receber', 'A receber', true], ['caixa', 'Fluxo de caixa', true], ['dre', 'DRE gerencial', true], ['contas', 'Contas', true], ['banco', 'Conciliação bancária', reconcile], ['marketplaces', 'Marketplaces', reconcile]];
+  const tabs: [Tab, string, boolean][] = [['pagar', 'A pagar', true], ['receber', 'A receber', true], ['inadimplencia', 'Inadimplência', true], ['caixa', 'Fluxo de caixa', true], ['dre', 'DRE gerencial', true], ['contas', 'Contas', true], ['banco', 'Conciliação bancária', reconcile], ['marketplaces', 'Marketplaces', reconcile]];
 
   return (
     <>
@@ -241,6 +242,8 @@ export default function FinanceiroPage() {
           )}
         </div>
       )}
+
+      {tab === 'inadimplencia' && <Delinquency canConfigure={manage} canRelease={can('finance.approve')} />}
 
       {tab === 'contas' && (
         <div className="card"><div className="table-wrap"><table>

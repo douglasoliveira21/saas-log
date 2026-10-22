@@ -657,6 +657,10 @@ model Customer {
   city              String?
   state             String?      @db.Char(2)
   active            Boolean      @default(true)
+  /// Liberação manual do bloqueio por inadimplência (vale até a data informada).
+  blockReleasedUntil  DateTime?  @map("block_released_until")
+  blockReleaseReason  String?    @map("block_release_reason")
+  blockReleasedById   String?    @map("block_released_by_id") @db.Uuid
   createdAt         DateTime     @default(now()) @map("created_at")
   updatedAt         DateTime     @updatedAt @map("updated_at")
 

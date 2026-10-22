@@ -1,3 +1,4 @@
+import { DelinquencyService } from '../finance/delinquency';
 import { assertWithinPlan } from '../billing/limits';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { OrderStatus, Prisma, SalesChannel } from '@prisma/client';
@@ -36,6 +37,7 @@ export class SalesService {
     private readonly stock: StockService,
     private readonly commissions: CommissionsService,
     private readonly settings: SettingsService,
+    private readonly delinquency: DelinquencyService,
   ) {}
 
   // ───────────── consulta ─────────────
@@ -124,6 +126,7 @@ export class SalesService {
       const order = await this.lock(tx, ctx, id);
       if (order.status !== 'DRAFT') throw new ConflictException(`Operação inválida: o pedido está "${order.status}".`);
       if (!order.items.length) throw new BadRequestException('O pedido não possui itens.');
+      await this.delinquency.assertNotBlocked(tx, ctx.tenantId!, order.customerId);
       const cfg = await this.settings.load(tx, ctx);
       const reasons: string[] = [];
       for (const i of order.items) {
@@ -317,6 +320,7 @@ export class SalesService {
       tx.warehouse.findFirst({ where: { id: dto.warehouseId, tenantId: ctx.tenantId!, active: true } }),
     ]);
     if (!customer) throw new BadRequestException('Cliente inválido ou inativo.');
+    await this.delinquency.assertNotBlocked(tx, ctx.tenantId!, customer.id);
     if (!wh) throw new BadRequestException('Depósito inválido ou inativo.');
     if (!dto.items.length) throw new BadRequestException('Inclua ao menos um item.');
     if (new Set(dto.items.map((i) => i.productId)).size !== dto.items.length) throw new BadRequestException('Produto repetido no pedido: some as quantidades em uma linha.');
