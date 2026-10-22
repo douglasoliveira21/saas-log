@@ -46,7 +46,7 @@ export async function buildFiscalPreview(tx: Tx, tenantId: string, orderId: stri
     if (!config || config.status !== 'APPROVED') add('WARNING', 'FISCAL_CONFIG', 'A configuração fiscal do estabelecimento ainda não foi validada pelo contador (Fiscal).');
     else if (!config.documentTypes.includes(docType === 'NFE' ? 'NFE' : 'NFCE')) add('WARNING', 'DOC_TYPE_DISABLED', `${docType === 'NFE' ? 'NF-e' : 'NFC-e'} não está habilitada na configuração fiscal deste estabelecimento.`);
     if (!cert) add('WARNING', 'CERTIFICATE', 'O estabelecimento não tem certificado digital A1 ativo.');
-    add('INFO', 'NOT_ISSUED', 'Este é um espelho para conferência: a transmissão à SEFAZ ainda não está disponível neste sistema, então não há chave de acesso, protocolo nem valor fiscal.');
+    add('INFO', 'NOT_ISSUED', 'Este é um espelho para conferência: a nota só existe (com chave de acesso e valor fiscal) depois de preparada e transmitida em Fiscal → Notas de saída, pelo provedor configurado.');
   }
   if (docType === 'NFE') {
     if (!cDoc) add('BLOCKER', 'RECIPIENT_DOC', 'NF-e exige CPF ou CNPJ do destinatário (cadastre no cliente).');

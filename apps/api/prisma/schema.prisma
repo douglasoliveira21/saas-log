@@ -1854,3 +1854,20 @@ model DeliveryProof {
   @@unique([tenantId, sha256])
   @@map("delivery_proofs")
 }
+
+/// Credenciais do provedor de emissão fiscal por estabelecimento (token cifrado; nunca devolvido pela API).
+model FiscalProviderCredential {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  establishmentId String   @map("establishment_id") @db.Uuid
+  provider        String // FOCUS_NFE
+  credsEnc        String   @map("creds_enc")
+  /// Últimos caracteres de cada token, só para o usuário reconhecer o que está salvo.
+  hintHomologacao String?  @map("hint_homologacao")
+  hintProducao    String?  @map("hint_producao")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, establishmentId])
+  @@map("fiscal_provider_credentials")
+}

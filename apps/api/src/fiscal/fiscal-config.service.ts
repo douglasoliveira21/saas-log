@@ -7,7 +7,8 @@ import { AuthContext } from '../common/auth';
 import { isValidCnpj, onlyDigits } from '../common/cnpj';
 import { CryptoService } from '../integrations/crypto.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { FISCAL_PROVIDER, FiscalProvider } from './fiscal-provider';
+import { FISCAL_PROVIDER, FiscalEnvironment, FiscalProvider } from './fiscal-provider';
+import { PROVIDERS, ProviderContextService, ProviderName, StoredCreds } from './fiscal-provider.router';
 
 type Tx = Prisma.TransactionClient;
 
@@ -40,6 +41,7 @@ export class FiscalConfigService {
     private readonly audit: AuditService,
     private readonly crypto: CryptoService,
     @Inject(FISCAL_PROVIDER) private readonly provider: FiscalProvider,
+    private readonly pctx: ProviderContextService,
   ) {}
 
   private async establishment(tx: Tx, ctx: Pick<AuthContext, 'tenantId'>, id: string) {
@@ -149,8 +151,11 @@ export class FiscalConfigService {
     add('regime', 'Regime tributário da empresa', !!est.company.taxRegime, { detail: 'Defina o regime em Empresa e depósitos (validar com o contador).' });
     if (!est.company.taxRegime) questions.push('Qual é o regime tributário correto da empresa e desde quando?');
 
+    const pc = await this.pctx.resolve(tx, ctx.tenantId!, est.id, '55', (cfg.environment as FiscalEnvironment) ?? 'HOMOLOGACAO');
+    const providerManaged = (this.provider.numberingFor?.(pc) ?? this.provider.numbering ?? 'SYSTEM') === 'PROVIDER' && this.provider.isConfigured(pc);
     const certOk = !!cert && cert.notAfter.getTime() > Date.now();
-    add('certificate', 'Certificado digital A1 válido', certOk, { detail: cert ? 'Certificado vencido: envie um novo.' : 'Envie o certificado A1 (.pfx) do estabelecimento.' });
+    // Com provedor que assina por nós, o certificado A1 (e o CSC da NFC-e) ficam no painel dele; o nosso upload deixa de ser obrigatório.
+    add('certificate', providerManaged ? 'Certificado digital A1 (no provedor)' : 'Certificado digital A1 válido', providerManaged || certOk, { detail: providerManaged ? 'O certificado fica no painel do provedor.' : cert ? 'Certificado vencido: envie um novo.' : 'Envie o certificado A1 (.pfx) do estabelecimento.' });
     if (cert && certOk) {
       const days = Math.floor((cert.notAfter.getTime() - Date.now()) / 86_400_000);
       add('certificate_expiry', 'Certificado com mais de 30 dias de validade', days > 30, { detail: `Vence em ${days} dia(s).`, blocking: false, hom: false, prod: false });
@@ -174,7 +179,7 @@ export class FiscalConfigService {
     add('tax_rules', 'Regras tributárias aprovadas e vigentes', approvedRules > 0, { detail: 'O sistema não traz regras prontas: cadastre-as com o contador e aprove em Regras tributárias. Sem regra, o motor devolve pendência.' });
     if (approvedRules === 0) questions.push('Quais CFOP, CST/CSOSN e alíquotas se aplicam às nossas operações de venda e compra (por UF, NCM e regime)?');
 
-    add('provider', 'Integração de transmissão (SEFAZ/provedor)', this.provider.isConfigured(), { detail: 'Nenhum provedor de transmissão está configurado nesta instalação: a emissão não é possível (decisão de provedor/biblioteca pendente — ver docs/FISCAL-BRAZIL.md).' });
+    add('provider', 'Integração de transmissão (SEFAZ/provedor)', this.provider.isConfigured(pc), { detail: 'Nenhum provedor de transmissão está configurado para este estabelecimento: informe o token do provedor (ex.: Focus NFe) na aba Configuração. Sem isso a emissão não é possível (docs/FISCAL-PROVIDER.md).' });
     questions.push('Há operações com ST, DIFAL/FCP, benefício fiscal ou substituição tributária nos nossos produtos? (o motor ainda não calcula esses itens)');
     questions.push('Como a empresa deve tratar IBS/CBS na transição da Reforma Tributária e a partir de quando?');
 
@@ -185,6 +190,61 @@ export class FiscalConfigService {
       blockingForProduction: items.filter((i) => i.blocksProduction).map((i) => i.label),
       questionsForAccountant: questions,
     };
+  }
+
+  // ───────────── provedor de emissão (token por estabelecimento) ─────────────
+
+  /** Só diz O QUE está salvo (provedor e se há token por ambiente, com os últimos caracteres); o token nunca volta pela API. */
+  async getProvider(ctx: AuthContext, establishmentId: string) {
+    return this.prisma.withContext(ctx, async (tx) => {
+      await this.establishment(tx, ctx, establishmentId);
+      const row = await tx.fiscalProviderCredential.findFirst({ where: { tenantId: ctx.tenantId!, establishmentId } });
+      return {
+        available: Object.entries(PROVIDERS).map(([key, name]) => ({ key, name })),
+        provider: row?.provider ?? null, providerName: row ? PROVIDERS[row.provider as ProviderName] : null,
+        homologacao: { configured: !!row?.hintHomologacao, hint: row?.hintHomologacao ?? null }, producao: { configured: !!row?.hintProducao, hint: row?.hintProducao ?? null },
+      };
+    });
+  }
+
+  async setProvider(ctx: AuthContext, establishmentId: string, dto: { provider: ProviderName; tokenHomologacao?: string; tokenProducao?: string }) {
+    if (!(dto.provider in PROVIDERS)) throw new BadRequestException('Provedor desconhecido.');
+    const clean = (t?: string) => { const v = t?.trim(); if (v && (v.length < 8 || v.length > 200 || /\s/.test(v))) throw new BadRequestException('Token inválido (sem espaços, de 8 a 200 caracteres).'); return v || undefined; };
+    const th = clean(dto.tokenHomologacao); const tp = clean(dto.tokenProducao);
+    return this.prisma.withContext(ctx, async (tx) => {
+      await this.establishment(tx, ctx, establishmentId);
+      const prev = await tx.fiscalProviderCredential.findFirst({ where: { tenantId: ctx.tenantId!, establishmentId } });
+      const old = prev && prev.provider === dto.provider ? this.crypto.decrypt<StoredCreds>(ctx.tenantId!, ProviderContextService.aad(establishmentId), prev.credsEnc) : {};
+      const next: StoredCreds = { homologacao: th ?? old.homologacao, producao: tp ?? old.producao };
+      if (!next.homologacao && !next.producao) throw new BadRequestException('Informe ao menos um token.');
+      const hint = (t?: string) => (t ? '…' + t.slice(-4) : null);
+      const data = { provider: dto.provider, credsEnc: this.crypto.encrypt(ctx.tenantId!, ProviderContextService.aad(establishmentId), next), hintHomologacao: hint(next.homologacao), hintProducao: hint(next.producao) };
+      if (prev) await tx.fiscalProviderCredential.update({ where: { id: prev.id }, data });
+      else await tx.fiscalProviderCredential.create({ data: { tenantId: ctx.tenantId!, establishmentId, ...data } });
+      await this.audit.record(tx, ctx, { action: 'fiscal.provider_configured', entity: 'establishment', entityId: establishmentId, metadata: { provider: dto.provider, homologacao: !!next.homologacao, producao: !!next.producao } });
+      return { provider: dto.provider, homologacao: { configured: !!next.homologacao, hint: hint(next.homologacao) }, producao: { configured: !!next.producao, hint: hint(next.producao) } };
+    });
+  }
+
+  async clearProvider(ctx: AuthContext, establishmentId: string) {
+    return this.prisma.withContext(ctx, async (tx) => {
+      await this.establishment(tx, ctx, establishmentId);
+      const r = await tx.fiscalProviderCredential.deleteMany({ where: { tenantId: ctx.tenantId!, establishmentId } });
+      if (r.count) await this.audit.record(tx, ctx, { action: 'fiscal.provider_removed', entity: 'establishment', entityId: establishmentId });
+      return { removed: r.count > 0 };
+    });
+  }
+
+  /** Confere se o token do ambiente escolhido é aceito pelo provedor (não emite nada). */
+  async testProvider(ctx: AuthContext, establishmentId: string, environment?: FiscalEnvironment) {
+    const pc = await this.prisma.withContext(ctx, async (tx) => {
+      await this.establishment(tx, ctx, establishmentId);
+      const cfg = await this.ensureConfig(tx, ctx, establishmentId);
+      return this.pctx.resolve(tx, ctx.tenantId!, establishmentId, '55', environment ?? ((cfg.environment as FiscalEnvironment) ?? 'HOMOLOGACAO'));
+    });
+    if (!pc.providerName || !pc.token) return { ok: false, environment: pc.environment, message: 'Nenhum token salvo para este ambiente.' };
+    const r = this.provider.ping ? await this.provider.ping(pc) : { ok: false, message: 'O provedor não permite teste.' };
+    return { ...r, environment: pc.environment };
   }
 
   // ───────────── certificado A1 ─────────────

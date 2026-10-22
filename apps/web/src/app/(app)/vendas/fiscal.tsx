@@ -186,7 +186,7 @@ export function FiscalPreviewDialog({ orderId, docType, onClose }: { orderId: st
   const doc = p ? (view === 'NFE' ? <Danfe p={p} /> : <Cupom p={p} />) : null;
 
   return (
-    <Dialog wide title={`Documento fiscal do pedido ${p?.order.number ?? ''}`} description="Espelho para conferência. A emissão na SEFAZ ainda não está disponível neste sistema." onClose={onClose}>
+    <Dialog wide title={`Documento fiscal do pedido ${p?.order.number ?? ''}`} description="Espelho para conferência. A nota só vale depois de transmitida em Fiscal → Notas de saída." onClose={onClose}>
       <div className="modal-body fiscal-dlg">
         {error && <div className="alert error" role="alert">{error}</div>}
         {!p && !error && <p className="muted">Montando o documento…</p>}
@@ -209,6 +209,7 @@ export function FiscalPreviewDialog({ orderId, docType, onClose }: { orderId: st
       </div>
       <div className="modal-foot fiscal-noprint">
         <button className="btn" onClick={onClose}>Fechar</button>
+        <a className="btn" href="/fiscal">Ir para Notas de saída</a>
         <button className="btn primary" disabled={!p} onClick={() => window.print()}><Printer aria-hidden />Imprimir espelho</button>
       </div>
     </Dialog>

@@ -49,6 +49,7 @@ Fonte da verdade: `apps/api/prisma/schema.prisma` + migrations em `apps/api/pris
 | `bank_statement_lines` | RLS | extrato importado, único `(conta, fitid)`; uma baixa por linha |
 | `marketplace_settlements` | RLS | linhas do relatório de liquidação, únicas `(conexão, relatório, pedido)` |
 | `packagings`, `shipments`, `shipment_events` | RLS (eventos append-only) | expedição e rastreio manual |
+| `fiscal_provider_credentials` | RLS | token do provedor fiscal por estabelecimento (cifrado) |
 | `drivers`, `delivery_routes`, `delivery_stops`, `delivery_proofs` | RLS (comprovante só INSERT; 1 parada pendente por pedido) | rotas, motoristas e canhotos (docs/DELIVERY-ROUTES.md) |
 | `report_exports` | RLS | exportações grandes (conteúdo em `bytea`, expiram em 3 dias) |
 | `subscriptions` | RLS (somente SELECT ao runtime) | histórico de assinatura; escrita só por `platform_update_tenant` |

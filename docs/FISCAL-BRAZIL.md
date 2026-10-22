@@ -15,9 +15,11 @@
 | Preparação de NF-e de saída (dados, impostos pelo motor, validações) e numeração atômica | **Concluída** |
 | Máquina de estados de transmissão (autorizada/rejeitada/timeout/consulta, sem duplicidade) | **Concluída**, exercitada com um provedor **simulado** em testes |
 | Geração do XML da NF-e, assinatura digital, transmissão à SEFAZ, DANFE | **Não implementada** — depende do provedor/biblioteca (ADR-0008) e do certificado |
-| Cancelamento, Carta de Correção, inutilização, contingência, eventos | **Não implementados** |
+| Cancelamento | **Implementado via provedor** (prazos do estado/provedor) |
+| Carta de Correção, inutilização, contingência, outros eventos | **Não implementados** |
 | Verificação de assinatura/autenticidade do XML recebido; consulta de situação na SEFAZ; manifestação do destinatário; download automático (NSU) | **Não implementados** (requerem certificado e acesso ao serviço oficial) |
-| NFC-e, NFS-e, CT-e | **Não implementados** (arquitetura aceita novos tipos) |
+| NFC-e | **Implementada via provedor** (exige CSC no provedor e forma de pagamento) |
+| NFS-e, CT-e | **Não implementados** (arquitetura aceita novos tipos) |
 | Reforma Tributária (IBS/CBS) | O motor aceita qualquer código de tributo configurado pelo contador; **nenhum parâmetro oficial foi carregado** |
 
 ## Princípios e como foram aplicados

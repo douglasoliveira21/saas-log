@@ -1,4 +1,5 @@
-import { Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Post, Put, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsEmail, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateNested,
@@ -83,7 +84,18 @@ class CalcDto {
 class PrepareDto {
   @IsUUID() salesOrderId: string;
   @IsOptional() @IsUUID() establishmentId?: string;
+  /** 55 = NF-e, 65 = NFC-e. Sem valor, segue o que foi escolhido na venda. */
+  @IsOptional() @IsIn(['55', '65']) model?: '55' | '65';
+  @IsOptional() @IsIn(['CASH', 'CHECK', 'CREDIT', 'DEBIT', 'BOLETO', 'PIX', 'OTHER']) paymentMethod?: string;
 }
+class CancelDocDto { @IsString() @Length(15, 255) reason: string; }
+class ProviderDto {
+  @IsIn(['FOCUS_NFE']) provider: 'FOCUS_NFE';
+  @IsOptional() @IsString() @MaxLength(200) tokenHomologacao?: string;
+  @IsOptional() @IsString() @MaxLength(200) tokenProducao?: string;
+}
+class TestProviderDto { @IsOptional() @IsIn(['HOMOLOGACAO', 'PRODUCAO']) environment?: 'HOMOLOGACAO' | 'PRODUCAO'; }
+class FileQuery { @IsIn(['danfe', 'xml']) kind: 'danfe' | 'xml'; }
 class StatusQuery { @IsOptional() @IsString() @MaxLength(30) status?: string; }
 class ReconcileQuery { @IsOptional() @IsUUID() purchaseOrderId?: string; }
 
@@ -117,6 +129,18 @@ export class FiscalController {
 
   @Post('establishments/:id/certificate') @RequirePermissions('fiscal.manage')
   certificate(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CertDto) { return this.cfg.uploadCertificate(ctx, id, dto); }
+
+  @Get('establishments/:id/provider') @RequirePermissions('fiscal.view')
+  getProvider(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.cfg.getProvider(ctx, id); }
+
+  @Put('establishments/:id/provider') @RequirePermissions('fiscal.manage')
+  setProvider(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ProviderDto) { return this.cfg.setProvider(ctx, id, dto); }
+
+  @Delete('establishments/:id/provider') @RequirePermissions('fiscal.manage')
+  clearProvider(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.cfg.clearProvider(ctx, id); }
+
+  @Post('establishments/:id/provider/test') @HttpCode(200) @RequirePermissions('fiscal.manage')
+  testProvider(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TestProviderDto) { return this.cfg.testProvider(ctx, id, dto.environment); }
 
   @Get('metrics') @RequirePermissions('fiscal.view')
   metrics(@CurrentAuth() ctx: AuthContext) { return this.cfg.metrics(ctx); }
@@ -195,6 +219,17 @@ export class FiscalController {
 
   @Post('outgoing/:id/transmit') @HttpCode(200) @RequirePermissions('fiscal.emit')
   transmit(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.outgoing.transmit(ctx, id); }
+
+  @Post('outgoing/:id/cancel') @HttpCode(200) @RequirePermissions('fiscal.emit')
+  cancelDoc(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelDocDto) { return this.outgoing.cancel(ctx, id, dto.reason); }
+
+  @Get('outgoing/:id/file') @RequirePermissions('fiscal.view')
+  async file(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: FileQuery, @Res() res: Response) {
+    const f = await this.outgoing.file(ctx, id, q.kind);
+    res.setHeader('Content-Type', f.contentType); res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:");
+    res.setHeader('Content-Disposition', `${q.kind === 'xml' ? 'attachment' : 'inline'}; filename="${f.name}"`);
+    res.send(f.content);
+  }
 
   @Post('outgoing/:id/consult') @HttpCode(200) @RequirePermissions('fiscal.emit')
   consult(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.outgoing.consult(ctx, id); }

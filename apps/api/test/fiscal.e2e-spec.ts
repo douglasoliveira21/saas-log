@@ -131,7 +131,7 @@ describe('Fase 6 — fiscal: configuração, certificado, XML recebido, motor e 
       const by = Object.fromEntries(r.readiness.map((i: any) => [i.key, i]));
       for (const k of ['ie', 'address', 'regime', 'certificate', 'tax_rules', 'provider']) expect(by[k].status).toBe('BLOCKING');
       expect(by.cnpj.status).toBe('OK');
-      expect(by.provider.detail).toMatch(/pendente/);
+      expect(by.provider.detail).toMatch(/token do provedor/);
       expect(r.readyForHomologation).toBe(false);
       expect(r.readyForProduction).toBe(false);
       provider.configured = true;

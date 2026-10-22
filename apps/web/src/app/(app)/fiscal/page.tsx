@@ -7,6 +7,7 @@ import { brl } from '@/lib/format';
 import { useUi, PageHeader, Alert, Skeleton } from '@/components/ui';
 import { formatAccessKey, formatCnpj } from '@/lib/format';
 import { useSession } from '@/lib/session';
+import { ProviderCard } from './provider-card';
 
 type Tab = 'config' | 'inbound' | 'rules' | 'outgoing';
 interface Est { id: string; name: string; cnpj: string | null; company: string; environment: string; configStatus: string; certificate: Cert | null }
@@ -21,15 +22,15 @@ interface InDoc { id: string; accessKey: string; number: number; series: number;
 interface InItem { id: string; line: number; supplierCode: string | null; description: string; unit: string; quantity: string; totalValue: string; ncm: string | null; productId: string | null; matchedBy: string | null; stockQty: number | null; product: { sku: string } | null }
 interface RuleVersion { id: string; version: number; status: string; validFrom: string; validTo: string | null; sourceReference: string; config: { cfop?: string; taxes: Record<string, { ratePct?: number; cst?: string; csosn?: string; kind?: string }> } }
 interface Rule { id: string; name: string; operation: string; originUf: string | null; destUf: string | null; ncmPrefix: string | null; regime: string | null; active: boolean; versions: RuleVersion[] }
-interface OutDoc { id: string; status: string; number: number | null; series: number | null; accessKey: string | null; environment: string; totalInvoice: string; issues: Issue[]; authProtocol: string | null; salesOrder: { number: number; customer: { name: string } } | null }
+interface OutDoc { id: string; model?: string; status: string; number: number | null; series: number | null; accessKey: string | null; environment: string; totalInvoice: string; issues: Issue[]; authProtocol: string | null; salesOrder: { number: number; customer: { name: string } } | null }
 interface Product { id: string; sku: string; name: string }
 interface PO { id: string; number: number; status: string; supplier: { legalName: string } }
-interface OrderRow { id: string; number: number; status: string; customer: { name: string } }
+interface OrderRow { id: string; number: number; status: string; fiscalDocType?: string; customer: { name: string } }
 
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: 'Rascunho', PENDING_ACCOUNTANT: 'Aguardando contador', APPROVED: 'Validada', NOT_STARTED: 'Não iniciada', IMPORTED: 'Importada', RECEIVED: 'Recebida',
   PENDING_VALIDATION: 'Pendências', READY_TO_TRANSMIT: 'Pronta para transmitir', TRANSMITTING: 'Transmitindo', AUTHORIZED: 'Autorizada', REJECTED: 'Rejeitada',
-  PENDING_CONSULT: 'Aguardando consulta', COMMUNICATION_FAILURE: 'Falha de comunicação', PENDING_APPROVAL: 'Aguardando aprovação', SUPERSEDED: 'Substituída',
+  PENDING_CONSULT: 'Aguardando consulta', CANCELLED: 'Cancelada', COMMUNICATION_FAILURE: 'Falha de comunicação', PENDING_APPROVAL: 'Aguardando aprovação', SUPERSEDED: 'Substituída',
 };
 const badge = (s: string) => (['APPROVED', 'AUTHORIZED', 'RECEIVED', 'READY_TO_TRANSMIT', 'OK'].includes(s) ? 'ok' : ['REJECTED', 'PENDING_VALIDATION', 'PENDING_CONSULT', 'COMMUNICATION_FAILURE', 'BLOCKING'].includes(s) ? 'warn' : '');
 const OPS = ['SALE', 'PURCHASE', 'RETURN_SALE', 'RETURN_PURCHASE', 'TRANSFER', 'OTHER'];
@@ -149,6 +150,7 @@ function ConfigTab({ act, can }: TabProps) {
               </form>
             )}
           </section>
+          <ProviderCard establishmentId={sel} manage={manage} onChange={reload} />
           <section className="card">
             <h2>Perguntas para o contador</h2>
             <ul>{view.questionsForAccountant.map((q) => <li key={q}>{q}</li>)}</ul>
@@ -389,11 +391,12 @@ function OutgoingTab({ act, can }: TabProps) {
 
   return (
     <>
-      <div className="alert">Esta fase prepara e valida a nota (destinatário, certificado, regras e impostos). <strong>A geração do XML, a assinatura e a transmissão exigem um provedor/biblioteca fiscal que ainda não foi configurado</strong>; sem ele o botão “Transmitir” informa a pendência e não consome numeração.</div>
+      <div className="alert info">A nota é preparada e validada aqui (destinatário, regras e impostos) e <strong>transmitida à SEFAZ pelo provedor</strong> configurado na aba Configuração (Focus NFe). Sem o token do provedor, “Transmitir” informa a pendência e não consome numeração. Comece sempre pela <strong>homologação</strong>: só o ambiente de produção tem valor fiscal.</div>
       {emit && (
-        <form className="card" style={{ marginBottom: 16 }} onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); void act(async () => { const r = await api<{ id: string }>('/fiscal/outgoing/prepare', 'POST', { salesOrderId: f.get('order') }); await open(r.id); }, 'Nota preparada.', load); }}>
+        <form className="card" style={{ marginBottom: 16 }} onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); void act(async () => { const r = await api<{ id: string }>('/fiscal/outgoing/prepare', 'POST', { salesOrderId: f.get('order'), ...(f.get('model') ? { model: f.get('model') } : {}), ...(f.get('pay') ? { paymentMethod: f.get('pay') } : {}) }); await open(r.id); }, 'Nota preparada.', load); }}>
           <h2>Preparar nota a partir de um pedido</h2>
-          <div className="row"><select name="order" required aria-label="Pedido" style={{ maxWidth: 420 }}><option value="">Pedido…</option>{orders.map((o) => <option key={o.id} value={o.id}>Pedido {o.number} — {o.customer.name} ({o.status})</option>)}</select><button className="btn primary">Preparar</button></div>
+          <div className="row"><select name="order" required aria-label="Pedido" style={{ maxWidth: 420 }}><option value="">Pedido…</option>{orders.map((o) => <option key={o.id} value={o.id}>Pedido {o.number} — {o.customer.name} ({o.status})</option>)}</select><select name="model" aria-label="Documento" style={{ maxWidth: 220 }} defaultValue=""><option value="">Documento: o escolhido na venda</option><option value="55">NF-e (modelo 55)</option><option value="65">NFC-e (modelo 65)</option></select><select name="pay" aria-label="Forma de pagamento" style={{ maxWidth: 220 }} defaultValue=""><option value="">Forma de pagamento…</option><option value="CASH">Dinheiro</option><option value="PIX">PIX</option><option value="CREDIT">Cartão de crédito</option><option value="DEBIT">Cartão de débito</option><option value="BOLETO">Boleto</option><option value="CHECK">Cheque</option><option value="OTHER">Outros</option></select><button className="btn primary">Preparar</button></div>
+          <p className="muted" style={{ marginBottom: 0, fontSize: '0.82rem' }}>A forma de pagamento é obrigatória para emitir (NFC-e e NF-e pelo provedor).</p>
         </form>
       )}
       <section className="card" style={{ marginBottom: 16 }}>
@@ -413,12 +416,18 @@ function OutgoingTab({ act, can }: TabProps) {
             {emit && (
               <div className="row">
                 {['PENDING_VALIDATION', 'READY_TO_TRANSMIT', 'REJECTED'].includes(sel.status) && <button className="btn" onClick={() => act(() => api(`/fiscal/outgoing/${sel.id}/revalidate`, 'POST'), 'Documento revalidado.', reload)}>Revalidar</button>}
-                {['READY_TO_TRANSMIT', 'COMMUNICATION_FAILURE'].includes(sel.status) && <button className="btn primary" onClick={async () => { if (await ui.confirm({ title: 'Transmitir nota?', message: 'A transmissão consome a numeração da nota e não pode ser desfeita por aqui.', confirmLabel: 'Transmitir' })) void act(() => api(`/fiscal/outgoing/${sel.id}/transmit`, 'POST'), 'Resultado da transmissão registrado.', reload); }}>Transmitir</button>}
+                {['READY_TO_TRANSMIT', 'COMMUNICATION_FAILURE'].includes(sel.status) && <button className="btn primary" onClick={async () => { if (await ui.confirm({ title: 'Transmitir nota?', message: `A nota será enviada à SEFAZ pelo provedor no ambiente de ${sel.environment === 'PRODUCAO' ? 'PRODUÇÃO (tem valor fiscal)' : 'homologação (sem valor fiscal)'}. Só pode ser desfeita por cancelamento.`, confirmLabel: 'Transmitir' })) void act(() => api(`/fiscal/outgoing/${sel.id}/transmit`, 'POST'), 'Resultado da transmissão registrado.', reload); }}>Transmitir</button>}
                 {['PENDING_CONSULT', 'COMMUNICATION_FAILURE'].includes(sel.status) && <button className="btn" onClick={() => act(() => api(`/fiscal/outgoing/${sel.id}/consult`, 'POST'), 'Consulta realizada.', reload)}>Consultar situação</button>}
+                {sel.status === 'AUTHORIZED' && <>
+                  <a className="btn" href={`/api/fiscal/outgoing/${sel.id}/file?kind=danfe`} target="_blank" rel="noreferrer">{sel.model === '65' ? 'Ver cupom (DANFCe)' : 'Ver DANFE'}</a>
+                  <a className="btn" href={`/api/fiscal/outgoing/${sel.id}/file?kind=xml`}>Baixar XML</a>
+                  <button className="btn" onClick={async () => { const reason = await ui.prompt({ title: 'Cancelar a nota?', message: 'O cancelamento é enviado à SEFAZ pelo provedor e tem prazo e regras definidos pelo estado (em geral, até 24 horas para NF-e e 30 minutos para NFC-e). Não pode ser desfeito.', label: 'Justificativa (15 a 255 caracteres)', danger: true, confirmLabel: 'Cancelar nota', cancelLabel: 'Voltar' }); if (reason) void act(() => api(`/fiscal/outgoing/${sel.id}/cancel`, 'POST', { reason }), 'Nota cancelada.', reload); }}>Cancelar nota</button>
+                </>}
               </div>
             )}
           </div>
           {sel.status === 'PENDING_CONSULT' && <div className="alert error">A resposta da transmissão é desconhecida. <strong>Não reenvie</strong>: use “Consultar situação” para evitar nota duplicada.</div>}
+          {sel.status === 'CANCELLED' && <div className="alert warn">Nota cancelada. O pedido pode ser faturado de novo.</div>}
           {sel.accessKey && <p className="muted">Chave <span className="mono">{formatAccessKey(sel.accessKey)}</span> · protocolo {sel.authProtocol ?? '—'}</p>}
           <IssueList issues={sel.issues} />
           <div className="table-wrap"><table>
