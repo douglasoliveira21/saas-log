@@ -1,10 +1,10 @@
 'use client';
 
 import { Plus, Search, ShoppingCart, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { brl, dateBr, ORDER_STATUS } from '@/lib/format';
-import { useUi, PageHeader, Alert, Skeleton, EmptyState } from '@/components/ui';
+import { useUi, PageHeader, Alert, Skeleton, EmptyState, Dialog } from '@/components/ui';
 import { boletoPreview, FLOW, PAYMENT_LABEL, STATUS_INFO, SUMMARY_GROUPS } from '@/lib/order-flow';
 import { useSession } from '@/lib/session';
 import { PurchaseBadge, purchaseHint, type PurchaseInfo, type PurchaseType } from '@/components/purchase-badge';
@@ -32,7 +32,6 @@ export default function VendasPage() {
   const [status, setStatus] = useState('');
   const [group, setGroup] = useState('');
   const [q, setQ] = useState('');
-  const detailRef = useRef<HTMLElement>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
@@ -62,7 +61,7 @@ export default function VendasPage() {
     if (form && meta.customerId) api<PurchaseInfo>(`/customers/${meta.customerId}/purchase-profile`).then(setProfile).catch(() => undefined);
   }, [form, meta.customerId]);
 
-  const open = useCallback(async (id: string) => { setError(''); try { setDetail(await api<Detail>(`/sales/orders/${id}`)); setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); } catch (e) { setError((e as Error).message); } }, []);
+  const open = useCallback(async (id: string) => { setError(''); try { setDetail(await api<Detail>(`/sales/orders/${id}`)); } catch (e) { setError((e as Error).message); } }, []);
 
   const act = async (fn: () => Promise<unknown>, message: string) => {
     setError(''); setOk('');
@@ -256,12 +255,14 @@ export default function VendasPage() {
         const info = STATUS_INFO[detail.status];
         const at = FLOW.indexOf(detail.status === 'PENDING_APPROVAL' ? 'DRAFT' : detail.status === 'CLOSED' ? 'DELIVERED' : detail.status);
         return (
-          <section className="card" ref={detailRef} aria-label={`Pedido ${detail.number}`}>
-            <div className="card-head">
-              <h2>Pedido #{detail.number} <span className={`badge dot ${info?.tone ?? ''}`}>{ORDER_STATUS[detail.status]}</span></h2>
+          <Dialog title={`Pedido #${detail.number}`} description={<span className={`badge dot ${info?.tone ?? ''}`}>{ORDER_STATUS[detail.status]}</span>} onClose={() => setDetail(null)} xl>
+            <div className="modal-body">
+            {error && <Alert kind="error">{error}</Alert>}
+            {ok && <Alert kind="ok">{ok}</Alert>}
+            <div className="row" style={{ marginBottom: 14 }}>
               <div className="row">
                 {detail.status === 'DRAFT' && can('sales.create') && <>
-                  <button className="btn" onClick={() => startForm(detail)}>Editar</button>
+                  <button className="btn" onClick={() => { setDetail(null); startForm(detail); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Editar</button>
                   <button className="btn primary" onClick={() => act(async () => { const r = await api<{ status: string; reasons: string[] }>(`/sales/orders/${detail.id}/submit`, 'POST'); if (r.status === 'PENDING_APPROVAL') throw new Error(`Enviado para aprovação: ${r.reasons.join('; ')}`); }, 'Pedido confirmado e estoque reservado.')}>Confirmar pedido</button>
                 </>}
                 {detail.status === 'PENDING_APPROVAL' && can('sales.approve') && <>
@@ -271,7 +272,6 @@ export default function VendasPage() {
                 {NEXT[detail.status] && can('sales.fulfill') && <button className="btn primary" onClick={() => act(() => api(`/sales/orders/${detail.id}/advance`, 'POST', { to: NEXT[detail.status][0] }), 'Situação atualizada.')}>{NEXT[detail.status][1]}</button>}
                 {['DRAFT', 'PENDING_APPROVAL', 'CONFIRMED', 'PICKING', 'PACKED'].includes(detail.status) && can('sales.create') && <button className="btn" onClick={() => cancel(detail)}>Cancelar pedido</button>}
                 {['SHIPPED', 'DELIVERED', 'CLOSED'].includes(detail.status) && can('sales.return') && <button className="btn" onClick={() => doReturn(detail)}>Registrar devolução</button>}
-                <button className="btn" onClick={() => setDetail(null)}>Fechar</button>
               </div>
             </div>
 
@@ -306,7 +306,8 @@ export default function VendasPage() {
             <div className="totals-bar" style={{ marginTop: 12 }}>
               <span>Produtos {brl(detail.subtotal)}</span><span>Descontos − {brl(detail.discountTotal)}</span><span>Frete {brl(detail.shipping)}</span><span className="grand">Total {brl(detail.total)}</span>
             </div>
-          </section>
+            </div>
+          </Dialog>
         );
       })()}
       {fiscalView && <FiscalPreviewDialog orderId={fiscalView.id} docType={fiscalView.docType} onClose={() => setFiscalView(null)} />}

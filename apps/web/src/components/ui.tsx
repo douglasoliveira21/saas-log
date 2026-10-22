@@ -219,7 +219,7 @@ export function SortTh({ label, k, sort, toggle, className }: { label: string; k
 /* ───────────────────────── diálogo com conteúdo livre (formulários longos) ───────────────────────── */
 
 /** Janela modal com foco preso, Esc para fechar e rolagem interna. O conteúdo (ex.: <form>) fica por conta de quem chama. */
-export function Dialog({ title, description, onClose, children, wide }: { title: string; description?: ReactNode; onClose: () => void; children: ReactNode; wide?: boolean }) {
+export function Dialog({ title, description, onClose, children, wide, xl }: { title: string; description?: ReactNode; onClose: () => void; children: ReactNode; wide?: boolean; xl?: boolean }) {
   const titleId = useId();
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -243,7 +243,7 @@ export function Dialog({ title, description, onClose, children, wide }: { title:
   }, []);
   return (
     <div className="modal-back" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className={`modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId} ref={ref}>
+      <div className={`modal ${wide || xl ? 'wide' : ''} ${xl ? 'xl' : ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId} ref={ref}>
         <div className="modal-head">
           <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap', alignItems: 'flex-start' }}>
             <div><h2 id={titleId}>{title}</h2>{description && <p className="muted" style={{ margin: '4px 0 0', fontSize: '0.88rem' }}>{description}</p>}</div>
