@@ -158,6 +158,11 @@ describe('Fase 7 — financeiro, conciliações, fluxo de caixa, DRE, relatório
     it('contas a receber de um pedido: parcelas devem fechar o total e não duplicam; marketplace é bloqueado', async () => {
       const p = await product(A, {}, 10);
       const o = await shippedOrder(A, [{ productId: p, quantity: 2, unitPrice: 100 }]);
+      // a venda já entra sozinha em contas a receber ao ser confirmada (à vista, 1 conta); a geração manual não duplica
+      const auto = (await A.owner.get(`/api/finance/titles?origin=SALES_ORDER&search=Pedido ${o.number}`).expect(200)).body.items;
+      expect(auto.map((t: any) => t.amount)).toEqual(['200']);
+      await A.owner.post(`/api/finance/from-order/${o.id}`).set(H).send({ count: 2, firstDueDate: day(10) }).expect(409);
+      await admin.$executeRaw`DELETE FROM financial_titles WHERE origin = 'SALES_ORDER' AND origin_ref LIKE ${o.id + ':%'}`;
       await A.owner.post(`/api/finance/from-order/${o.id}`).set(H).send({ count: 2, firstDueDate: day(10) }).expect(201);
       await A.owner.post(`/api/finance/from-order/${o.id}`).set(H).send({ count: 2, firstDueDate: day(10) }).expect(409);
       const list = (await A.owner.get(`/api/finance/titles?origin=SALES_ORDER&search=Pedido ${o.number}`).expect(200)).body.items;

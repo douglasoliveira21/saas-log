@@ -62,12 +62,37 @@ describe('Forma de pagamento da venda (boleto: parcelas e vencimento)', () => {
     await owner.post(`/api/finance/from-order/${o}`).set(H).send({ count: 1, firstDueDate: day(5) }).expect(409);
   });
 
-  it('pagamento à vista (PIX) não gera contas e não guarda vencimento', async () => {
+  it('pagamento à vista (PIX) não guarda vencimento e gera uma conta a receber à vista, na data da venda', async () => {
     const o = (await draft({ paymentMethod: 'PIX', installments: 5, firstDueDate: day(10) })).body.id;
     const d = (await owner.get(`/api/sales/orders/${o}`).expect(200)).body;
     expect(d).toMatchObject({ paymentMethod: 'PIX', installmentCount: 1, firstDueDate: null });
-    await owner.post(`/api/sales/orders/${o}/submit`).set(H).expect(200);
     expect(await titles(o)).toHaveLength(0);
+    await owner.post(`/api/sales/orders/${o}/submit`).set(H).expect(200);
+    const t = await titles(o);
+    expect(t).toHaveLength(1);
+    expect(Number(t[0].amount)).toBe(300);
+    expect(String(t[0].dueDate).slice(0, 10)).toBe(day(0));
+  });
+
+  it('venda sem forma de pagamento (API/legado) também entra em contas a receber; marketplace não', async () => {
+    const o = (await draft({})).body.id;
+    await owner.post(`/api/sales/orders/${o}/submit`).set(H).expect(200);
+    expect(await titles(o)).toHaveLength(1);
+  });
+
+  it('sincronizar cria as contas das vendas confirmadas que não têm nenhuma, sem duplicar', async () => {
+    const o = (await draft({ paymentMethod: 'PIX' })).body.id;
+    await owner.post(`/api/sales/orders/${o}/submit`).set(H).expect(200);
+    // simula venda antiga: apaga a conta gerada
+    const { PrismaClient } = await import('@prisma/client');
+    const admin = new PrismaClient({ datasources: { db: { url: process.env.DIRECT_URL } } });
+    await admin.financialTitle.deleteMany({ where: { origin: 'SALES_ORDER', originRef: { startsWith: `${o}:` } } });
+    expect(await titles(o)).toHaveLength(0);
+    const r = (await owner.post('/api/sales/receivables/sync').set(H).expect(200)).body;
+    expect(r.orders).toBeGreaterThanOrEqual(1);
+    expect(await titles(o)).toHaveLength(1);
+    expect((await owner.post('/api/sales/receivables/sync').set(H).expect(200)).body).toEqual({ orders: 0, titles: 0 });
+    await admin.$disconnect();
   });
 
   it('editar o rascunho troca a forma de pagamento', async () => {

@@ -125,6 +125,7 @@ export default function FinanceiroPage() {
   return (
     <>
       <PageHeader title="Financeiro" description={<>Baixas e estornos são lançamentos auditáveis: nada é apagado. O DRE é gerencial e não substitui a contabilidade.</>} actions={<>
+          {manage && tab === 'receber' && <button className="btn" title="Cria as contas das vendas já confirmadas que ainda não aparecem aqui" onClick={async () => { setError(''); setOk(''); try { const r = await api<{ orders: number; titles: number }>('/sales/receivables/sync', 'POST'); setOk(r.orders ? `${r.orders} venda(s) importada(s): ${r.titles} conta(s) a receber criada(s).` : 'Todas as vendas confirmadas já estão em contas a receber.'); loadBase(); loadTitles(); } catch (e) { fail(e); } }}>Importar vendas</button>}
           {manage && (tab === 'pagar' || tab === 'receber') && <button className="btn primary" onClick={() => setPanel('novo')}><Plus aria-hidden />Lançar título</button>}
         {manage && tab === 'contas' && <button className="btn primary" onClick={() => setPanel('conta')}><Plus aria-hidden />Conta</button>}
         </>} />

@@ -26,6 +26,7 @@ export interface OrderInput extends PaymentInput {
   items: { productId: string; quantity: number; unitPrice?: number; discountPct?: number }[];
 }
 
+const PAYMENT_NAME: Record<string, string> = { CASH: 'dinheiro', PIX: 'pix', DEBIT: 'débito', CREDIT: 'crédito', BOLETO: 'boleto', CHECK: 'cheque', OTHER: 'outra forma' };
 const NEXT: Partial<Record<OrderStatus, OrderStatus>> = { CONFIRMED: 'PICKING', PICKING: 'PACKED', PACKED: 'SHIPPED', SHIPPED: 'DELIVERED', DELIVERED: 'CLOSED' };
 const CANCELLABLE: OrderStatus[] = ['DRAFT', 'PENDING_APPROVAL', 'CONFIRMED', 'PICKING', 'PACKED'];
 const RETURNABLE: OrderStatus[] = ['SHIPPED', 'DELIVERED', 'CLOSED'];
@@ -344,7 +345,7 @@ export class SalesService {
       where: { id: order.id },
       data: { status: 'CONFIRMED', confirmedAt: now, customerType: profile?.type, ...(cut ? { dispatchDate: asDateColumn(cut.dispatchDate), dispatchDeferred: cut.deferred } : {}) },
     });
-    if (order.paymentMethod === 'BOLETO' && order.channel !== 'MARKETPLACE') await this.createBoletoTitles(tx, ctx, order);
+    await this.createReceivables(tx, ctx, order);
     const n = await this.commissions.accrue(
       tx, ctx, { id: order.id, salespersonId: order.salespersonId, customerId: order.customerId, channel: order.channel },
       order.items.map((i) => ({ id: i.id, productId: i.productId, quantity: i.quantity, total: i.total, categoryId: i.product.categoryId })),
@@ -352,20 +353,50 @@ export class SalesService {
     await this.audit.record(tx, ctx, { action: 'sales.confirmed', entity: 'sales_order', entityId: order.id, metadata: { number: order.number, commissionEntries: n } });
   }
 
-  /** Boleto: gera as contas a receber (uma por parcela) ao confirmar. Pedido de marketplace entra pela conciliação. */
-  private async createBoletoTitles(tx: Tx, ctx: AuthContext, order: Awaited<ReturnType<SalesService['lock']>>) {
-    if (!order.firstDueDate) throw new BadRequestException('Boleto sem data de vencimento: edite o pedido.');
-    if (order.firstDueDate.toISOString().slice(0, 10) < localToday()) throw new ConflictException('O vencimento do boleto já passou: edite o rascunho e informe uma nova data.');
+  /**
+   * Toda venda fora de marketplace entra em Contas a receber ao ser confirmada: boleto gera uma conta por parcela; as demais formas
+   * (ou pedido sem forma informada) geram uma conta à vista, com vencimento no dia da venda, para ser baixada quando o dinheiro entrar.
+   * Pedido de marketplace entra pela conciliação. `backfill` aceita vencimento já passado (vendas antigas sem conta).
+   */
+  private async createReceivables(tx: Tx, ctx: AuthContext, order: Awaited<ReturnType<SalesService['lock']>>, opts: { backfill?: boolean } = {}) {
+    if (order.channel === 'MARKETPLACE') return 0;
+    if (await tx.financialTitle.findFirst({ where: { tenantId: ctx.tenantId!, origin: 'SALES_ORDER', originRef: { startsWith: `${order.id}:` } }, select: { id: true } })) return 0;
     const customer = await tx.customer.findFirstOrThrow({ where: { id: order.customerId, tenantId: ctx.tenantId! }, select: { name: true } });
-    const plan = boletoPlan(toCents(order.total), order.installmentCount, order.firstDueDate, order.installmentIntervalDays);
+    const boleto = order.paymentMethod === 'BOLETO';
+    if (boleto && !order.firstDueDate) throw new BadRequestException('Boleto sem data de vencimento: edite o pedido.');
+    if (boleto && !opts.backfill && order.firstDueDate!.toISOString().slice(0, 10) < localToday()) throw new ConflictException('O vencimento do boleto já passou: edite o rascunho e informe uma nova data.');
+    const today = new Date(`${(opts.backfill && order.confirmedAt ? localToday(order.confirmedAt) : localToday())}T00:00:00Z`);
+    const plan = boleto
+      ? boletoPlan(toCents(order.total), order.installmentCount, order.firstDueDate!, order.installmentIntervalDays)
+      : [{ due: today, cents: toCents(order.total) }];
+    const how = order.paymentMethod ? PAYMENT_NAME[order.paymentMethod] ?? 'a receber' : 'forma não informada';
     for (const [i, p] of plan.entries()) {
       await tx.financialTitle.create({
         data: {
-          tenantId: ctx.tenantId!, direction: 'RECEIVABLE', counterpartyKind: 'CUSTOMER', customerId: order.customerId, counterpartyName: customer.name, description: `Pedido ${order.number} — ${customer.name} (boleto)`,
+          tenantId: ctx.tenantId!, direction: 'RECEIVABLE', counterpartyKind: 'CUSTOMER', customerId: order.customerId, counterpartyName: customer.name, description: `Pedido ${order.number} — ${customer.name} (${how})`,
           documentRef: String(order.number), installmentNo: i + 1, installmentTotal: plan.length, issueDate: new Date(), dueDate: p.due, amount: fromCents(p.cents), origin: 'SALES_ORDER', originRef: `${order.id}:${i + 1}`, createdById: ctx.userId,
         },
       });
     }
+    return plan.length;
+  }
+
+  /** Cria as contas a receber das vendas já confirmadas que ainda não têm nenhuma (vendas feitas antes de existir a geração automática). */
+  syncReceivables(ctx: AuthContext) {
+    return this.prisma.withContext(ctx, async (tx) => {
+      const candidates = await tx.salesOrder.findMany({
+        where: { tenantId: ctx.tenantId!, channel: { not: 'MARKETPLACE' }, status: { in: ['CONFIRMED', 'PICKING', 'PACKED', 'SHIPPED', 'DELIVERED', 'CLOSED'] } },
+        select: { id: true }, orderBy: { number: 'asc' }, take: 1000,
+      });
+      let orders = 0; let titles = 0;
+      for (const c of candidates) {
+        const order = await this.lock(tx, ctx, c.id, false);
+        const n = await this.createReceivables(tx, ctx, order, { backfill: true });
+        if (n) { orders++; titles += n; }
+      }
+      await this.audit.record(tx, ctx, { action: 'finance.receivables_synced', entity: 'sales_order', metadata: { orders, titles } });
+      return { orders, titles };
+    });
   }
 
   private async lock(tx: Tx, ctx: AuthContext, id: string, scoped = true) {

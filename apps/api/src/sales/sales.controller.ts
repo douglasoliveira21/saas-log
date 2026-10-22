@@ -123,6 +123,10 @@ export class SalesController {
   @Post('sales/orders/:id/advance') @HttpCode(200) @RequirePermissions('sales.fulfill')
   advance(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AdvanceDto) { return this.sales.advance(ctx, id, dto.to); }
 
+  /** Gera as contas a receber das vendas confirmadas que ainda não têm nenhuma. */
+  @Post('sales/receivables/sync') @HttpCode(200) @RequirePermissions('finance.manage')
+  syncReceivables(@CurrentAuth() ctx: AuthContext) { return this.sales.syncReceivables(ctx); }
+
   @Post('sales/orders/:id/cancel') @HttpCode(200) @RequirePermissions('sales.create')
   cancel(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReasonDto) { return this.sales.cancel(ctx, id, dto.reason); }
 
