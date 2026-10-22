@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { PageHeader, Alert, Skeleton } from '@/components/ui';
 
-interface Settings { 'commission.event': string; 'sales.maxDiscountPct': number; 'purchases.approvalLimit': number; 'sales.cutoffTime': string; 'sales.cutoffBusinessDaysOnly': boolean; 'customers.inactiveAfterDays': number }
+interface Settings { 'commission.event': string; 'sales.maxDiscountPct': number; 'purchases.approvalLimit': number; 'sales.cutoffTime': string; 'sales.cutoffBusinessDaysOnly': boolean; 'customers.inactiveAfterDays': number; 'fiscal.nfceMaxValue': number }
 
 export default function ConfiguracoesPage() {
   const [s, setS] = useState<Settings | null>(null);
@@ -24,6 +24,7 @@ export default function ConfiguracoesPage() {
         'sales.cutoffTime': String(f.get('cutoff') ?? ''),
         'sales.cutoffBusinessDaysOnly': f.get('weekdays') === 'on',
         'customers.inactiveAfterDays': Number(f.get('inactive')),
+        'fiscal.nfceMaxValue': Number(String(f.get('nfcemax') ?? '0').replace(/\./g, '').replace(',', '.')),
       }));
       setOk('Políticas salvas (alteração registrada na auditoria).');
     } catch (err) { setError((err as Error).message); }
@@ -50,6 +51,8 @@ export default function ConfiguracoesPage() {
           <p className="muted" style={{ marginTop: 0 }}>Vale para vendas <strong>fora de marketplace</strong>. Pedido confirmado antes do horário sai no mesmo dia; a partir dele, no próximo dia de saída. Deixe vazio para não usar corte. Fuso de Brasília; feriados não são considerados.</p>
           <div className="field"><label htmlFor="cutoff">Horário de corte</label><input id="cutoff" name="cutoff" type="time" defaultValue={s['sales.cutoffTime']} style={{ maxWidth: 160 }} /></div>
           <div className="field"><label style={{ display: 'flex', gap: 8, alignItems: 'center' }}><input type="checkbox" name="weekdays" defaultChecked={s['sales.cutoffBusinessDaysOnly']} style={{ width: 'auto' }} />Considerar só dias úteis (seg–sex); fim de semana sai na segunda</label></div>
+          <h2 style={{ marginTop: 20 }}>Cupom fiscal (NFC-e)</h2>
+          <div className="field"><label htmlFor="nfcemax">Valor máximo de cada cupom (R$)</label><input id="nfcemax" name="nfcemax" inputMode="decimal" defaultValue={String(s['fiscal.nfceMaxValue']).replace('.', ',')} style={{ maxWidth: 160 }} /><p className="muted">Pedido em NFC-e acima desse valor é dividido automaticamente em vários cupons, cada um até o limite (ex.: R$ 400.000,00 com limite de R$ 9.999,00 vira 41 cupons). Uma unidade nunca é partida, então um cupom pode fechar um pouco abaixo do limite. Use <strong>0</strong> para não dividir. Não vale para NF-e.</p></div>
           <h2 style={{ marginTop: 20 }}>Perfil do cliente</h2>
           <div className="field"><label htmlFor="inactive">Cliente inativo após quantos dias sem comprar?</label><input id="inactive" name="inactive" inputMode="numeric" defaultValue={s['customers.inactiveAfterDays']} style={{ maxWidth: 160 }} /><p className="muted">Quem compra pela primeira vez é <strong>novo</strong>; quem comprou dentro desse prazo é <strong>ativo</strong>; quem volta depois de mais dias é marcado como <strong>voltou a comprar</strong>.</p></div>
           <button className="btn primary">Salvar</button>

@@ -21,6 +21,8 @@ export interface TenantSettings {
   'customers.inactiveAfterDays': number;
   'orders.shippingSlaHours': number;
   'orders.deliverySlaDays': number;
+  /** Valor máximo de cada cupom (NFC-e), em R$; acima disso o pedido é dividido em vários cupons. 0 = sem divisão. */
+  'fiscal.nfceMaxValue': number;
 }
 
 /** Valores padrão documentados em docs/COMMERCIAL.md. "Recebimento confirmado"/"faturada" dependem de Financeiro/Fiscal. */
@@ -35,6 +37,7 @@ export const DEFAULT_SETTINGS: TenantSettings = {
   'customers.inactiveAfterDays': 60,
   'orders.shippingSlaHours': 24,
   'orders.deliverySlaDays': 7,
+  'fiscal.nfceMaxValue': 9999,
 };
 
 function validate(key: string, value: unknown): unknown {
@@ -67,6 +70,9 @@ function validate(key: string, value: unknown): unknown {
     case 'orders.deliverySlaDays':
       if (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 90) return value;
       throw new BadRequestException('Prazo de entrega deve ser de 1 a 90 dias.');
+    case 'fiscal.nfceMaxValue':
+      if (typeof value === 'number' && value >= 0 && value <= 1e7) return Math.round(value * 100) / 100;
+      throw new BadRequestException('Valor máximo do cupom: informe um valor em reais (0 desliga a divisão).');
     default:
       throw new BadRequestException(`Configuração desconhecida: ${key}`);
   }

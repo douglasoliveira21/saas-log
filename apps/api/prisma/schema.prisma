@@ -1257,6 +1257,9 @@ model FiscalDocument {
   purchaseOrderId String?   @map("purchase_order_id") @db.Uuid
   receiptId       String?   @map("receipt_id") @db.Uuid
   salesOrderId    String?   @map("sales_order_id") @db.Uuid
+  /** NFC-e dividida pelo limite de valor do cupom: "cupom N de M" do mesmo pedido. */
+  splitIndex      Int?      @map("split_index")
+  splitTotal      Int?      @map("split_total")
   calculationId   String?   @map("calculation_id") @db.Uuid
   providerState   Json      @default("{}") @map("provider_state")
   importedById    String?   @map("imported_by_id") @db.Uuid

@@ -11,6 +11,7 @@ import { ProviderContextService } from './fiscal-provider.router';
 import { IbgeService } from './sefaz/ibge';
 import { nfeProc } from './sefaz/messages';
 import { Issue } from './nfe-xml';
+import { DEFAULT_NFCE_MAX, splitForLimit, SplitError } from './nfce-split';
 import { TaxRulesService } from './tax-rules.service';
 
 type Tx = Prisma.TransactionClient;
@@ -55,7 +56,7 @@ export class FiscalOutgoingService {
     return this.prisma.withContext(ctx, (tx) =>
       tx.fiscalDocument.findMany({
         where: { tenantId: ctx.tenantId!, direction: 'EXIT', ...(status ? { status } : {}) }, orderBy: { createdAt: 'desc' }, take: 100,
-        select: { id: true, model: true, status: true, number: true, series: true, accessKey: true, environment: true, totalInvoice: true, salesOrderId: true, issues: true, authProtocol: true, createdAt: true, salesOrder: { select: { number: true, customer: { select: { name: true } } } } },
+        select: { id: true, model: true, status: true, splitIndex: true, splitTotal: true, number: true, series: true, accessKey: true, environment: true, totalInvoice: true, salesOrderId: true, issues: true, authProtocol: true, createdAt: true, salesOrder: { select: { number: true, customer: { select: { name: true } } } } },
       }),
     );
   }
@@ -83,8 +84,8 @@ export class FiscalOutgoingService {
       });
       if (!order) throw new NotFoundException('Pedido não encontrado.');
       if (['DRAFT', 'PENDING_APPROVAL', 'CANCELLED'].includes(order.status)) throw new ConflictException(`Pedido "${order.status}" não pode ser faturado.`);
-      const existing = await tx.fiscalDocument.findFirst({ where: { tenantId: ctx.tenantId!, salesOrderId: order.id, direction: 'EXIT', NOT: { status: 'CANCELLED' } } });
-      if (existing) return { id: existing.id, existing: true, status: existing.status };
+      const existingDocs = await tx.fiscalDocument.findMany({ where: { tenantId: ctx.tenantId!, salesOrderId: order.id, direction: 'EXIT', NOT: { status: 'CANCELLED' } }, orderBy: [{ splitIndex: 'asc' }, { createdAt: 'asc' }] });
+      if (existingDocs.length) return { id: existingDocs[0].id, ids: existingDocs.map((d) => d.id), existing: true, status: existingDocs[0].status, parts: existingDocs.length };
       // O documento segue o que foi escolhido na venda (NF-e = 55, NFC-e = 65); sem escolha, NF-e.
       const model: FiscalModel = dto.model ?? (order.fiscalDocType === 'NFCE' ? '65' : '55');
 
@@ -94,22 +95,42 @@ export class FiscalOutgoingService {
       if (!est) throw new BadRequestException('Estabelecimento emissor não encontrado.');
       const cfg = await tx.fiscalConfiguration.upsert({ where: { tenantId_establishmentId: { tenantId: ctx.tenantId!, establishmentId: est.id } }, create: { tenantId: ctx.tenantId!, establishmentId: est.id }, update: {} });
 
-      const doc = await tx.fiscalDocument.create({
-        data: {
-          tenantId: ctx.tenantId!, direction: 'EXIT', model, status: 'DRAFT', providerState: dto.paymentMethod ? { paymentMethod: dto.paymentMethod } : {}, environment: cfg.environment, establishmentId: est.id, series: cfg.nfeSeries,
-          emitterDoc: est.cnpj ? onlyDigits(est.cnpj) : null, emitterName: est.company.legalName, emitterUf: est.state, recipientDoc: order.customer.document,
-          totalProducts: order.items.reduce((s, i) => s + Number(i.total), 0).toFixed(2), totalInvoice: order.total, totalFreight: order.shipping, salesOrderId: order.id, importedById: ctx.userId,
-        },
-      });
-      await tx.fiscalDocumentItem.createMany({
-        data: order.items.map((i, idx) => ({
-          tenantId: ctx.tenantId!, documentId: doc.id, line: idx + 1, supplierCode: i.product.sku, gtin: i.product.barcode, description: i.product.name, ncm: i.product.ncm, unit: i.product.saleUnit,
-          quantity: i.quantity.toFixed(4), unitValue: (Number(i.total) / i.quantity).toFixed(6), totalValue: i.total.toString(), declaredTax: {}, productId: i.productId,
-        })),
-      });
-      const res = await this.evaluate(tx, ctx, doc.id);
-      await this.audit.record(tx, ctx, { action: 'fiscal.outgoing_prepared', entity: 'fiscal_document', entityId: doc.id, metadata: { salesOrderId: order.id, status: res.status, blocking: res.blocking } });
-      return { id: doc.id, existing: false, status: res.status, issues: res.issues };
+      // NFC-e: cada cupom tem um valor máximo (configurável). Acima dele o pedido vira vários cupons, sem perder nem sobrar centavos.
+      const toCents = (v: unknown) => Math.round(Number(v) * 100);
+      let groups: { items: { index: number; quantity: number; totalCents: number }[]; freightCents: number }[] = [{ items: order.items.map((i, n) => ({ index: n, quantity: i.quantity, totalCents: toCents(i.total) })), freightCents: toCents(order.shipping) }];
+      if (model === '65') {
+        const setting = await tx.tenantSetting.findFirst({ where: { tenantId: ctx.tenantId!, key: 'fiscal.nfceMaxValue' } });
+        const maxValue = typeof setting?.value === 'number' ? setting.value : DEFAULT_NFCE_MAX;
+        if (maxValue > 0 && toCents(order.total) > Math.round(maxValue * 100)) {
+          try { groups = splitForLimit(groups[0].items, groups[0].freightCents, Math.round(maxValue * 100)); } catch (e) { if (e instanceof SplitError) throw new ConflictException(`Não foi possível dividir em cupons: ${e.message}`); throw e; }
+        }
+      }
+
+      const docs: { id: string; status: string; issues?: Issue[] }[] = [];
+      for (const [gi, g] of groups.entries()) {
+        const products = g.items.reduce((s, x) => s + x.totalCents, 0);
+        const doc = await tx.fiscalDocument.create({
+          data: {
+            tenantId: ctx.tenantId!, direction: 'EXIT', model, status: 'DRAFT', providerState: dto.paymentMethod ? { paymentMethod: dto.paymentMethod } : {}, environment: cfg.environment, establishmentId: est.id, series: cfg.nfeSeries,
+            emitterDoc: est.cnpj ? onlyDigits(est.cnpj) : null, emitterName: est.company.legalName, emitterUf: est.state, recipientDoc: order.customer.document,
+            totalProducts: (products / 100).toFixed(2), totalInvoice: ((products + g.freightCents) / 100).toFixed(2), totalFreight: (g.freightCents / 100).toFixed(2), salesOrderId: order.id, importedById: ctx.userId,
+            ...(groups.length > 1 ? { splitIndex: gi + 1, splitTotal: groups.length } : {}),
+          },
+        });
+        await tx.fiscalDocumentItem.createMany({
+          data: g.items.map((x, idx) => {
+            const i = order.items[x.index];
+            return {
+              tenantId: ctx.tenantId!, documentId: doc.id, line: idx + 1, supplierCode: i.product.sku, gtin: i.product.barcode, description: i.product.name, ncm: i.product.ncm, unit: i.product.saleUnit,
+              quantity: x.quantity.toFixed(4), unitValue: (x.totalCents / 100 / x.quantity).toFixed(6), totalValue: (x.totalCents / 100).toFixed(2), declaredTax: {}, productId: i.productId,
+            };
+          }),
+        });
+        const res = await this.evaluate(tx, ctx, doc.id);
+        docs.push({ id: doc.id, status: res.status, issues: res.issues });
+      }
+      await this.audit.record(tx, ctx, { action: 'fiscal.outgoing_prepared', entity: 'fiscal_document', entityId: docs[0].id, metadata: { salesOrderId: order.id, parts: docs.length, documentIds: docs.map((d) => d.id), status: docs[0].status } });
+      return { id: docs[0].id, ids: docs.map((d) => d.id), existing: false, status: docs[0].status, issues: docs[0].issues, parts: docs.length };
     });
   }
 

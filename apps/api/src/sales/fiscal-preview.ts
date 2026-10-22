@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { DEFAULT_NFCE_MAX, splitForLimit, SplitError } from '../fiscal/nfce-split';
 
 type Tx = Prisma.TransactionClient;
 
@@ -33,6 +34,7 @@ export async function buildFiscalPreview(tx: Tx, tenantId: string, orderId: stri
   const add = (level: FiscalIssue['level'], code: string, message: string) => issues.push({ level, code, message });
   const c = order.customer;
   const cDoc = digits(c.document);
+  let splitParts = 1;
 
   if (docType !== 'NONE') {
     if (!digits(est.cnpj)) add('BLOCKER', 'EMITTER_CNPJ', 'O estabelecimento emitente não tem CNPJ (Empresa → Estabelecimentos).');
@@ -53,11 +55,24 @@ export async function buildFiscalPreview(tx: Tx, tenantId: string, orderId: stri
     if (!c.street || !c.city || !c.state || !c.zipCode) add('BLOCKER', 'RECIPIENT_ADDRESS', 'NF-e exige o endereço completo do destinatário (cadastre no cliente).');
   }
   if (docType === 'NFCE') {
+    const setting = await tx.tenantSetting.findFirst({ where: { tenantId, key: 'fiscal.nfceMaxValue' } });
+    const maxValue = typeof setting?.value === 'number' ? setting.value : DEFAULT_NFCE_MAX;
+    if (maxValue > 0 && Math.round(Number(order.total) * 100) > Math.round(maxValue * 100)) {
+      try {
+        const parts = splitForLimit(order.items.map((i, n) => ({ index: n, quantity: i.quantity, totalCents: Math.round(Number(i.total) * 100) })), Math.round(Number(order.shipping) * 100), Math.round(maxValue * 100));
+        splitParts = parts.length;
+        add('INFO', 'NFCE_SPLIT', `O valor do pedido passa do limite de R$ ${maxValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} por cupom: ao preparar, ele será dividido em ${parts.length} cupons NFC-e.`);
+      } catch (e) {
+        if (!(e instanceof SplitError)) throw e;
+        add('BLOCKER', 'NFCE_SPLIT', `O pedido passa do limite por cupom e não pode ser dividido: ${e.message}`);
+      }
+    }
     if (cDoc.length === 14) add('WARNING', 'NFCE_B2B', 'NFC-e é para consumidor final (venda presencial). Venda para empresa normalmente exige NF-e.');
   }
 
   return {
     mode: 'ESPELHO' as const,
+    splitParts,
     docType,
     ready: docType !== 'NONE' && !issues.some((i) => i.level === 'BLOCKER'),
     issues,

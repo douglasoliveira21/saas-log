@@ -33,3 +33,6 @@ Cada estabelecimento usa o seu token; o ambiente (homologação/produção) é o
 - O DANFE vem do provedor (PDF/HTML conforme ele devolver); o espelho de Vendas continua sendo só conferência.
 - Outros provedores: o ponto de encaixe é `FiscalProvider` (`fiscal-provider.ts`); só o Focus NFe está implementado.
 - **Custos:** o provedor cobra pela emissão em produção (o ambiente de homologação costuma ser gratuito; confirme no site dele). O certificado A1 é custo do cliente.
+
+## NFC-e acima do limite do cupom (divisão automática)
+Configurável em Configurações → *Cupom fiscal (NFC-e)* (`fiscal.nfceMaxValue`, padrão R$ 9.999,00; `0` desliga). Ao preparar uma NFC-e cujo pedido passa do limite, o sistema cria **vários documentos** ("cupom N/M") do mesmo pedido: cálculo em centavos, soma exata, unidade nunca partida, frete no primeiro cupom. Cada cupom tem numeração, chave e transmissão próprias (uma falha não derruba os outros). Uma unidade acima do limite recusa a preparação. Não vale para NF-e. Ex.: R$ 400.000,00 → 41 cupons. **Pendente:** transmitir todos de uma vez (hoje um a um) e conferir com o contador/SEFAZ da UF se o fracionamento é aceito para o caso de uso.
