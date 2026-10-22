@@ -400,3 +400,74 @@ th[aria-sort] .sort { opacity: 1; color: var(--brand); }
 
 .pick-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; max-height: 280px; overflow: auto; }
 .pick-list li { display: flex; gap: 8px; align-items: center; padding: 6px 4px; border-bottom: 1px solid var(--border); }
+
+/* ── Documento fiscal na venda: seletor NF-e / NFC-e e espelhos (DANFE A4 e cupom 80 mm) ── */
+.fiscal-choice { border: 0; padding: 0; margin: 16px 0 0; min-width: 0; }
+.fiscal-choice legend { font-weight: 650; font-size: 0.95rem; padding: 0; margin-bottom: 8px; }
+.fiscal-choice-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.fiscal-opt { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; cursor: pointer; background: var(--surface); transition: border-color 0.12s, box-shadow 0.12s; }
+.fiscal-opt:hover { border-color: var(--border-strong); }
+.fiscal-opt.on { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.fiscal-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.fiscal-opt:focus-within { outline: 2px solid var(--brand); outline-offset: 2px; }
+.fiscal-ico { color: var(--brand); display: grid; place-items: center; flex: none; margin-top: 2px; }
+.fiscal-opt-text { display: block; font-size: 0.82rem; margin-top: 2px; font-weight: 400; }
+.fiscal-issues { display: grid; gap: 8px; margin-bottom: 12px; }
+.fiscal-issues ul { margin: 4px 0 0; padding-left: 18px; }
+.doc-stage { background: var(--surface-3); border-radius: var(--radius); padding: 16px; overflow: auto; display: flex; justify-content: center; }
+.doc { position: relative; background: #fff; color: #111; font-family: Arial, Helvetica, sans-serif; box-shadow: var(--shadow); overflow: hidden; }
+.doc .num { text-align: right; }
+.doc .cap { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.03em; color: #555; margin-bottom: 1px; }
+.doc .bad { color: #b42318; }
+.doc-watermark { position: absolute; inset: 0; display: grid; place-items: center; font-size: 2.1rem; font-weight: 800; color: rgba(180, 35, 24, 0.13); transform: rotate(-24deg); pointer-events: none; text-align: center; letter-spacing: 0.04em; line-height: 1.2; z-index: 2; }
+.doc-watermark.small { font-size: 1.3rem; }
+.danfe { width: 794px; max-width: 100%; padding: 14px; font-size: 11px; line-height: 1.35; }
+.danfe > *:not(.doc-watermark) { position: relative; z-index: 1; }
+.danfe-top { display: grid; grid-template-columns: 1.5fr 1fr 1.4fr; border: 1px solid #111; }
+.danfe-top > div { padding: 8px; }
+.danfe-top > div + div { border-left: 1px solid #111; }
+.danfe-name { font-size: 1.05rem; display: block; }
+.danfe-title { text-align: center; display: grid; gap: 4px; align-content: start; }
+.danfe-title strong { font-size: 1.3rem; }
+.danfe-title > span { font-size: 0.68rem; }
+.danfe-io { display: flex; justify-content: center; align-items: center; gap: 8px; font-size: 0.62rem; text-align: left; }
+.danfe-io b { border: 1px solid #111; padding: 2px 8px; font-size: 1rem; }
+.danfe-bars { height: 44px; margin: 4px 0; display: grid; place-items: center; text-align: center; font-size: 0.6rem; color: #666; background: repeating-linear-gradient(90deg, #ddd 0 2px, #fff 2px 5px); }
+.danfe-row { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid #111; border-top: 0; }
+.danfe-row > div { padding: 6px 8px; }
+.danfe-row > div + div { border-left: 1px solid #111; }
+.danfe-row:only-of-type > div, .danfe > .danfe-row:last-child { grid-column: 1 / -1; }
+.danfe > .danfe-row:last-child { grid-template-columns: 1fr; margin-top: 8px; border-top: 1px solid #111; }
+.danfe-sec { margin: 8px 0 2px; font-weight: 700; color: #111 !important; }
+.danfe-grid { display: grid; border: 1px solid #111; }
+.danfe-grid.g3 { grid-template-columns: repeat(3, 1fr); }
+.danfe-grid.g6 { grid-template-columns: repeat(6, 1fr); }
+.danfe-grid > div { padding: 5px 7px; border-right: 1px solid #111; border-bottom: 1px solid #111; }
+.danfe-grid.g3 > div:nth-child(3n), .danfe-grid.g6 > div:nth-child(6n) { border-right: 0; }
+.danfe-grid > div.span2 { grid-column: span 2; }
+.danfe-grid > div.strong { background: #f2f2f2; }
+.danfe-items { width: 100%; border-collapse: collapse; border: 1px solid #111; }
+.danfe-items th, .danfe-items td { border: 1px solid #111; padding: 3px 5px; font-size: 10px; text-align: left; }
+.danfe-items th { background: #f2f2f2; font-size: 9px; text-transform: uppercase; }
+.danfe-items td.num, .danfe-items th.num { text-align: right; }
+.cupom { width: 302px; max-width: 100%; padding: 12px 10px; font-family: ui-monospace, 'Courier New', monospace; font-size: 11px; line-height: 1.35; }
+.cupom > *:not(.doc-watermark) { position: relative; z-index: 1; }
+.cupom hr { border: 0; border-top: 1px dashed #111; margin: 7px 0; }
+.cupom-c { text-align: center; }
+.cupom .small { font-size: 9.5px; }
+.cupom-items { width: 100%; border-collapse: collapse; }
+.cupom-items td { padding: 0; border: 0; background: none; font-size: 10.5px; vertical-align: top; }
+.cupom-items tr.l1 td { padding-top: 4px; }
+.cupom-items td.num { text-align: right; white-space: nowrap; }
+.cupom-line { display: flex; justify-content: space-between; gap: 8px; }
+.cupom-line.big { font-size: 13px; font-weight: 700; margin: 4px 0; }
+.cupom-qr { width: 116px; height: 116px; margin: 8px auto; border: 1px dashed #111; display: grid; place-items: center; text-align: center; font-size: 9.5px; color: #555; }
+.fiscal-print-root { display: none; }
+@media (max-width: 860px) { .danfe-top { grid-template-columns: 1fr; } .danfe-top > div + div { border-left: 0; border-top: 1px solid #111; } .danfe-grid.g6 { grid-template-columns: repeat(3, 1fr); } .danfe-grid.g6 > div:nth-child(6n) { border-right: 1px solid #111; } .danfe-grid.g6 > div:nth-child(3n) { border-right: 0; } .danfe { width: 100%; } }
+@media print {
+  body > *:not(.fiscal-print-root) { display: none !important; }
+  .fiscal-print-root { display: block !important; }
+  .fiscal-print-root .doc { box-shadow: none; margin: 0 auto; }
+  .fiscal-print-root .danfe { width: 100%; }
+  @page { margin: 10mm; }
+}

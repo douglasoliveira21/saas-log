@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
-import { CommissionRuleKind, CommissionStatus, OrderStatus, SalesChannel } from '@prisma/client';
+import { FiscalDocChoice, CommissionRuleKind, CommissionStatus, OrderStatus, SalesChannel } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsEmail, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateNested,
@@ -22,6 +22,7 @@ class OrderDto {
   @IsUUID() warehouseId: string;
   @IsOptional() @IsUUID() salespersonId?: string;
   @IsOptional() @IsEnum(SalesChannel) channel?: SalesChannel;
+  @IsOptional() @IsEnum(FiscalDocChoice) fiscalDocType?: FiscalDocChoice;
   @IsOptional() @IsNumber(money) @Min(0) shipping?: number;
   @IsOptional() @IsString() @MaxLength(1000) notes?: string;
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(500) @ValidateNested({ each: true }) @Type(() => OrderItemDto) items: OrderItemDto[];
@@ -92,6 +93,9 @@ export class SalesController {
 
   @Get('sales/orders/:id') @RequirePermissions('sales.view')
   get(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.sales.get(ctx, id); }
+
+  @Get('sales/orders/:id/fiscal-preview') @RequirePermissions('sales.view')
+  fiscalPreview(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.sales.fiscalPreview(ctx, id); }
 
   @Post('sales/orders') @RequirePermissions('sales.create')
   create(@CurrentAuth() ctx: AuthContext, @Body() dto: OrderDto) { return this.sales.create(ctx, dto); }

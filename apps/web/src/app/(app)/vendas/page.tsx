@@ -6,19 +6,21 @@ import { api } from '@/lib/api';
 import { brl, dateBr, ORDER_STATUS } from '@/lib/format';
 import { useUi, PageHeader, Alert, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
+import { FISCAL_LABEL, FiscalChoicePicker, FiscalPreviewDialog, type FiscalChoice } from './fiscal';
 
 interface OrderRow { id: string; number: number; status: string; channel: string; total: string; createdAt: string; customer: { name: string }; salesperson: { name: string } | null }
 interface Detail extends OrderRow {
-  customerId: string; warehouseId: string; notes?: string | null; subtotal: string; discountTotal: string; shipping: string; approvalReason: string | null; cancelReason: string | null; warehouse: { code: string };
+  customerId: string; warehouseId: string; fiscalDocType: FiscalChoice; notes?: string | null; subtotal: string; discountTotal: string; shipping: string; approvalReason: string | null; cancelReason: string | null; warehouse: { code: string };
   items: { id: string; productId: string; quantity: number; unitPrice: string; discountPct: string; total: string; returnedQty: number; product: { sku: string; name: string } }[];
 }
 interface Product { id: string; sku: string; name: string; suggestedPrice: string | null }
-interface Customer { id: string; name: string }
+interface Customer { id: string; name: string; kind?: string; document?: string | null }
 interface Warehouse { id: string; code: string; name: string; active: boolean }
 interface Line { productId: string; quantity: string; unitPrice: string; discountPct: string }
 
 const CHANNELS: [string, string][] = [['DIRECT', 'Atendimento comercial'], ['WHATSAPP', 'WhatsApp'], ['PHONE', 'Telefone'], ['EMAIL', 'E-mail'], ['STORE', 'Loja física'], ['WEB', 'Loja virtual'], ['REPRESENTATIVE', 'Representante']];
 const NEXT: Record<string, [string, string]> = { CONFIRMED: ['PICKING', 'Iniciar separação'], PICKING: ['PACKED', 'Marcar embalado'], PACKED: ['SHIPPED', 'Expedir (baixa estoque)'], SHIPPED: ['DELIVERED', 'Confirmar entrega'], DELIVERED: ['CLOSED', 'Encerrar'] };
+const suggestFiscal = (c?: Customer): FiscalChoice | undefined => (c?.document ? (c.document.replace(/D/g, '').length === 14 ? 'NFE' : 'NFCE') : undefined);
 const num = (v: string) => (v.trim() === '' ? undefined : Number(v.replace(',', '.')));
 
 export default function VendasPage() {
@@ -34,7 +36,8 @@ export default function VendasPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [whs, setWhs] = useState<Warehouse[]>([]);
   const [lines, setLines] = useState<Line[]>([{ productId: '', quantity: '1', unitPrice: '', discountPct: '' }]);
-  const [meta, setMeta] = useState({ customerId: '', warehouseId: '', channel: 'DIRECT', shipping: '', notes: '' });
+  const [meta, setMeta] = useState({ customerId: '', warehouseId: '', channel: 'DIRECT', shipping: '', notes: '', fiscalDocType: 'NONE' as FiscalChoice });
+  const [fiscalView, setFiscalView] = useState<{ id: string; docType: FiscalChoice } | null>(null);
 
   const load = useCallback(() => {
     api<{ items: OrderRow[] }>(`/sales/orders?limit=100${status ? `&status=${status}` : ''}`).then((r) => setRows(r.items)).catch((e) => setError(e.message));
@@ -55,7 +58,7 @@ export default function VendasPage() {
 
   function startForm(d?: Detail) {
     setForm({ id: d?.id });
-    setMeta(d ? { customerId: d.customerId, warehouseId: d.warehouseId, channel: d.channel, shipping: String(Number(d.shipping) || ''), notes: d.notes ?? '' } : { customerId: customers[0]?.id ?? '', warehouseId: whs[0]?.id ?? '', channel: 'DIRECT', shipping: '', notes: '' });
+    setMeta(d ? { customerId: d.customerId, warehouseId: d.warehouseId, channel: d.channel, shipping: String(Number(d.shipping) || ''), notes: d.notes ?? '', fiscalDocType: d.fiscalDocType ?? 'NONE' } : { customerId: customers[0]?.id ?? '', warehouseId: whs[0]?.id ?? '', channel: 'DIRECT', shipping: '', notes: '', fiscalDocType: 'NONE' });
     setLines(d ? d.items.map((i) => ({ productId: i.productId, quantity: String(i.quantity), unitPrice: i.unitPrice, discountPct: String(Number(i.discountPct) || '') })) : [{ productId: '', quantity: '1', unitPrice: '', discountPct: '' }]);
   }
 
@@ -113,6 +116,7 @@ export default function VendasPage() {
             <div><label htmlFor="ch">Origem</label><select id="ch" value={meta.channel} onChange={(e) => setMeta({ ...meta, channel: e.target.value })}>{CHANNELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
             <div><label htmlFor="sh">Frete (R$)</label><input id="sh" inputMode="decimal" value={meta.shipping} onChange={(e) => setMeta({ ...meta, shipping: e.target.value })} /></div>
           </div>
+          <FiscalChoicePicker value={meta.fiscalDocType} onChange={(v) => setMeta({ ...meta, fiscalDocType: v })} suggestion={suggestFiscal(customers.find((c) => c.id === meta.customerId))} />
           <h2 style={{ marginTop: 16 }}>Itens</h2>
           {lines.map((l, i) => (
             <div className="row" key={i} style={{ marginBottom: 8 }}>
@@ -167,6 +171,10 @@ export default function VendasPage() {
             </div>
           </div>
           <p className="muted">{detail.customer.name} · depósito {detail.warehouse.code} · vendedor {detail.salesperson?.name ?? '—'}</p>
+          <div className="row" style={{ marginBottom: 12 }}>
+            <span className={`badge ${detail.fiscalDocType === 'NONE' ? '' : 'brand'}`}>Documento fiscal: {FISCAL_LABEL[detail.fiscalDocType ?? 'NONE']}</span>
+            <button className="btn sm" onClick={() => setFiscalView({ id: detail.id, docType: detail.fiscalDocType ?? 'NONE' })}>{detail.fiscalDocType === 'NONE' ? 'Ver modelos (NF-e e NFC-e)' : 'Ver documento'}</button>
+          </div>
           {detail.approvalReason && <div className="alert">{detail.approvalReason}</div>}
           {detail.cancelReason && <div className="alert error">Cancelado: {detail.cancelReason}</div>}
           <div className="table-wrap">
@@ -178,6 +186,7 @@ export default function VendasPage() {
           <p style={{ textAlign: 'right', marginBottom: 0 }}>Subtotal {brl(detail.subtotal)} · Descontos {brl(detail.discountTotal)} · Frete {brl(detail.shipping)} · <strong>Total {brl(detail.total)}</strong></p>
         </section>
       )}
+      {fiscalView && <FiscalPreviewDialog orderId={fiscalView.id} docType={fiscalView.docType} onClose={() => setFiscalView(null)} />}
     </>
   );
 }

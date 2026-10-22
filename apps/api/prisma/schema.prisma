@@ -580,6 +580,13 @@ enum SalesChannel {
   MARKETPLACE
 }
 
+/// Documento fiscal escolhido na venda: nenhum (decidir depois), NF-e (modelo 55) ou NFC-e (cupom do consumidor, modelo 65).
+enum FiscalDocChoice {
+  NONE
+  NFE
+  NFCE
+}
+
 enum OrderStatus {
   DRAFT
   PENDING_APPROVAL
@@ -727,6 +734,7 @@ model SalesOrder {
   salespersonId  String?      @map("salesperson_id") @db.Uuid
   warehouseId    String       @map("warehouse_id") @db.Uuid
   channel        SalesChannel @default(DIRECT)
+  fiscalDocType  FiscalDocChoice @default(NONE) @map("fiscal_doc_type")
   status         OrderStatus  @default(DRAFT)
   subtotal       Decimal      @default(0) @db.Decimal(14, 2)
   discountTotal  Decimal      @default(0) @map("discount_total") @db.Decimal(14, 2)

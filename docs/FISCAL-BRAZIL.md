@@ -55,3 +55,12 @@ Portal Nacional da NF-e (https://www.nfe.fazenda.gov.br/portal/): Manual de Orie
 - As duplicatas do XML são guardadas (`installments`) para o Contas a pagar (Fase 7), que ainda não existe.
 - Unidades: conversão só entre unidade de venda e de compra do produto; outras unidades pedem revisão manual.
 - Um produto tem um único código de fornecedor por fornecedor.
+
+## Documento fiscal escolhido na venda (NF-e ou NFC-e) e espelho
+**Na venda** (Vendas → Pedido) o usuário escolhe o documento: **Nota fiscal (NF-e)**, **Cupom fiscal (NFC-e)** ou **Decidir depois** (padrão). A escolha fica no pedido (`fiscalDocType`) e pode ser trocada enquanto for rascunho. A tela sugere NF-e para cliente com CNPJ e NFC-e para CPF, mas a decisão é do usuário.
+
+**Espelho** (`GET /api/sales/orders/:id/fiscal-preview`, botão "Ver documento" no pedido): mostra como ficará o **DANFE da NF-e (A4)** e o **cupom da NFC-e (80 mm)** com os dados do pedido, do estabelecimento emitente e do cliente, pode ser impresso e traz a lista do que **falta para emitir**:
+- *Bloqueia:* emitente sem CNPJ, IE, endereço ou regime tributário; itens sem NCM de 8 dígitos; NF-e sem CPF/CNPJ ou sem endereço completo do destinatário.
+- *Avisa:* item sem origem da mercadoria; configuração fiscal ainda não validada pelo contador ou tipo de documento não habilitado; sem certificado A1 ativo; NFC-e para cliente com CNPJ (normalmente pede NF-e).
+
+**O que o espelho NÃO é:** não é documento fiscal. Não há número, chave de acesso, protocolo, QR Code nem tributos calculados (aparece "não calculado"/"pendente"), e a marca "ESPELHO · SEM VALOR FISCAL" cobre o documento. A **transmissão à SEFAZ não está implementada** (nem a de NF-e nem a de NFC-e, que também exige CSC/QR Code); depende do provedor/certificado descritos acima.

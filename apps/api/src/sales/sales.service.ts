@@ -1,7 +1,8 @@
+import { buildFiscalPreview } from './fiscal-preview';
 import { DelinquencyService } from '../finance/delinquency';
 import { assertWithinPlan } from '../billing/limits';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { OrderStatus, Prisma, SalesChannel } from '@prisma/client';
+import { FiscalDocChoice, OrderStatus, Prisma, SalesChannel } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AuthContext } from '../common/auth';
 import { CommissionsService, fromCents, toCents } from '../commissions/commissions.service';
@@ -16,6 +17,7 @@ export interface OrderInput {
   warehouseId: string;
   salespersonId?: string;
   channel?: SalesChannel;
+  fiscalDocType?: FiscalDocChoice;
   shipping?: number;
   notes?: string;
   items: { productId: string; quantity: number; unitPrice?: number; discountPct?: number }[];
@@ -82,6 +84,15 @@ export class SalesService {
     });
   }
 
+  /** Espelho (DANFE/cupom) e pendências para emitir o documento fiscal escolhido. Respeita o escopo do usuário. */
+  fiscalPreview(ctx: AuthContext, id: string) {
+    return this.prisma.withContext(ctx, async (tx) => {
+      const own = await tx.salesOrder.findFirst({ where: { id, tenantId: ctx.tenantId!, AND: [await this.scope(tx, ctx)] }, select: { id: true } });
+      if (!own) throw new NotFoundException('Pedido não encontrado.');
+      return buildFiscalPreview(tx, ctx.tenantId!, id);
+    });
+  }
+
   // ───────────── rascunho ─────────────
 
   create(ctx: AuthContext, dto: OrderInput) {
@@ -92,7 +103,7 @@ export class SalesService {
       const order = await tx.salesOrder.create({
         data: {
           tenantId: ctx.tenantId!, number, customerId: dto.customerId, warehouseId: dto.warehouseId, salespersonId: data.salespersonId,
-          channel: dto.channel ?? 'DIRECT', notes: dto.notes, createdById: ctx.userId, ...data.totals,
+          channel: dto.channel ?? 'DIRECT', fiscalDocType: dto.fiscalDocType ?? 'NONE', notes: dto.notes, createdById: ctx.userId, ...data.totals,
         },
       });
       await tx.salesOrderItem.createMany({ data: data.rows.map((r) => ({ ...r, orderId: order.id })) });
@@ -110,7 +121,7 @@ export class SalesService {
       await tx.salesOrder.update({
         where: { id },
         data: {
-          customerId: dto.customerId, warehouseId: dto.warehouseId, salespersonId: data.salespersonId, channel: dto.channel ?? 'DIRECT', notes: dto.notes, ...data.totals,
+          customerId: dto.customerId, warehouseId: dto.warehouseId, salespersonId: data.salespersonId, channel: dto.channel ?? 'DIRECT', fiscalDocType: dto.fiscalDocType ?? 'NONE', notes: dto.notes, ...data.totals,
         },
       });
       await tx.salesOrderItem.createMany({ data: data.rows.map((r) => ({ ...r, orderId: id })) });
