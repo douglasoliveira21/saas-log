@@ -77,7 +77,7 @@ export default function VendasPage() {
     setLines(d ? d.items.map((i) => ({ productId: i.productId, quantity: String(i.quantity), unitPrice: i.unitPrice, discountPct: String(Number(i.discountPct) || '') })) : [{ productId: '', quantity: '1', unitPrice: '', discountPct: '' }]);
   }
 
-  async function save() {
+  async function save(confirm = true) {
     setError(''); setOk('');
     if (!meta.paymentMethod) { setStep(2); setError('Escolha a forma de pagamento.'); return; }
     if (meta.paymentMethod === 'BOLETO' && !meta.firstDueDate) { setStep(2); setError('Boleto: informe a data de vencimento da primeira parcela.'); return; }
@@ -88,7 +88,16 @@ export default function VendasPage() {
     };
     try {
       const r = form?.id ? await api<{ id: string }>(`/sales/orders/${form.id}`, 'PUT', body) : await api<{ id: string }>('/sales/orders', 'POST', body);
-      setForm(null); setOk('Pedido salvo como rascunho.'); load(); await open(r.id);
+      if (!confirm) { setForm(null); setOk('Pedido salvo como rascunho.'); load(); await open(r.id); return; }
+      // Venda nova já nasce confirmada (reserva o estoque); só vai para aprovação se quebrar uma regra (ex.: desconto acima do limite).
+      try {
+        const c = await api<{ status: string; reasons: string[] }>(`/sales/orders/${r.id}/submit`, 'POST');
+        setForm(null); load(); await open(r.id);
+        if (c.status === 'PENDING_APPROVAL') setError(`Pedido criado e enviado para aprovação: ${c.reasons.join('; ')}.`); else setOk('Pedido confirmado e estoque reservado.');
+      } catch (e) {
+        setForm(null); load(); await open(r.id);
+        setError(`Pedido criado como rascunho, mas não foi confirmado: ${(e as Error).message}`);
+      }
     } catch (e) { setError((e as Error).message); }
   }
 
@@ -154,7 +163,7 @@ export default function VendasPage() {
       {can('sales.create') && (!customers.length || !whs.length) && <Alert kind="warn">Para criar pedidos é preciso ter ao menos {!customers.length ? 'um cliente em “Clientes”' : 'um depósito ativo em “Empresa”'}.</Alert>}
 
       {form && (
-        <Dialog title={form.id ? 'Editar rascunho' : 'Novo pedido'} description="O pedido é salvo como rascunho: nada é reservado no estoque até você confirmar." onClose={() => setForm(null)} xl>
+        <Dialog title={form.id ? 'Editar rascunho' : 'Novo pedido'} description="Ao confirmar, o pedido já nasce confirmado e o estoque é reservado." onClose={() => setForm(null)} xl>
           <div className="modal-body">
           <ol className="journey" aria-label="Etapas do pedido">
             {STEPS.map((t, i) => <li key={t} className={i < step ? 'done' : i === step ? 'now' : ''} aria-current={i === step ? 'step' : undefined}>{i < step ? '✓ ' : `${i + 1}. `}{t}</li>)}
@@ -231,7 +240,10 @@ export default function VendasPage() {
             <button className="btn" onClick={() => (step === 0 ? setForm(null) : setStep(step - 1))}>{step === 0 ? 'Cancelar' : 'Voltar'}</button>
             {step < STEPS.length - 1
               ? <button className="btn primary" onClick={goNext}>Próximo: {STEPS[step + 1]}</button>
-              : <button className="btn primary" onClick={save}>Salvar rascunho</button>}
+              : <>
+                {can('sales.create') && <button className="btn" onClick={() => save(false)}>Só salvar rascunho</button>}
+                <button className="btn primary" onClick={() => save(true)}>{form.id ? 'Salvar e confirmar pedido' : 'Confirmar pedido'}</button>
+              </>}
           </div>
         </Dialog>
       )}
