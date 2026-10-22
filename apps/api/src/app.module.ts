@@ -57,6 +57,7 @@ import { LogisticsController } from './logistics/logistics.controller';
 import { LogisticsService } from './logistics/logistics.service';
 import { OrdersDashboardController, OrdersDashboardService } from './sales/orders-dashboard';
 import { DelinquencyController, DelinquencyService } from './finance/delinquency';
+import { NegotiationsController, NegotiationsService } from './finance/negotiations';
 import { DeliveryController } from './delivery/delivery.controller';
 import { DeliveryService } from './delivery/delivery.service';
 import { ReportsController } from './reports/reports.controller';
@@ -84,7 +85,7 @@ class HealthController {
       skipIf: () => process.env.NODE_ENV === 'test',
     }),
   ],
-  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, FinanceController, ReportsController, DeliveryController, DelinquencyController, OrdersDashboardController, LogisticsController, BillingController, PlatformController, ObservabilityController, LookupController, BrandingController, ProductImagesController, MediaController, ProductQualityController, ChannelProductsController],
+  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, FinanceController, ReportsController, DeliveryController, DelinquencyController, NegotiationsController, OrdersDashboardController, LogisticsController, BillingController, PlatformController, ObservabilityController, LookupController, BrandingController, ProductImagesController, MediaController, ProductQualityController, ChannelProductsController],
   providers: [
     AuthService,
     StructureService,
@@ -117,6 +118,7 @@ class HealthController {
     ReportsService,
     DeliveryService,
     DelinquencyService,
+    NegotiationsService,
     OrdersDashboardService,
     LogisticsService,
     BillingService,

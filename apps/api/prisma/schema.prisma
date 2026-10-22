@@ -680,6 +680,7 @@ model Customer {
 
   tenant Tenant       @relation(fields: [tenantId], references: [id])
   orders SalesOrder[]
+  negotiations Negotiation[]
 
   @@unique([tenantId, document])
   @@unique([tenantId, id])
@@ -1490,6 +1491,7 @@ model FinancialTitle {
   category    FinancialCategory?    @relation(fields: [tenantId, categoryId], references: [tenantId, id])
   costCenter  CostCenter?           @relation(fields: [tenantId, costCenterId], references: [tenantId, id])
   settlements FinancialSettlement[]
+  negotiationLinks NegotiationTitle[]
 
   @@unique([tenantId, origin, originRef])
   @@unique([tenantId, id])
@@ -1898,4 +1900,52 @@ model FiscalProviderCredential {
 
   @@unique([tenantId, establishmentId])
   @@map("fiscal_provider_credentials")
+}
+
+/// Negociação de dívida de cliente inadimplente: junta títulos vencidos em novas parcelas (boleto), com juros, multa e desconto.
+model Negotiation {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  number        Int
+  customerId    String   @map("customer_id") @db.Uuid
+  status        String   @default("ACTIVE") // ACTIVE | CANCELLED
+  originalAmount Decimal @map("original_amount") @db.Decimal(14, 2)
+  interest      Decimal  @default(0) @db.Decimal(14, 2)
+  fine          Decimal  @default(0) @db.Decimal(14, 2)
+  discount      Decimal  @default(0) @db.Decimal(14, 2)
+  totalAmount   Decimal  @map("total_amount") @db.Decimal(14, 2)
+  installments  Int
+  firstDueDate  DateTime @map("first_due_date") @db.Date
+  intervalDays  Int      @default(30) @map("interval_days")
+  notes         String?
+  cancelReason  String?  @map("cancel_reason")
+  cancelledAt   DateTime? @map("cancelled_at")
+  createdById   String?  @map("created_by_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  customer Customer           @relation(fields: [tenantId, customerId], references: [tenantId, id])
+  titles   NegotiationTitle[]
+
+  @@unique([tenantId, number])
+  @@unique([tenantId, id])
+  @@index([tenantId, customerId])
+  @@map("negotiations")
+}
+
+/// Título vencido que entrou na negociação (o original é cancelado e volta a abrir se a negociação for desfeita).
+model NegotiationTitle {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  negotiationId  String   @map("negotiation_id") @db.Uuid
+  titleId        String   @map("title_id") @db.Uuid
+  amount         Decimal  @db.Decimal(14, 2)
+  dueDate        DateTime @map("due_date")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  negotiation Negotiation    @relation(fields: [tenantId, negotiationId], references: [tenantId, id])
+  title       FinancialTitle @relation(fields: [tenantId, titleId], references: [tenantId, id])
+
+  @@index([tenantId, titleId])
+  @@index([tenantId, negotiationId])
+  @@map("negotiation_titles")
 }

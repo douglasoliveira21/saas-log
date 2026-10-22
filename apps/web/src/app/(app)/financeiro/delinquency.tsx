@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, EmptyState, StatCard, useUi } from '@/components/ui';
 import { api } from '@/lib/api';
 import { brl, dateBr } from '@/lib/format';
+import { NegotiationDetailDialog, NegotiationDialog, NegotiationsList } from './negotiation';
 
 interface Row {
   customerId: string; name: string; document: string | null; titles: number; overdueAmount: string; oldestDueDate: string; maxDaysOverdue: number;
@@ -23,6 +24,9 @@ export function Delinquency({ canConfigure, canRelease }: { canConfigure: boolea
   const [filter, setFilter] = useState<(typeof FILTERS)[number][0]>('ALL');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [negotiating, setNegotiating] = useState<Row | null>(null);
+  const [created, setCreated] = useState<string | null>(null);
+  const [listKey, setListKey] = useState(0);
 
   const load = useCallback(() => api<Data>('/finance/delinquency').then((d) => { setData(d); setDays(String(d.blockAfterDays)); }).catch((e) => setError(e.message)), []);
   useEffect(() => { void load(); }, [load]);
@@ -116,6 +120,7 @@ export function Delinquency({ canConfigure, canRelease }: { canConfigure: boolea
                       {r.state === 'RELEASED' && r.releasedUntil && <div className="muted" style={{ fontSize: '0.78rem' }}>até {dateBr(r.releasedUntil)}{r.releaseReason ? ` · ${r.releaseReason}` : ''}</div>}
                     </td>
                     <td className="actions">
+                      {canConfigure && <button className="btn sm primary" onClick={() => setNegotiating(r)}>Negociar</button>}
                       {canRelease && r.state === 'BLOCKED' && <button className="btn sm" onClick={() => release(r)}>Liberar</button>}
                       {canRelease && r.state === 'RELEASED' && <button className="btn sm ghost" onClick={() => revoke(r)}>Cancelar liberação</button>}
                     </td>
@@ -126,6 +131,10 @@ export function Delinquency({ canConfigure, canRelease }: { canConfigure: boolea
           </table></div>
         )}
       </section>
+
+      <NegotiationsList canManage={canConfigure} refreshKey={listKey} onChanged={() => { void load(); }} />
+      {negotiating && <NegotiationDialog customerId={negotiating.customerId} customerName={negotiating.name} onClose={() => setNegotiating(null)} onDone={(id) => { setNegotiating(null); setCreated(id); setListKey((k) => k + 1); ui.toast.ok('Negociação criada: as novas parcelas já estão em A receber.'); void load(); }} />}
+      {created && <NegotiationDetailDialog id={created} canManage={canConfigure} onClose={() => setCreated(null)} onChanged={() => { void load(); setListKey((k) => k + 1); }} />}
     </div>
   );
 }
