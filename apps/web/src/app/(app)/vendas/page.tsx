@@ -13,7 +13,7 @@ import { FISCAL_LABEL, FiscalChoicePicker, FiscalPreviewDialog, type FiscalChoic
 interface OrderRow { paymentMethod?: string | null; id: string; number: number; status: string; channel: string; total: string; createdAt: string; customerType?: PurchaseType | null; dispatchDate?: string | null; dispatchDeferred?: boolean; customer: { name: string }; salesperson: { name: string } | null }
 interface Detail extends OrderRow {
   customerId: string; warehouseId: string; fiscalDocType: FiscalChoice; installmentCount: number; firstDueDate: string | null; installmentIntervalDays: number; installments: { id: string; installmentNo: number; installmentTotal: number; dueDate: string; amount: string; status: string }[]; notes?: string | null; subtotal: string; discountTotal: string; shipping: string; approvalReason: string | null; cancelReason: string | null; warehouse: { code: string };
-  items: { id: string; productId: string; quantity: number; unitPrice: string; discountPct: string; total: string; returnedQty: number; product: { sku: string; name: string } }[];
+  items: { id: string; productId: string; quantity: number; unitPrice: string; discountPct: string; total: string; returnedQty: number; costSnapshot?: string | null; product: { sku: string; name: string } }[];
 }
 interface Product { id: string; sku: string; name: string; suggestedPrice: string | null }
 interface Customer { id: string; name: string; kind?: string; document?: string | null }
@@ -345,6 +345,13 @@ export default function VendasPage() {
                 <tbody>{detail.items.map((i) => <tr key={i.id}><td>{i.product.sku} — {i.product.name}</td><td>{i.quantity}</td><td className="num">{brl(i.unitPrice)}</td><td>{Number(i.discountPct)}%</td><td className="num">{brl(i.total)}</td><td>{i.returnedQty}</td></tr>)}</tbody>
               </table>
             </div>
+            {can('management.view') && (() => {
+              const net = detail.items.reduce((a, i) => a + Number(i.total) * ((i.quantity - i.returnedQty) / i.quantity), 0);
+              const cost = detail.items.reduce((a, i) => a + Number(i.costSnapshot ?? 0) * (i.quantity - i.returnedQty), 0);
+              const missing = detail.items.some((i) => i.costSnapshot === null || i.costSnapshot === undefined);
+              const m = net - cost;
+              return <p className="muted" style={{ marginBottom: 0, textAlign: 'right', fontSize: '0.84rem' }}>Margem bruta da mercadoria: <strong>{brl(m)}</strong> ({net > 0 ? ((m / net) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) : '—'}%) · custo {brl(cost)}{missing ? ' · há item sem custo cadastrado' : ''}</p>;
+            })()}
             <div className="totals-bar" style={{ marginTop: 12 }}>
               <span>Produtos {brl(detail.subtotal)}</span><span>Descontos − {brl(detail.discountTotal)}</span><span>Frete {brl(detail.shipping)}</span><span className="grand">Total {brl(detail.total)}</span>
             </div>

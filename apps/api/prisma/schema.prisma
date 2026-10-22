@@ -703,6 +703,7 @@ model Salesperson {
   orders      SalesOrder[]
   rules       CommissionRule[]
   commissions SalesCommission[]
+  goals       SalesGoal[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, userId])
@@ -1435,6 +1436,7 @@ model FinancialCategory {
   createdAt DateTime @default(now()) @map("created_at")
 
   titles FinancialTitle[]
+  budgetLines BudgetLine[]
 
   @@unique([tenantId, name])
   @@unique([tenantId, id])
@@ -1948,4 +1950,37 @@ model NegotiationTitle {
   @@index([tenantId, titleId])
   @@index([tenantId, negotiationId])
   @@map("negotiation_titles")
+}
+
+/// Meta de vendas mensal por vendedor (período AAAA-MM).
+model SalesGoal {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  salespersonId String   @map("salesperson_id") @db.Uuid
+  period        String
+  amount        Decimal  @db.Decimal(14, 2)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  salesperson Salesperson @relation(fields: [tenantId, salespersonId], references: [tenantId, id])
+
+  @@unique([tenantId, salespersonId, period])
+  @@map("sales_goals")
+}
+
+/// Orçamento financeiro mensal por categoria (lineKey = id da categoria, ou SALES para a receita de vendas).
+model BudgetLine {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  lineKey    String   @map("line_key")
+  categoryId String?  @map("category_id") @db.Uuid
+  period     String
+  amount     Decimal  @db.Decimal(14, 2)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  category FinancialCategory? @relation(fields: [tenantId, categoryId], references: [tenantId, id])
+
+  @@unique([tenantId, lineKey, period])
+  @@map("budget_lines")
 }

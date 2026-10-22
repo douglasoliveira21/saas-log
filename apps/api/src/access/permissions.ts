@@ -46,6 +46,8 @@ export const PERMISSIONS = {
   'finance.manage': 'Lançar títulos e registrar baixas/estornos; cadastros financeiros',
   'finance.approve': 'Aprovar pagamentos acima do limite configurado e liberar clientes bloqueados por inadimplência',
   'finance.reconcile': 'Importar extratos e conciliar bancos e marketplaces',
+  'management.view': 'Ver metas, margem, giro de estoque e orçamento',
+  'management.manage': 'Definir metas de vendas e orçamento financeiro',
   'reports.view': 'Consultar a central de relatórios',
   'reports.export': 'Exportar relatórios (CSV/XLSX)',
   'logistics.view': 'Consultar expedição e rastreamento',
@@ -76,7 +78,7 @@ export const SYSTEM_ROLES: SystemRoleDef[] = [
     key: 'ops_manager',
     name: 'Gerente operacional',
     permissions: [
-      ...operational, 'warehouse.manage', 'products.manage', 'suppliers.view', 'suppliers.manage', 'stock.move', 'stock.adjust', 'stock.approve',
+      ...operational, 'management.view', 'warehouse.manage', 'products.manage', 'suppliers.view', 'suppliers.manage', 'stock.move', 'stock.adjust', 'stock.approve',
       ...salesRead, 'sales.fulfill', 'sales.return', 'purchases.view', 'purchases.create', 'purchases.approve', 'purchases.receive', 'integrations.view', 'pricing.view', 'fiscal.view', 'fiscal.import', 'logistics.view', 'logistics.manage', 'routes.view', 'routes.manage', 'reports.view',
     ],
   },
@@ -84,7 +86,7 @@ export const SYSTEM_ROLES: SystemRoleDef[] = [
     key: 'commercial_manager',
     name: 'Gerente comercial',
     permissions: [
-      ...operational, 'products.manage', ...salesRead, 'customers.manage', 'sales.create', 'sales.approve', 'sales.return', 'commissions.view', 'commissions.manage', 'integrations.view', 'pricing.view', 'pricing.manage', 'reports.view',
+      ...operational, 'management.view', 'management.manage', 'products.manage', ...salesRead, 'customers.manage', 'sales.create', 'sales.approve', 'sales.return', 'commissions.view', 'commissions.manage', 'integrations.view', 'pricing.view', 'pricing.manage', 'reports.view',
     ],
   },
   { key: 'buyer', name: 'Comprador', permissions: [...operational, 'suppliers.view', 'suppliers.manage', 'purchases.view', 'purchases.create', 'fiscal.view', 'fiscal.import'] },
@@ -92,9 +94,9 @@ export const SYSTEM_ROLES: SystemRoleDef[] = [
   { key: 'stock_operator', name: 'Operador de estoque', permissions: [...operational, 'stock.move', 'sales.view', 'sales.view_all', 'sales.fulfill', 'purchases.view', 'purchases.receive', 'logistics.view'] },
   { key: 'shipper', name: 'Expedidor', permissions: [...operational, 'stock.move', 'sales.view', 'sales.view_all', 'sales.fulfill', 'logistics.view', 'logistics.manage', 'routes.view', 'routes.manage'] },
   { key: 'driver', name: 'Motorista', permissions: ['delivery.perform'] },
-  { key: 'finance', name: 'Financeiro', permissions: ['company.view', 'products.view', 'suppliers.view', ...salesRead, 'purchases.view', 'commissions.view', 'pricing.view', 'finance.view', 'finance.manage', 'finance.reconcile', 'reports.view', 'reports.export'] },
+  { key: 'finance', name: 'Financeiro', permissions: ['company.view', 'products.view', 'suppliers.view', ...salesRead, 'purchases.view', 'commissions.view', 'pricing.view', 'finance.view', 'finance.manage', 'finance.reconcile', 'management.view', 'management.manage', 'reports.view', 'reports.export'] },
   { key: 'fiscal', name: 'Fiscal', permissions: ['company.view', 'products.view', 'products.manage', ...salesRead, 'purchases.view', 'fiscal.view', 'fiscal.manage', 'fiscal.import', 'fiscal.rules', 'fiscal.emit'] },
-  { key: 'accountant', name: 'Contador (acesso limitado)', permissions: ['company.view', 'products.view', 'fiscal.view', 'fiscal.rules', 'fiscal.approve', 'finance.view', 'reports.view'] },
+  { key: 'accountant', name: 'Contador (acesso limitado)', permissions: ['company.view', 'products.view', 'fiscal.view', 'fiscal.rules', 'fiscal.approve', 'finance.view', 'reports.view', 'reports.export'] },
   {
     key: 'auditor',
     name: 'Auditor (somente leitura)',

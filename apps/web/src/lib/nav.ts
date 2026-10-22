@@ -1,5 +1,5 @@
 import {
-  BarChart3, Building2, CreditCard, Handshake, LayoutDashboard, type LucideIcon, Package, PackageSearch,
+  BarChart3, Building2, Gauge, CreditCard, Handshake, LayoutDashboard, type LucideIcon, Package, PackageSearch,
   Navigation, Percent, Plug, ReceiptText, Route, ScrollText, Settings2, ShieldCheck, ShoppingCart, Store, Truck, Users, Wallet, Warehouse,
 } from 'lucide-react';
 
@@ -37,6 +37,7 @@ export const NAV: NavItem[] = [
 
   { href: '/financeiro', label: 'Financeiro', icon: Wallet, group: 'Financeiro e fiscal', permission: 'finance.view', implemented: true },
   { href: '/fiscal', label: 'Fiscal e notas', icon: ReceiptText, group: 'Financeiro e fiscal', permission: 'fiscal.view', implemented: true },
+  { href: '/gestao', label: 'Metas e indicadores', icon: Gauge, group: 'Financeiro e fiscal', permission: 'management.view', implemented: true },
   { href: '/relatorios', label: 'Relatórios', icon: BarChart3, group: 'Financeiro e fiscal', permission: 'reports.view', implemented: true },
 
   { href: '/empresa', label: 'Empresa e estrutura', icon: Building2, group: 'Administração', permission: 'company.view', implemented: true },
