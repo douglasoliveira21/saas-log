@@ -199,7 +199,10 @@ export class FiscalConfigService {
     return this.prisma.withContext(ctx, async (tx) => {
       await this.establishment(tx, ctx, establishmentId);
       const row = await tx.fiscalProviderCredential.findFirst({ where: { tenantId: ctx.tenantId!, establishmentId } });
+      const creds = row ? this.crypto.decrypt<StoredCreds>(ctx.tenantId!, ProviderContextService.aad(establishmentId), row.credsEnc) : null;
+      const cscView = (c?: { id: string; token: string }) => ({ configured: !!c, id: c?.id ?? null, hint: c ? '…' + c.token.slice(-4) : null });
       return {
+        csc: { homologacao: cscView(creds?.csc?.homologacao), producao: cscView(creds?.csc?.producao) },
         available: Object.entries(PROVIDERS).map(([key, name]) => ({ key, name })),
         provider: row?.provider ?? null, providerName: row ? PROVIDERS[row.provider as ProviderName] : null,
         homologacao: { configured: !!row?.hintHomologacao, hint: row?.hintHomologacao ?? null }, producao: { configured: !!row?.hintProducao, hint: row?.hintProducao ?? null },
@@ -207,7 +210,7 @@ export class FiscalConfigService {
     });
   }
 
-  async setProvider(ctx: AuthContext, establishmentId: string, dto: { provider: ProviderName; tokenHomologacao?: string; tokenProducao?: string }) {
+  async setProvider(ctx: AuthContext, establishmentId: string, dto: { provider: ProviderName; tokenHomologacao?: string; tokenProducao?: string; cscHomologacao?: { id: string; token: string }; cscProducao?: { id: string; token: string } }) {
     if (!(dto.provider in PROVIDERS)) throw new BadRequestException('Provedor desconhecido.');
     const clean = (t?: string) => { const v = t?.trim(); if (v && (v.length < 8 || v.length > 200 || /\s/.test(v))) throw new BadRequestException('Token inválido (sem espaços, de 8 a 200 caracteres).'); return v || undefined; };
     const th = clean(dto.tokenHomologacao); const tp = clean(dto.tokenProducao);
@@ -215,13 +218,14 @@ export class FiscalConfigService {
       await this.establishment(tx, ctx, establishmentId);
       const prev = await tx.fiscalProviderCredential.findFirst({ where: { tenantId: ctx.tenantId!, establishmentId } });
       const old = prev && prev.provider === dto.provider ? this.crypto.decrypt<StoredCreds>(ctx.tenantId!, ProviderContextService.aad(establishmentId), prev.credsEnc) : {};
-      const next: StoredCreds = { homologacao: th ?? old.homologacao, producao: tp ?? old.producao };
-      if (!next.homologacao && !next.producao) throw new BadRequestException('Informe ao menos um token.');
+      const csc = (c?: { id: string; token: string }) => { if (!c) return undefined; const id = c.id.trim(); const token = c.token.trim(); if (!/^\d{1,6}$/.test(id) || token.length < 6 || token.length > 64 || /\s/.test(token)) throw new BadRequestException('CSC inválido: informe o identificador (número) e o código, sem espaços.'); return { id, token }; };
+      const next: StoredCreds = { homologacao: th ?? old.homologacao, producao: tp ?? old.producao, csc: { homologacao: csc(dto.cscHomologacao) ?? old.csc?.homologacao, producao: csc(dto.cscProducao) ?? old.csc?.producao } };
+      if (dto.provider === 'FOCUS_NFE' && !next.homologacao && !next.producao) throw new BadRequestException('Informe ao menos um token.');
       const hint = (t?: string) => (t ? '…' + t.slice(-4) : null);
       const data = { provider: dto.provider, credsEnc: this.crypto.encrypt(ctx.tenantId!, ProviderContextService.aad(establishmentId), next), hintHomologacao: hint(next.homologacao), hintProducao: hint(next.producao) };
       if (prev) await tx.fiscalProviderCredential.update({ where: { id: prev.id }, data });
       else await tx.fiscalProviderCredential.create({ data: { tenantId: ctx.tenantId!, establishmentId, ...data } });
-      await this.audit.record(tx, ctx, { action: 'fiscal.provider_configured', entity: 'establishment', entityId: establishmentId, metadata: { provider: dto.provider, homologacao: !!next.homologacao, producao: !!next.producao } });
+      await this.audit.record(tx, ctx, { action: 'fiscal.provider_configured', entity: 'establishment', entityId: establishmentId, metadata: { provider: dto.provider, homologacao: !!next.homologacao, producao: !!next.producao, cscHomologacao: !!next.csc?.homologacao, cscProducao: !!next.csc?.producao } });
       return { provider: dto.provider, homologacao: { configured: !!next.homologacao, hint: hint(next.homologacao) }, producao: { configured: !!next.producao, hint: hint(next.producao) } };
     });
   }
@@ -242,7 +246,7 @@ export class FiscalConfigService {
       const cfg = await this.ensureConfig(tx, ctx, establishmentId);
       return this.pctx.resolve(tx, ctx.tenantId!, establishmentId, '55', environment ?? ((cfg.environment as FiscalEnvironment) ?? 'HOMOLOGACAO'));
     });
-    if (!pc.providerName || !pc.token) return { ok: false, environment: pc.environment, message: 'Nenhum token salvo para este ambiente.' };
+    if (!pc.providerName || (pc.providerName === 'FOCUS_NFE' && !pc.token)) return { ok: false, environment: pc.environment, message: 'Nenhum token salvo para este ambiente.' };
     const r = this.provider.ping ? await this.provider.ping(pc) : { ok: false, message: 'O provedor não permite teste.' };
     return { ...r, environment: pc.environment };
   }

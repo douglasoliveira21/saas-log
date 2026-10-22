@@ -39,6 +39,7 @@ import { FiscalInboundService } from './fiscal/fiscal-inbound.service';
 import { FiscalOutgoingService } from './fiscal/fiscal-outgoing.service';
 import { FISCAL_PROVIDER } from './fiscal/fiscal-provider';
 import { FiscalProviderRouter, ProviderContextService } from './fiscal/fiscal-provider.router';
+import { IbgeService } from './fiscal/sefaz/ibge';
 import { TaxRulesService } from './fiscal/tax-rules.service';
 import { BillingController, BillingService, PlatformController, PlatformService } from './billing/billing.service';
 import { AllExceptionsFilter, ObservabilityController, requestObserver } from './observability/observability';
@@ -130,6 +131,7 @@ class HealthController {
     // O provedor é escolhido por estabelecimento (cada empresa usa a própria conta); sem credencial, nada é transmitido nem simulado.
     { provide: FISCAL_PROVIDER, useClass: FiscalProviderRouter },
     ProviderContextService,
+    IbgeService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],

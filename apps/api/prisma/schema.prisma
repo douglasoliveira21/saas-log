@@ -1855,6 +1855,26 @@ model DeliveryProof {
   @@map("delivery_proofs")
 }
 
+/// Inutilização de faixa de numeração (NF-e/NFC-e): fica registrada com o protocolo da SEFAZ.
+model FiscalVoid {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  establishmentId String   @map("establishment_id") @db.Uuid
+  model           String
+  series          Int
+  fromNumber      Int      @map("from_number")
+  toNumber        Int      @map("to_number")
+  environment     String
+  reason          String
+  protocol        String
+  statusCode      String   @map("status_code")
+  createdById     String?  @map("created_by_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, establishmentId, model, series])
+  @@map("fiscal_voids")
+}
+
 /// Credenciais do provedor de emissão fiscal por estabelecimento (token cifrado; nunca devolvido pela API).
 model FiscalProviderCredential {
   id              String   @id @default(uuid()) @db.Uuid

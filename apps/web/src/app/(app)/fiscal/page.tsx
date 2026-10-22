@@ -8,12 +8,14 @@ import { useUi, PageHeader, Alert, Skeleton } from '@/components/ui';
 import { formatAccessKey, formatCnpj } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { ProviderCard } from './provider-card';
+import { CoverageCard } from './coverage-card';
 
 type Tab = 'config' | 'inbound' | 'rules' | 'outgoing';
 interface Est { id: string; name: string; cnpj: string | null; company: string; environment: string; configStatus: string; certificate: Cert | null }
 interface Cert { id: string; subject: string; cnpj: string | null; serial: string; notAfter: string; daysToExpire: number; expired: boolean; expiringSoon: boolean }
 interface ReadinessItem { key: string; label: string; status: 'OK' | 'PENDING' | 'BLOCKING'; detail?: string; blocksHomologation: boolean; blocksProduction: boolean }
 interface ConfigView {
+  establishment: { state: string | null };
   config: { environment: string; status: string; nfeSeries: number; accountantName: string | null; accountantEmail: string | null; approvedAt: string | null };
   certificate: Cert | null; readiness: ReadinessItem[]; readyForHomologation: boolean; readyForProduction: boolean; questionsForAccountant: string[];
 }
@@ -150,7 +152,8 @@ function ConfigTab({ act, can }: TabProps) {
               </form>
             )}
           </section>
-          <ProviderCard establishmentId={sel} manage={manage} onChange={reload} />
+          <ProviderCard establishmentId={sel} uf={view.establishment.state} manage={manage} onChange={reload} />
+          <CoverageCard />
           <section className="card">
             <h2>Perguntas para o contador</h2>
             <ul>{view.questionsForAccountant.map((q) => <li key={q}>{q}</li>)}</ul>
@@ -375,6 +378,38 @@ function RulesTab({ act, can }: TabProps) {
   );
 }
 
+interface VoidRow { id: string; model: string; series: number; fromNumber: number; toNumber: number; environment: string; protocol: string; reason: string; createdAt: string }
+/** Inutilização de faixa de numeração (emissão direta na SEFAZ): só numeração que nunca virou nota. */
+function VoidCard({ act }: Pick<TabProps, 'act'>) {
+  const [ests, setEsts] = useState<Est[]>([]);
+  const [rows, setRows] = useState<VoidRow[]>([]);
+  const [open, setOpen] = useState(false);
+  const load = useCallback(() => { api<VoidRow[]>('/fiscal/inutilizacao').then(setRows).catch(() => undefined); }, []);
+  useEffect(() => { load(); api<Est[]>('/fiscal/establishments').then(setEsts).catch(() => undefined); }, [load]);
+  return (
+    <section className="card" style={{ marginBottom: 16 }} aria-label="Inutilização de numeração">
+      <div className="card-head"><h2>Inutilizar numeração</h2><button className="btn sm" onClick={() => setOpen(!open)} aria-expanded={open}>{open ? 'Fechar' : 'Abrir'}</button></div>
+      {open && (
+        <>
+          <p className="muted" style={{ marginTop: 0 }}>Use quando um número foi pulado e não vai virar nota. Só vale para a emissão direta na SEFAZ e a SEFAZ precisa confirmar. Não dá para inutilizar número de nota já emitida.</p>
+          <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); void act(async () => { await api('/fiscal/inutilizacao', 'POST', { establishmentId: f.get('est'), model: f.get('model'), series: Number(f.get('series')), from: Number(f.get('from')), to: Number(f.get('to')), reason: f.get('reason') }); }, 'Numeração inutilizada e registrada.', load); }}>
+            <div className="form-grid">
+              <div><label htmlFor="ve">Estabelecimento</label><select id="ve" name="est" required>{ests.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
+              <div><label htmlFor="vm">Documento</label><select id="vm" name="model"><option value="55">NF-e (55)</option><option value="65">NFC-e (65)</option></select></div>
+              <div><label htmlFor="vs">Série</label><input id="vs" name="series" inputMode="numeric" defaultValue="1" required /></div>
+              <div><label htmlFor="vf">Do número</label><input id="vf" name="from" inputMode="numeric" required /></div>
+              <div><label htmlFor="vt">Até o número</label><input id="vt" name="to" inputMode="numeric" required /></div>
+              <div style={{ gridColumn: '1 / -1' }}><label htmlFor="vr">Justificativa (15 a 255 caracteres)</label><input id="vr" name="reason" minLength={15} maxLength={255} required /></div>
+            </div>
+            <div className="row" style={{ marginTop: 12 }}><button className="btn primary">Inutilizar</button></div>
+          </form>
+          {rows.length > 0 && <div className="table-wrap" style={{ marginTop: 12 }}><table><thead><tr><th>Modelo</th><th>Série</th><th>Faixa</th><th>Protocolo</th><th>Ambiente</th></tr></thead><tbody>{rows.map((r) => <tr key={r.id}><td>{r.model}</td><td>{r.series}</td><td>{r.fromNumber}–{r.toNumber}</td><td className="mono">{r.protocol}</td><td>{r.environment}</td></tr>)}</tbody></table></div>}
+        </>
+      )}
+    </section>
+  );
+}
+
 function OutgoingTab({ act, can }: TabProps) {
   const ui = useUi();
   const [docs, setDocs] = useState<OutDoc[] | null>(null);
@@ -399,6 +434,7 @@ function OutgoingTab({ act, can }: TabProps) {
           <p className="muted" style={{ marginBottom: 0, fontSize: '0.82rem' }}>A forma de pagamento é obrigatória para emitir (NFC-e e NF-e pelo provedor).</p>
         </form>
       )}
+      {emit && <VoidCard act={act} />}
       <section className="card" style={{ marginBottom: 16 }}>
         <div className="table-wrap"><table>
           <thead><tr><th>Pedido</th><th>Cliente</th><th>Nº/Série</th><th>Valor</th><th>Ambiente</th><th>Situação</th><th /></tr></thead>

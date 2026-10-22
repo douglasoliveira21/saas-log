@@ -8,6 +8,8 @@ import { buildChave } from './chave';
 import { ENGINE_VERSION, EngineOutput } from './engine';
 import { FISCAL_PROVIDER, FiscalEnvironment, FiscalModel, FiscalProvider, OutgoingDocument, ProviderCtx, RemoteDoc } from './fiscal-provider';
 import { ProviderContextService } from './fiscal-provider.router';
+import { IbgeService } from './sefaz/ibge';
+import { nfeProc } from './sefaz/messages';
 import { Issue } from './nfe-xml';
 import { TaxRulesService } from './tax-rules.service';
 
@@ -27,7 +29,23 @@ export class FiscalOutgoingService {
     private readonly rules: TaxRulesService,
     @Inject(FISCAL_PROVIDER) private readonly provider: FiscalProvider,
     private readonly pctx: ProviderContextService,
+    private readonly ibge: IbgeService,
   ) {}
+
+  /** Busca (FORA de transação) os municípios das UFs envolvidas, para o código IBGE do XML; só quando o estabelecimento usa emissão direta. */
+  private async warmCities(ctx: AuthContext, ref: { orderId?: string; docId?: string }) {
+    const ufs = await this.prisma.withContext(ctx, async (tx) => {
+      const doc = ref.docId ? await tx.fiscalDocument.findFirst({ where: { id: ref.docId, tenantId: ctx.tenantId! }, select: { establishmentId: true, salesOrder: { select: { customer: { select: { state: true } } } } } }) : null;
+      const order = ref.orderId ? await tx.salesOrder.findFirst({ where: { id: ref.orderId, tenantId: ctx.tenantId! }, select: { customer: { select: { state: true } }, warehouse: { select: { establishmentId: true } } } }) : null;
+      const estId = doc?.establishmentId ?? order?.warehouse.establishmentId;
+      if (!estId) return [];
+      const direct = await tx.fiscalProviderCredential.findFirst({ where: { tenantId: ctx.tenantId!, establishmentId: estId, provider: 'SEFAZ_DIRECT' }, select: { id: true } });
+      if (!direct) return [];
+      const est = await tx.establishment.findFirst({ where: { id: estId, tenantId: ctx.tenantId! }, select: { state: true } });
+      return [est?.state, doc?.salesOrder?.customer.state ?? order?.customer.state];
+    });
+    for (const uf of new Set(ufs.filter(Boolean))) await this.ibge.warm(uf);
+  }
 
   private numberingOf(pc: ProviderCtx): 'SYSTEM' | 'PROVIDER' {
     return this.provider.numberingFor?.(pc) ?? this.provider.numbering ?? 'SYSTEM';
@@ -57,6 +75,7 @@ export class FiscalOutgoingService {
   // ───────────── preparação ─────────────
 
   async prepare(ctx: AuthContext, dto: { salesOrderId: string; establishmentId?: string; model?: FiscalModel; paymentMethod?: string }) {
+    await this.warmCities(ctx, { orderId: dto.salesOrderId });
     return this.prisma.withContext(ctx, async (tx) => {
       const order = await tx.salesOrder.findFirst({
         where: { id: dto.salesOrderId, tenantId: ctx.tenantId! },
@@ -95,6 +114,7 @@ export class FiscalOutgoingService {
   }
 
   async revalidate(ctx: AuthContext, id: string) {
+    await this.warmCities(ctx, { docId: id });
     return this.prisma.withContext(ctx, async (tx) => {
       const doc = await this.lock(tx, ctx, id);
       if (!OPEN_FOR_EDIT.includes(doc.status)) throw new ConflictException(`Documento "${doc.status}" não pode ser revalidado.`);
@@ -154,7 +174,7 @@ export class FiscalOutgoingService {
     if (this.provider.isConfigured(pc) && this.provider.validate) {
       const items = await tx.fiscalDocumentItem.findMany({ where: { documentId: docId, tenantId: ctx.tenantId! }, orderBy: { line: 'asc' } });
       const built = this.buildDocument({ ...doc, items: items.map((i) => ({ ...i, product: doc.items.find((x) => x.line === i.line)?.product ?? null })) }, est, cust, model, env);
-      for (const v of this.provider.validate(built, pc)) add('BLOCKING', v.code, v.message);
+      for (const v of await this.provider.validate(built, pc)) add('BLOCKING', v.code, v.message);
     }
     const calc = await tx.taxCalculation.create({
       data: {
@@ -177,6 +197,7 @@ export class FiscalOutgoingService {
    * só consultar pela chave — evita emissão duplicada.
    */
   async transmit(ctx: AuthContext, id: string) {
+    await this.warmCities(ctx, { docId: id });
     const prep = await this.prisma.withContext(ctx, async (tx) => {
       const doc = await this.lock(tx, ctx, id);
       const est = await tx.establishment.findFirstOrThrow({ where: { id: doc.establishmentId!, tenantId: ctx.tenantId! }, include: { company: true } });
@@ -197,6 +218,7 @@ export class FiscalOutgoingService {
       }
       const numbering = this.numberingOf(pc);
       let { number, accessKey, series } = doc;
+      let issuedAtReserved: Date | null = null;
       if (numbering === 'SYSTEM') {
         if (!number || !accessKey) {
           // Numeração atômica e nunca reutilizada.
@@ -205,15 +227,19 @@ export class FiscalOutgoingService {
             ON CONFLICT (tenant_id, establishment_id, model, series, environment) DO UPDATE SET last = fiscal_series.last + 1 RETURNING last`;
           number = rows[0].last;
           series = cfg.nfeSeries;
-          accessKey = buildChave({ uf: est.state!, issuedAt: new Date(), cnpj: onlyDigits(est.cnpj!), series, number });
+          const at = doc.issuedAt ?? new Date();
+          accessKey = buildChave({ uf: est.state!, issuedAt: at, cnpj: onlyDigits(est.cnpj!), model, series, number });
+          issuedAtReserved = at;
         }
       }
       // Com numeração do provedor a referência é o id do documento: reenviar com ela nunca cria uma segunda nota.
-      const issuedAt = numbering === 'PROVIDER' ? new Date() : (doc.issuedAt ?? new Date()); // NFC-e aceita no máximo ~5 min de diferença
+      // Com provedor que numera: NFC-e aceita no máximo ~5 min de diferença, então a data é a de cada tentativa. Com numeração nossa, a data fica
+      // atrelada à chave reservada (o AAMM da chave tem de bater com dhEmi).
+      const issuedAt = numbering === 'PROVIDER' ? new Date() : (issuedAtReserved ?? doc.issuedAt ?? new Date());
       await tx.fiscalDocument.update({ where: { id }, data: { status: 'TRANSMITTING', number, series, accessKey, issuedAt, environment: cfg.environment } });
       await this.audit.record(tx, ctx, { action: 'fiscal.transmit_started', entity: 'fiscal_document', entityId: id, metadata: { model, numbering, number, series, accessKey, environment: cfg.environment } });
       let document: OutgoingDocument | undefined;
-      if (numbering === 'PROVIDER') {
+      if (numbering === 'PROVIDER' || this.provider.needsDocumentFor?.(pc)) {
         const items = await tx.fiscalDocumentItem.findMany({ where: { documentId: id, tenantId: ctx.tenantId! }, orderBy: { line: 'asc' } });
         const full = await tx.fiscalDocument.findFirstOrThrow({ where: { id, tenantId: ctx.tenantId! }, include: { salesOrder: { include: { customer: true } } } });
         const products = await tx.product.findMany({ where: { tenantId: ctx.tenantId!, id: { in: items.map((i) => i.productId!).filter(Boolean) } } });
@@ -233,32 +259,34 @@ export class FiscalOutgoingService {
 
   /** Monta o documento neutro (a partir do que o motor tributário gravou nos itens) que o provedor converte para o formato dele. */
   private buildDocument(
-    doc: { id: string; salesOrder: { channel: string; notes: string | null; number: number } | null; issuedAt: Date | null; totalProducts: Prisma.Decimal | null; totalFreight: Prisma.Decimal | null; totalInvoice: Prisma.Decimal | null; providerState: Prisma.JsonValue;
+    doc: { id: string; number?: number | null; series?: number | null; accessKey?: string | null; salesOrder: { channel: string; notes: string | null; number: number } | null; issuedAt: Date | null; totalProducts: Prisma.Decimal | null; totalFreight: Prisma.Decimal | null; totalInvoice: Prisma.Decimal | null; providerState: Prisma.JsonValue;
            items: { line: number; supplierCode: string | null; description: string; ncm: string | null; cfop: string | null; unit: string | null; quantity: Prisma.Decimal; unitValue: Prisma.Decimal; totalValue: Prisma.Decimal; declaredTax: Prisma.JsonValue; product: { taxOrigin: number | null } | null }[] },
     est: Prisma.EstablishmentGetPayload<{ include: { company: true } }>,
     cust: Prisma.CustomerGetPayload<object>, model: FiscalModel, environment: FiscalEnvironment,
   ): OutgoingDocument {
     const channel = doc.salesOrder?.channel ?? 'DIRECT';
-    const taxOf = (i: (typeof doc.items)[number], code: string) => (((i.declaredTax as { taxes?: Record<string, { cst?: string; csosn?: string; amount?: number }> } | null)?.taxes ?? {})[code]);
+    const taxOf = (i: (typeof doc.items)[number], code: string) => (((i.declaredTax as { taxes?: Record<string, { cst?: string; csosn?: string; amount?: number; base?: number; ratePct?: number }> } | null)?.taxes ?? {})[code]);
+    const det = (i: (typeof doc.items)[number], code: string) => ({ base: taxOf(i, code)?.base ?? 0, rate: taxOf(i, code)?.ratePct ?? 0, amount: taxOf(i, code)?.amount ?? 0 });
     const state = (doc.providerState ?? {}) as { paymentMethod?: string };
     const total = Number(doc.totalInvoice ?? 0);
     const regime = est.company.taxRegime === 'MEI' ? 4 : est.company.taxRegime === 'SIMPLES_NACIONAL' ? 1 : 3;
     const cDoc = (cust.document ?? '').replace(/\D/g, '');
     return {
-      ref: doc.id, model, environment, issuedAt: doc.issuedAt ?? new Date(),
+      ref: doc.id, number: doc.number ?? undefined, series: doc.series ?? undefined, accessKey: doc.accessKey ?? undefined, model, environment, issuedAt: doc.issuedAt ?? new Date(),
       presence: model === '65' ? (channel === 'STORE' ? 'COUNTER' : 'DELIVERY') : channel === 'STORE' ? 'COUNTER' : channel === 'WEB' ? 'INTERNET' : channel === 'PHONE' ? 'PHONE' : 'OTHER',
       destination: est.state && cust.state && est.state !== cust.state.toUpperCase() ? 2 : 1,
       finalConsumer: cust.kind === 'PF' || model === '65',
-      emitter: { cnpj: onlyDigits(est.cnpj ?? ''), name: est.company.legalName, tradeName: est.company.tradeName, street: est.street ?? '', number: est.number ?? 'SN', district: est.district ?? '', city: est.city ?? '', uf: est.state ?? '', zip: onlyDigits(est.zipCode ?? ''), ie: est.stateRegistration ?? '', regime: regime as 1 | 3 | 4 },
+      emitter: { cnpj: onlyDigits(est.cnpj ?? ''), name: est.company.legalName, tradeName: est.company.tradeName, street: est.street ?? '', number: est.number ?? 'SN', district: est.district ?? '', city: est.city ?? '', cMun: this.ibge.lookup(est.city, est.state), uf: est.state ?? '', zip: onlyDigits(est.zipCode ?? ''), ie: est.stateRegistration ?? '', regime: regime as 1 | 3 | 4, cnae: est.cnae ? onlyDigits(est.cnae) : null },
       recipient: cDoc || cust.name ? {
         document: cDoc || null, name: cust.name, ie: cust.stateRegistration, ieIndicator: cust.stateRegistration ? 1 : cust.kind === 'PF' ? 9 : 2,
-        street: cust.street, number: cust.number ?? 'SN', district: cust.district, city: cust.city, uf: cust.state?.toUpperCase() ?? null, zip: onlyDigits(cust.zipCode ?? '') || null, phone: onlyDigits(cust.phone ?? '') || null,
+        street: cust.street, number: cust.number ?? 'SN', district: cust.district, city: cust.city, cMun: this.ibge.lookup(cust.city, cust.state), uf: cust.state?.toUpperCase() ?? null, zip: onlyDigits(cust.zipCode ?? '') || null, phone: onlyDigits(cust.phone ?? '') || null, email: cust.email,
       } : null,
       items: doc.items.map((i) => ({
         line: i.line, sku: i.supplierCode ?? String(i.line), description: i.description, ncm: i.ncm ?? '', cfop: i.cfop ?? '', unit: i.unit ?? 'UN', quantity: Number(i.quantity), unitValue: Number(i.unitValue), total: Number(i.totalValue),
         origin: i.product?.taxOrigin ?? null,
         icmsCode: taxOf(i, 'ICMS')?.csosn ?? taxOf(i, 'ICMS')?.cst ?? null, pisCst: taxOf(i, 'PIS')?.cst ?? null, cofinsCst: taxOf(i, 'COFINS')?.cst ?? null,
         taxAmounts: { icms: taxOf(i, 'ICMS')?.amount ?? 0, pis: taxOf(i, 'PIS')?.amount ?? 0, cofins: taxOf(i, 'COFINS')?.amount ?? 0 },
+        tax: { icms: det(i, 'ICMS'), pis: det(i, 'PIS'), cofins: det(i, 'COFINS') },
       })),
       totals: { products: Number(doc.totalProducts ?? 0), freight: Number(doc.totalFreight ?? 0), total },
       payments: state.paymentMethod ? [{ method: state.paymentMethod, amount: total }] : [],
@@ -284,6 +312,13 @@ export class FiscalOutgoingService {
       if (r.kind === 'AUTHORIZED') {
         status = 'AUTHORIZED'; data.authProtocol = r.protocol; data.authStatusCode = r.statusCode; data.authenticity = 'VERIFIED';
         if (r.remote) await this.storeRemote(tx, ctx, id, doc.pc, r.remote, data);
+        if (r.protXml) {
+          const signed = await tx.fiscalXmlFile.findFirst({ where: { tenantId: ctx.tenantId!, documentId: id, kind: 'SIGNED' }, orderBy: { createdAt: 'desc' } });
+          if (signed && !(await tx.fiscalXmlFile.findFirst({ where: { tenantId: ctx.tenantId!, documentId: id, kind: 'AUTHORIZED' }, select: { id: true } }))) {
+            const proc = nfeProc(signed.content, r.protXml);
+            await tx.fiscalXmlFile.create({ data: { tenantId: ctx.tenantId!, documentId: id, kind: 'AUTHORIZED', sha256: (await import('node:crypto')).createHash('sha256').update(proc).digest('hex'), content: proc, source: 'sefaz-consulta', createdById: ctx.userId } });
+          }
+        }
       }
       else if (r.kind === 'CANCELLED') { status = 'CANCELLED'; data.authStatusCode = r.statusCode ?? null; }
       else if (r.kind === 'REJECTED') { status = 'REJECTED'; data.authStatusCode = r.statusCode; data.issues = [{ severity: 'BLOCKING', code: 'SEFAZ_REJECTION', message: `Rejeição ${r.statusCode}: ${r.reason}` }]; }
@@ -292,6 +327,11 @@ export class FiscalOutgoingService {
       await this.audit.record(tx, ctx, { action: 'fiscal.consulted', entity: 'fiscal_document', entityId: id, metadata: { result: r.kind, status } });
       return { id, status, result: r.kind };
     });
+  }
+
+  private async storeSigned(tx: Tx, ctx: AuthContext, id: string, xml: string) {
+    if (await tx.fiscalXmlFile.findFirst({ where: { tenantId: ctx.tenantId!, documentId: id, kind: 'SIGNED' }, select: { id: true } })) return;
+    await tx.fiscalXmlFile.create({ data: { tenantId: ctx.tenantId!, documentId: id, kind: 'SIGNED', sha256: (await import('node:crypto')).createHash('sha256').update(xml).digest('hex'), content: xml, source: 'assinado antes do envio', createdById: ctx.userId } });
   }
 
   /** Guarda numeração/chave e os caminhos de XML/DANFE devolvidos pelo provedor; o XML autorizado é copiado para o nosso arquivo (guarda legal). */
@@ -316,6 +356,7 @@ export class FiscalOutgoingService {
     return this.prisma.withContext(ctx, async (tx) => {
       const data: Prisma.FiscalDocumentUpdateInput = {};
       let status: string;
+      if ('signedXml' in r && r.signedXml) await this.storeSigned(tx, ctx, id, r.signedXml);
       switch (r.kind) {
         case 'AUTHORIZED':
           status = 'AUTHORIZED'; data.authProtocol = r.protocol; data.authStatusCode = r.statusCode; data.authenticity = 'VERIFIED';
@@ -337,18 +378,44 @@ export class FiscalOutgoingService {
     });
   }
 
+  /** Inutiliza uma faixa de numeração não usada (emissão direta). Fica registrada com o protocolo; só se a SEFAZ confirmar. */
+  async inutilize(ctx: AuthContext, dto: { establishmentId: string; model: FiscalModel; series: number; from: number; to: number; reason: string }) {
+    const pc = await this.prisma.withContext(ctx, async (tx) => {
+      const est = await tx.establishment.findFirst({ where: { id: dto.establishmentId, tenantId: ctx.tenantId! } });
+      if (!est) throw new NotFoundException('Estabelecimento não encontrado.');
+      const cfg = await tx.fiscalConfiguration.findFirst({ where: { tenantId: ctx.tenantId!, establishmentId: est.id } });
+      const pc = await this.pctx.resolve(tx, ctx.tenantId!, est.id, dto.model, ((cfg?.environment as FiscalEnvironment) ?? 'HOMOLOGACAO'));
+      if (!this.provider.inutilize || !this.provider.isConfigured(pc)) throw new HttpException({ message: 'Inutilização só está disponível na emissão direta na SEFAZ, com certificado configurado.', code: 'NOT_SUPPORTED' }, HttpStatus.FAILED_DEPENDENCY);
+      // Não inutiliza número que já virou nota (nem a faixa que o sistema já consumiu além do último reservado).
+      const used = await tx.fiscalDocument.count({ where: { tenantId: ctx.tenantId!, establishmentId: est.id, model: dto.model, series: dto.series, number: { gte: dto.from, lte: dto.to }, NOT: { status: 'CANCELLED' } } });
+      if (used) throw new ConflictException('Há nota(s) emitida(s) ou em andamento nessa faixa: só numeração sem nota pode ser inutilizada.');
+      return pc;
+    });
+    const r = await this.provider.inutilize!({ model: dto.model, series: dto.series, from: dto.from, to: dto.to, reason: dto.reason.trim() }, pc);
+    if (r.kind !== 'OK') throw new ConflictException(r.kind === 'REJECTED' ? `Inutilização recusada (${r.statusCode}): ${r.reason}` : r.reason);
+    return this.prisma.withContext(ctx, async (tx) => {
+      const row = await tx.fiscalVoid.create({ data: { tenantId: ctx.tenantId!, establishmentId: dto.establishmentId, model: dto.model, series: dto.series, fromNumber: dto.from, toNumber: dto.to, environment: pc.environment, reason: dto.reason.trim(), protocol: r.protocol, statusCode: r.statusCode, createdById: ctx.userId } });
+      await this.audit.record(tx, ctx, { action: 'fiscal.numbering_voided', entity: 'fiscal_void', entityId: row.id, metadata: { model: dto.model, series: dto.series, from: dto.from, to: dto.to, protocol: r.protocol } });
+      return row;
+    });
+  }
+
+  voids(ctx: AuthContext) {
+    return this.prisma.withContext(ctx, (tx) => tx.fiscalVoid.findMany({ where: { tenantId: ctx.tenantId! }, orderBy: { createdAt: 'desc' }, take: 100 }));
+  }
+
   /** Cancela uma nota autorizada no provedor/SEFAZ (prazo e regras são do provedor/estado). A nota some da fila de faturamento do pedido. */
   async cancel(ctx: AuthContext, id: string, reason: string) {
     const ref = await this.prisma.withContext(ctx, async (tx) => {
       const d = await this.lock(tx, ctx, id);
       if (d.status !== 'AUTHORIZED') throw new ConflictException('Só é possível cancelar uma nota autorizada.');
       const pc = await this.pctx.resolve(tx, ctx.tenantId!, d.establishmentId!, d.model as FiscalModel, (d.environment as FiscalEnvironment) ?? 'HOMOLOGACAO');
-      if (this.numberingOf(pc) !== 'PROVIDER' || !this.provider.cancel || !this.provider.isConfigured(pc)) {
+      if (!this.provider.cancel || !this.provider.isConfigured(pc)) {
         throw new HttpException({ message: 'O provedor configurado não permite cancelar por aqui: faça o cancelamento no provedor/SEFAZ.', code: 'NOT_SUPPORTED' }, HttpStatus.FAILED_DEPENDENCY);
       }
-      return { id: d.id, pc };
+      return { id: d.id, pc, accessKey: d.accessKey, protocol: d.authProtocol };
     });
-    const r = await this.provider.cancel!(ref.id, reason.trim(), ref.pc);
+    const r = await this.provider.cancel!(ref.id, reason.trim(), ref.pc, { accessKey: ref.accessKey, protocol: ref.protocol });
     return this.prisma.withContext(ctx, async (tx) => {
       await this.lock(tx, ctx, id);
       if (r.kind === 'CANCELLED') {

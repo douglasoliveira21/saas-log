@@ -6,6 +6,8 @@ import {
 } from 'class-validator';
 import { AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
 import { Operation } from './engine';
+import { coverage } from './sefaz/registry';
+import { schemaManifest } from './sefaz/xsd';
 import { FiscalConfigService } from './fiscal-config.service';
 import { FiscalInboundService } from './fiscal-inbound.service';
 import { FiscalOutgoingService } from './fiscal-outgoing.service';
@@ -88,9 +90,20 @@ class PrepareDto {
   @IsOptional() @IsIn(['55', '65']) model?: '55' | '65';
   @IsOptional() @IsIn(['CASH', 'CHECK', 'CREDIT', 'DEBIT', 'BOLETO', 'PIX', 'OTHER']) paymentMethod?: string;
 }
+class VoidDto {
+  @IsUUID() establishmentId: string;
+  @IsIn(['55', '65']) model: '55' | '65';
+  @IsInt() @Min(1) @Max(999) series: number;
+  @IsInt() @Min(1) @Max(999999999) from: number;
+  @IsInt() @Min(1) @Max(999999999) to: number;
+  @IsString() @Length(15, 255) reason: string;
+}
 class CancelDocDto { @IsString() @Length(15, 255) reason: string; }
+class CscDto { @IsString() @MaxLength(6) id: string; @IsString() @MaxLength(64) token: string; }
 class ProviderDto {
-  @IsIn(['FOCUS_NFE']) provider: 'FOCUS_NFE';
+  @IsIn(['FOCUS_NFE', 'SEFAZ_DIRECT']) provider: 'FOCUS_NFE' | 'SEFAZ_DIRECT';
+  @IsOptional() @ValidateNested() @Type(() => CscDto) cscHomologacao?: CscDto;
+  @IsOptional() @ValidateNested() @Type(() => CscDto) cscProducao?: CscDto;
   @IsOptional() @IsString() @MaxLength(200) tokenHomologacao?: string;
   @IsOptional() @IsString() @MaxLength(200) tokenProducao?: string;
 }
@@ -219,6 +232,15 @@ export class FiscalController {
 
   @Post('outgoing/:id/transmit') @HttpCode(200) @RequirePermissions('fiscal.emit')
   transmit(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.outgoing.transmit(ctx, id); }
+
+  @Post('inutilizacao') @HttpCode(200) @RequirePermissions('fiscal.emit')
+  inutilize(@CurrentAuth() ctx: AuthContext, @Body() dto: VoidDto) { return this.outgoing.inutilize(ctx, dto); }
+
+  @Get('inutilizacao') @RequirePermissions('fiscal.view')
+  voids(@CurrentAuth() ctx: AuthContext) { return this.outgoing.voids(ctx); }
+
+  @Get('sefaz/coverage') @RequirePermissions('fiscal.view')
+  coverage() { return { schemas: schemaManifest(), rows: coverage() }; }
 
   @Post('outgoing/:id/cancel') @HttpCode(200) @RequirePermissions('fiscal.emit')
   cancelDoc(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelDocDto) { return this.outgoing.cancel(ctx, id, dto.reason); }

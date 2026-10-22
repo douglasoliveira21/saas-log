@@ -48,7 +48,9 @@ export function isValidChave(chave: string): boolean {
 export function buildChave(p: { uf: string; issuedAt: Date; cnpj: string; model?: string; series: number; number: number; tpEmis?: string; cNF?: string }): string {
   const code = UF_CODE[p.uf];
   if (!code) throw new Error(`UF inválida: ${p.uf}`);
-  const aamm = `${String(p.issuedAt.getUTCFullYear()).slice(2)}${String(p.issuedAt.getUTCMonth() + 1).padStart(2, '0')}`;
+  // AAMM é o da data de emissão no horário de Brasília (o mesmo de dhEmi): perto da virada do mês o UTC já está no mês seguinte.
+  const [yy, mm] = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: '2-digit', month: '2-digit' }).format(p.issuedAt).split('-');
+  const aamm = `${yy}${mm}`;
   const cNF = p.cNF ?? String(Math.floor(Math.random() * 1e8)).padStart(8, '0');
   const base = `${code}${aamm}${p.cnpj.padStart(14, '0')}${(p.model ?? '55').padStart(2, '0')}${String(p.series).padStart(3, '0')}${String(p.number).padStart(9, '0')}${p.tpEmis ?? '1'}${cNF}`;
   if (base.length !== 43) throw new Error('Composição da chave inválida.');
