@@ -25,3 +25,21 @@
 
 ## Configurações (`tenant_settings`)
 `commission.event`, `sales.maxDiscountPct`, `purchases.approvalLimit` — apenas `tenant.manage`; mudanças gravam antes/depois na auditoria.
+
+## Horário de corte das vendas (fora de marketplace)
+**Onde configurar:** Configurações → *Horário de corte das vendas* (`sales.cutoffTime`, formato HH:MM; vazio = sem corte, que é o padrão) e *Considerar só dias úteis* (`sales.cutoffBusinessDaysOnly`, ligado por padrão).
+
+**Regra:** ao **confirmar** o pedido, se ele vier antes do horário (estritamente antes; no horário exato já conta como depois) a **saída prevista** é o mesmo dia; a partir do horário, é o dia seguinte. Com "só dias úteis", sábado e domingo saem na segunda. O pedido guarda a data (`dispatchDate`) e se ficou adiado (`dispatchDeferred`: passou do corte ou caiu em fim de semana). Fuso fixo de Brasília (UTC-3). **Feriados não são considerados** (não há calendário de feriados).
+
+**Marketplace:** pedidos importados de canais **não** seguem o corte (continuam pelo prazo em horas de envio, `orders.shippingSlaHours`).
+
+**Onde aparece:** aviso na tela de novo pedido ("confirmado agora, sai hoje / fica para dd/mm"), selo "Saída prevista" no pedido e, na Visão geral, "N com saída prevista para hoje"; com corte configurado, pedido cuja data de saída já passou e ainda não saiu entra em **atrasados para enviar** (pedidos sem data seguem o prazo em horas). Endpoint: `GET /api/sales/cutoff`.
+
+## Perfil do cliente na compra (novo, ativo, voltou a comprar)
+**Regra:** conta como compra o pedido **confirmado ou adiante** (rascunho, aguardando aprovação e cancelado não contam). No momento da compra o pedido recebe o selo (`customerType`):
+- **Cliente novo · 1ª compra** — nunca comprou antes;
+- **Cliente ativo** — a última compra foi há no máximo N dias;
+- **Voltou a comprar** — a última compra foi há **mais** de N dias.
+N é *Cliente inativo após quantos dias sem comprar?* (`customers.inactiveAfterDays`, padrão **60**, de 1 a 730, em Configurações). O selo fica gravado no pedido: mudar o prazo depois não reescreve o histórico.
+
+**Onde aparece:** ao escolher o cliente no novo pedido (frase com última compra e histórico), no pedido (lista e detalhe) e na lista de Clientes (Novo / Ativo / Inativo há N dias, com nº de pedidos e última compra). Endpoint: `GET /api/customers/:id/purchase-profile`.

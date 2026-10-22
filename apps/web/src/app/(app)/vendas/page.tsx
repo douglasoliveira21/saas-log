@@ -6,9 +6,10 @@ import { api } from '@/lib/api';
 import { brl, dateBr, ORDER_STATUS } from '@/lib/format';
 import { useUi, PageHeader, Alert, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
+import { PurchaseBadge, purchaseHint, type PurchaseInfo, type PurchaseType } from '@/components/purchase-badge';
 import { FISCAL_LABEL, FiscalChoicePicker, FiscalPreviewDialog, type FiscalChoice } from './fiscal';
 
-interface OrderRow { id: string; number: number; status: string; channel: string; total: string; createdAt: string; customer: { name: string }; salesperson: { name: string } | null }
+interface OrderRow { id: string; number: number; status: string; channel: string; total: string; createdAt: string; customerType?: PurchaseType | null; dispatchDate?: string | null; dispatchDeferred?: boolean; customer: { name: string }; salesperson: { name: string } | null }
 interface Detail extends OrderRow {
   customerId: string; warehouseId: string; fiscalDocType: FiscalChoice; notes?: string | null; subtotal: string; discountTotal: string; shipping: string; approvalReason: string | null; cancelReason: string | null; warehouse: { code: string };
   items: { id: string; productId: string; quantity: number; unitPrice: string; discountPct: string; total: string; returnedQty: number; product: { sku: string; name: string } }[];
@@ -37,6 +38,8 @@ export default function VendasPage() {
   const [whs, setWhs] = useState<Warehouse[]>([]);
   const [lines, setLines] = useState<Line[]>([{ productId: '', quantity: '1', unitPrice: '', discountPct: '' }]);
   const [meta, setMeta] = useState({ customerId: '', warehouseId: '', channel: 'DIRECT', shipping: '', notes: '', fiscalDocType: 'NONE' as FiscalChoice });
+  const [profile, setProfile] = useState<PurchaseInfo | null>(null);
+  const [cutoff, setCutoff] = useState<{ enabled: boolean; cutoffTime: string | null; businessDaysOnly: boolean; dispatchDate: string | null; deferred: boolean } | null>(null);
   const [fiscalView, setFiscalView] = useState<{ id: string; docType: FiscalChoice } | null>(null);
 
   const load = useCallback(() => {
@@ -48,6 +51,12 @@ export default function VendasPage() {
     api<Customer[]>('/customers').then(setCustomers).catch(() => undefined);
     api<{ establishments: { warehouses: Warehouse[] }[] }[]>('/structure').then((t) => setWhs(t.flatMap((c) => c.establishments.flatMap((e) => e.warehouses)).filter((w) => w.active))).catch(() => undefined);
   }, []);
+
+  useEffect(() => { api<NonNullable<typeof cutoff>>('/sales/cutoff').then(setCutoff).catch(() => undefined); }, []);
+  useEffect(() => {
+    setProfile(null);
+    if (form && meta.customerId) api<PurchaseInfo>(`/customers/${meta.customerId}/purchase-profile`).then(setProfile).catch(() => undefined);
+  }, [form, meta.customerId]);
 
   const open = useCallback(async (id: string) => { setError(''); try { setDetail(await api<Detail>(`/sales/orders/${id}`)); } catch (e) { setError((e as Error).message); } }, []);
 
@@ -116,6 +125,12 @@ export default function VendasPage() {
             <div><label htmlFor="ch">Origem</label><select id="ch" value={meta.channel} onChange={(e) => setMeta({ ...meta, channel: e.target.value })}>{CHANNELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
             <div><label htmlFor="sh">Frete (R$)</label><input id="sh" inputMode="decimal" value={meta.shipping} onChange={(e) => setMeta({ ...meta, shipping: e.target.value })} /></div>
           </div>
+          {profile && <div className="alert info" role="status" style={{ marginTop: 12 }}><PurchaseBadge type={profile.type} daysSince={profile.daysSince} />&nbsp;{purchaseHint(profile)}</div>}
+          {cutoff?.enabled && cutoff.dispatchDate && (
+            <div className={`alert ${cutoff.deferred ? 'warn' : 'info'}`} role="status" style={{ marginTop: 12 }}>
+              <div>Horário de corte das <strong>{cutoff.cutoffTime}</strong>{cutoff.businessDaysOnly ? ' (dias úteis)' : ''}: confirmado agora, este pedido {cutoff.deferred ? <>fica para <strong>{dateBr(cutoff.dispatchDate)}</strong> (passou do corte{cutoff.businessDaysOnly ? ' ou não é dia útil' : ''})</> : <>sai <strong>hoje</strong></>}. Pedidos de marketplace não seguem este corte.</div>
+            </div>
+          )}
           <FiscalChoicePicker value={meta.fiscalDocType} onChange={(v) => setMeta({ ...meta, fiscalDocType: v })} suggestion={suggestFiscal(customers.find((c) => c.id === meta.customerId))} />
           <h2 style={{ marginTop: 16 }}>Itens</h2>
           {lines.map((l, i) => (
@@ -145,7 +160,7 @@ export default function VendasPage() {
               {!rows && !error && <tr><td colSpan={7}><Skeleton rows={3} /></td></tr>}
               {rows?.length === 0 && <tr><td colSpan={7} className="empty">Nenhum pedido encontrado.</td></tr>}
               {rows?.map((o) => (
-                <tr key={o.id}><td>{o.number}</td><td>{o.customer.name}</td><td>{o.salesperson?.name ?? '—'}</td><td><span className="badge">{ORDER_STATUS[o.status]}</span></td><td className="num">{brl(o.total)}</td><td>{dateBr(o.createdAt)}</td><td><button className="btn sm" onClick={() => open(o.id)}>Abrir</button></td></tr>
+                <tr key={o.id}><td>{o.number}</td><td>{o.customer.name} <PurchaseBadge type={o.customerType} /></td><td>{o.salesperson?.name ?? '—'}</td><td><span className="badge">{ORDER_STATUS[o.status]}</span></td><td className="num">{brl(o.total)}</td><td>{dateBr(o.createdAt)}</td><td><button className="btn sm" onClick={() => open(o.id)}>Abrir</button></td></tr>
               ))}
             </tbody>
           </table>
@@ -172,6 +187,8 @@ export default function VendasPage() {
           </div>
           <p className="muted">{detail.customer.name} · depósito {detail.warehouse.code} · vendedor {detail.salesperson?.name ?? '—'}</p>
           <div className="row" style={{ marginBottom: 12 }}>
+            <PurchaseBadge type={detail.customerType} />
+            {detail.dispatchDate && <span className={`badge ${detail.dispatchDeferred ? 'warn' : ''}`} title={detail.dispatchDeferred ? 'Confirmado depois do horário de corte (ou fora de dia útil)' : 'Confirmado antes do horário de corte'}>Saída prevista: {dateBr(detail.dispatchDate)}{detail.dispatchDeferred ? ' · após o corte' : ''}</span>}
             <span className={`badge ${detail.fiscalDocType === 'NONE' ? '' : 'brand'}`}>Documento fiscal: {FISCAL_LABEL[detail.fiscalDocType ?? 'NONE']}</span>
             <button className="btn sm" onClick={() => setFiscalView({ id: detail.id, docType: detail.fiscalDocType ?? 'NONE' })}>{detail.fiscalDocType === 'NONE' ? 'Ver modelos (NF-e e NFC-e)' : 'Ver documento'}</button>
           </div>

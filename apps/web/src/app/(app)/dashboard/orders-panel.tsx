@@ -12,7 +12,7 @@ interface Dash {
   days: number;
   sla: { shippingHours: number; deliveryDays: number };
   status: Record<string, number>;
-  cards: { newToday: number; awaitingApproval: number; toShip: number; inTransit: number; open: number; lateShipping: number; lateDelivery: number; late: number };
+  cards: { dispatchToday: number; newToday: number; awaitingApproval: number; toShip: number; inTransit: number; open: number; lateShipping: number; lateDelivery: number; late: number };
   period: { created: number; revenue: string; shipped: number; delivered: number; cancelled: number };
   series: { date: string; created: number; shipped: number; delivered: number }[];
   byChannel: { channel: string; orders: number; revenue: string }[];
@@ -63,7 +63,7 @@ export function OrdersPanel() {
           )}
           <div className="grid cols-4">
             <StatCard label="Novos hoje" value={d.cards.newToday} icon={<ShoppingCart />} hint={`${d.cards.awaitingApproval} aguardando aprovação`} />
-            <StatCard label="A enviar" value={d.cards.toShip} icon={<PackageCheck />} hint="Aprovados, em separação ou embalados" />
+            <StatCard label="A enviar" value={d.cards.toShip} icon={<PackageCheck />} hint={d.cards.dispatchToday > 0 ? `${d.cards.dispatchToday} com saída prevista para hoje` : 'Aprovados, em separação ou embalados'} />
             <StatCard label="Em trânsito" value={d.cards.inTransit} icon={<Truck />} hint="Enviados e ainda não entregues" />
             <StatCard label="Em atraso" value={d.cards.late} icon={<Timer />} tone={d.cards.late ? 'danger' : 'ok'} hint={`Envio > ${d.sla.shippingHours} h · entrega > ${d.sla.deliveryDays} dias`} />
           </div>

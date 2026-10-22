@@ -7,8 +7,9 @@ import { PageHeader, Alert, Skeleton } from '@/components/ui';
 import { CepField, DocumentField, MaskedInput, UfSelect } from '@/components/fields';
 import { docOrDash, formatPhone } from '@/lib/format';
 import { useSession } from '@/lib/session';
+import { PurchaseBadge, type PurchaseInfo } from '@/components/purchase-badge';
 
-interface Customer { id: string; kind: 'PF' | 'PJ'; name: string; document: string | null; email: string | null; phone: string | null; city: string | null; state: string | null; active: boolean }
+interface Customer { id: string; kind: 'PF' | 'PJ'; name: string; document: string | null; email: string | null; phone: string | null; city: string | null; state: string | null; active: boolean; purchase?: PurchaseInfo }
 
 export default function ClientesPage() {
   const { can } = useSession();
@@ -63,14 +64,15 @@ export default function ClientesPage() {
         <input aria-label="Buscar clientes" placeholder="Buscar por nome ou documento" value={search} onChange={(e) => setSearch(e.target.value)} style={{ maxWidth: 340, marginBottom: 12 }} />
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Nome</th><th>Tipo</th><th>Documento</th><th>Contato</th><th>Local</th><th /></tr></thead>
+            <thead><tr><th>Nome</th><th>Tipo</th><th>Documento</th><th>Contato</th><th>Local</th><th>Perfil de compra</th><th /></tr></thead>
             <tbody>
-              {!items && !error && <tr><td colSpan={6}><Skeleton rows={3} /></td></tr>}
-              {items?.length === 0 && <tr><td colSpan={6} className="empty">Nenhum cliente encontrado.</td></tr>}
+              {!items && !error && <tr><td colSpan={7}><Skeleton rows={3} /></td></tr>}
+              {items?.length === 0 && <tr><td colSpan={7} className="empty">Nenhum cliente encontrado.</td></tr>}
               {items?.map((c) => (
                 <tr key={c.id} style={c.active ? undefined : { opacity: 0.55 }}>
                   <td>{c.name}</td><td>{c.kind}</td><td className="nowrap">{docOrDash(c.document)}</td><td>{[c.email, c.phone ? formatPhone(c.phone) : null].filter(Boolean).join(' · ') || '—'}</td>
                   <td>{[c.city, c.state].filter(Boolean).join('/') || '—'}</td>
+                  <td><PurchaseBadge type={c.purchase?.type} daysSince={c.purchase?.daysSince} at="now" />{c.purchase && c.purchase.orders > 0 && <div className="muted" style={{ fontSize: '0.76rem' }}>{c.purchase.orders} pedido(s) · última {c.purchase.lastPurchaseAt ? new Date(c.purchase.lastPurchaseAt).toLocaleDateString('pt-BR') : '—'}</div>}</td>
                   <td>{manage && <button className="btn sm" onClick={() => toggle(c)}>{c.active ? 'Inativar' : 'Reativar'}</button>}</td>
                 </tr>
               ))}

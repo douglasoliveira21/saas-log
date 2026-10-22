@@ -108,6 +108,9 @@ Desligado por padrão; validação (0–365) e permissões; só atenção abaixo
 ## Documento fiscal na venda (`fiscal-choice.e2e-spec.ts`, 6 testes)
 Escolha NF-e/NFC-e/nenhum guardada e trocável no rascunho (valor inválido recusado); espelho sem pendências quando nada foi escolhido; NF-e exige dados do destinatário e NCM; NFC-e não exige destinatário e avisa venda a CNPJ; emitente sem dados fiscais bloqueia os dois; escopo do vendedor, isolamento entre empresas e autenticação. A aparência dos documentos foi conferida visualmente (captura de tela), não por teste automatizado.
 
+## Horário de corte e perfil do cliente (`cutoff-profile.e2e-spec.ts`, 11 testes + `cutoff.spec.ts`, 9 testes)
+Unitários: antes/no/depois do corte, fuso do Brasil (madrugada UTC), dias úteis × fim de semana, horário inválido, classificação novo/ativo/voltou e prazo configurável. Integração: perfil na 1ª compra, ativo, voltou após 61 dias, rascunho/cancelado não contam, prazo configurável, lista de clientes, isolamento; corte desligado por padrão, validação e permissão, corte às 23:59 (sai hoje) e 00:00 (fica para amanhã), marketplace sem corte, painel de pedidos (atrasado pela data de saída e "saem hoje").
+
 ## Não coberto ainda
 Throttling (desligado em `NODE_ENV=test`), UI (sem testes de componente/E2E de navegador), **qualquer chamada à API real do Mercado Livre ou da SEFAZ**, conformidade do leiaute da NF-e e a API real dos Correios, formatos reais de extrato/relatório de liquidação, UI gateway de pagamento, MFA, carga/desempenho e pentest.
 

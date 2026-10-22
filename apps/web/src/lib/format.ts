@@ -1,7 +1,12 @@
 export const brl = (v: string | number | null | undefined) =>
   v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-export const dateBr = (v: string | null | undefined) => (v ? new Date(v).toLocaleDateString('pt-BR') : '—');
+/** Datas só com dia (vencimento, saída prevista) chegam como AAAA-MM-DD ou meia-noite UTC: formatadas direto, sem recuar um dia no fuso do Brasil. */
+export const dateBr = (v: string | null | undefined) => {
+  if (!v) return '—';
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.0+)?Z)?$/.exec(v);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : new Date(v).toLocaleDateString('pt-BR');
+};
 
 export const ORDER_STATUS: Record<string, string> = {
   DRAFT: 'Rascunho', PENDING_APPROVAL: 'Aguardando aprovação', CONFIRMED: 'Confirmado', PICKING: 'Em separação', PACKED: 'Embalado',

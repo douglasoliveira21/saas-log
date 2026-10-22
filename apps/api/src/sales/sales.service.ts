@@ -1,4 +1,6 @@
 import { buildFiscalPreview } from './fiscal-preview';
+import { asDateColumn, computeDispatch } from './cutoff';
+import { purchaseProfiles } from '../customers/purchase-profile';
 import { DelinquencyService } from '../finance/delinquency';
 import { assertWithinPlan } from '../billing/limits';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
@@ -61,7 +63,7 @@ export class SalesService {
       const [items, total] = await Promise.all([
         tx.salesOrder.findMany({
           where, orderBy: { number: 'desc' }, take: q.limit ?? 50, skip: q.offset ?? 0,
-          select: { id: true, number: true, status: true, channel: true, total: true, createdAt: true, customer: { select: { name: true } }, salesperson: { select: { name: true } } },
+          select: { id: true, number: true, status: true, channel: true, total: true, createdAt: true, customerType: true, dispatchDate: true, dispatchDeferred: true, customer: { select: { name: true } }, salesperson: { select: { name: true } } },
         }),
         tx.salesOrder.count({ where }),
       ]);
@@ -93,6 +95,23 @@ export class SalesService {
     });
   }
 
+  /** Perfil do cliente agora (primeira compra, ativo ou que voltou); guardado no pedido e refeito na confirmação. */
+  private async customerTypeOf(tx: Tx, ctx: AuthContext, customerId: string, excludeOrderId?: string) {
+    const cfg = await this.settings.load(tx, ctx);
+    return (await purchaseProfiles(tx, ctx.tenantId!, [customerId], cfg['customers.inactiveAfterDays'], { excludeOrderId })).get(customerId)?.type;
+  }
+
+  /** Regra do horário de corte e quando sairia um pedido confirmado agora (vendas fora de marketplace). */
+  cutoffInfo(ctx: AuthContext) {
+    return this.prisma.withContext(ctx, async (tx) => {
+      const cfg = await this.settings.load(tx, ctx);
+      const time = cfg['sales.cutoffTime'];
+      if (!time) return { enabled: false as const, cutoffTime: null, businessDaysOnly: cfg['sales.cutoffBusinessDaysOnly'], dispatchDate: null, deferred: false, today: null };
+      const d = computeDispatch(new Date(), time, cfg['sales.cutoffBusinessDaysOnly']);
+      return { enabled: true as const, cutoffTime: time, businessDaysOnly: cfg['sales.cutoffBusinessDaysOnly'], dispatchDate: d.dispatchDate, deferred: d.deferred, today: d.today };
+    });
+  }
+
   // ───────────── rascunho ─────────────
 
   create(ctx: AuthContext, dto: OrderInput) {
@@ -103,7 +122,7 @@ export class SalesService {
       const order = await tx.salesOrder.create({
         data: {
           tenantId: ctx.tenantId!, number, customerId: dto.customerId, warehouseId: dto.warehouseId, salespersonId: data.salespersonId,
-          channel: dto.channel ?? 'DIRECT', fiscalDocType: dto.fiscalDocType ?? 'NONE', notes: dto.notes, createdById: ctx.userId, ...data.totals,
+          channel: dto.channel ?? 'DIRECT', fiscalDocType: dto.fiscalDocType ?? 'NONE', customerType: await this.customerTypeOf(tx, ctx, dto.customerId), notes: dto.notes, createdById: ctx.userId, ...data.totals,
         },
       });
       await tx.salesOrderItem.createMany({ data: data.rows.map((r) => ({ ...r, orderId: order.id })) });
@@ -121,7 +140,7 @@ export class SalesService {
       await tx.salesOrder.update({
         where: { id },
         data: {
-          customerId: dto.customerId, warehouseId: dto.warehouseId, salespersonId: data.salespersonId, channel: dto.channel ?? 'DIRECT', fiscalDocType: dto.fiscalDocType ?? 'NONE', notes: dto.notes, ...data.totals,
+          customerId: dto.customerId, warehouseId: dto.warehouseId, salespersonId: data.salespersonId, channel: dto.channel ?? 'DIRECT', fiscalDocType: dto.fiscalDocType ?? 'NONE', customerType: await this.customerTypeOf(tx, ctx, dto.customerId, id), notes: dto.notes, ...data.totals,
         },
       });
       await tx.salesOrderItem.createMany({ data: data.rows.map((r) => ({ ...r, orderId: id })) });
@@ -304,7 +323,14 @@ export class SalesService {
         });
       await tx.salesOrderItem.update({ where: { id: i.id }, data: { reservationId: res.reservation.id } });
     }
-    await tx.salesOrder.update({ where: { id: order.id }, data: { status: 'CONFIRMED', confirmedAt: new Date() } });
+    const now = new Date();
+    const cfg = await this.settings.load(tx, { tenantId: ctx.tenantId });
+    const cut = order.channel !== 'MARKETPLACE' && cfg['sales.cutoffTime'] ? computeDispatch(now, cfg['sales.cutoffTime'], cfg['sales.cutoffBusinessDaysOnly']) : null;
+    const profile = (await purchaseProfiles(tx, ctx.tenantId!, [order.customerId], cfg['customers.inactiveAfterDays'], { now, excludeOrderId: order.id })).get(order.customerId);
+    await tx.salesOrder.update({
+      where: { id: order.id },
+      data: { status: 'CONFIRMED', confirmedAt: now, customerType: profile?.type, ...(cut ? { dispatchDate: asDateColumn(cut.dispatchDate), dispatchDeferred: cut.deferred } : {}) },
+    });
     const n = await this.commissions.accrue(
       tx, ctx, { id: order.id, salespersonId: order.salespersonId, customerId: order.customerId, channel: order.channel },
       order.items.map((i) => ({ id: i.id, productId: i.productId, quantity: i.quantity, total: i.total, categoryId: i.product.categoryId })),
@@ -331,7 +357,7 @@ export class SalesService {
       tx.warehouse.findFirst({ where: { id: dto.warehouseId, tenantId: ctx.tenantId!, active: true } }),
     ]);
     if (!customer) throw new BadRequestException('Cliente inválido ou inativo.');
-    await this.delinquency.assertNotBlocked(tx, ctx.tenantId!, customer.id);
+    if (dto.channel !== 'MARKETPLACE') await this.delinquency.assertNotBlocked(tx, ctx.tenantId!, customer.id);
     if (!wh) throw new BadRequestException('Depósito inválido ou inativo.');
     if (!dto.items.length) throw new BadRequestException('Inclua ao menos um item.');
     if (new Set(dto.items.map((i) => i.productId)).size !== dto.items.length) throw new BadRequestException('Produto repetido no pedido: some as quantidades em uma linha.');

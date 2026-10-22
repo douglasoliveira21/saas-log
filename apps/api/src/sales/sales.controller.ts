@@ -94,6 +94,9 @@ export class SalesController {
   @Get('sales/orders/:id') @RequirePermissions('sales.view')
   get(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.sales.get(ctx, id); }
 
+  @Get('sales/cutoff') @RequirePermissions('sales.view')
+  cutoff(@CurrentAuth() ctx: AuthContext) { return this.sales.cutoffInfo(ctx); }
+
   @Get('sales/orders/:id/fiscal-preview') @RequirePermissions('sales.view')
   fiscalPreview(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.sales.fiscalPreview(ctx, id); }
 

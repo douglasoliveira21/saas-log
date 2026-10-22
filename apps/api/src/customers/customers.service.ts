@@ -8,6 +8,8 @@ import { IsBrPhone } from '../common/phone';
 import { normalizeContact } from '../common/phone';
 import { CpfCnpjConstraint } from '../catalog/catalog.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
+import { purchaseProfiles } from './purchase-profile';
 
 class CustomerFields {
   @IsOptional() @IsString() @MaxLength(30) stateRegistration?: string;
@@ -36,15 +38,28 @@ export class CustomersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly settings: SettingsService,
   ) {}
 
   list(ctx: AuthContext, search?: string) {
-    return this.prisma.withContext(ctx, (tx) =>
-      tx.customer.findMany({
+    return this.prisma.withContext(ctx, async (tx) => {
+      const rows = await tx.customer.findMany({
         where: { tenantId: ctx.tenantId!, ...(search ? { OR: [{ name: { contains: search, mode: 'insensitive' } }, { document: { contains: onlyDigits(search) || '∅' } }] } : {}) },
         orderBy: { name: 'asc' }, take: 200,
-      }),
-    );
+      });
+      const days = (await this.settings.load(tx, ctx))['customers.inactiveAfterDays'];
+      const profiles = await purchaseProfiles(tx, ctx.tenantId!, rows.map((r) => r.id), days);
+      return rows.map((r) => ({ ...r, purchase: profiles.get(r.id)! }));
+    });
+  }
+
+  /** Perfil de compra: primeira compra, ativo ou inativo (se comprar agora, "voltou"). */
+  async profile(ctx: AuthContext, id: string) {
+    return this.prisma.withContext(ctx, async (tx) => {
+      if (!(await tx.customer.findFirst({ where: { id, tenantId: ctx.tenantId! }, select: { id: true } }))) throw new NotFoundException('Cliente não encontrado.');
+      const days = (await this.settings.load(tx, ctx))['customers.inactiveAfterDays'];
+      return (await purchaseProfiles(tx, ctx.tenantId!, [id], days)).get(id)!;
+    });
   }
 
   create(ctx: AuthContext, dto: CreateCustomerDto) {
@@ -78,6 +93,9 @@ export class CustomersController {
 
   @Get() @RequirePermissions('customers.view')
   list(@CurrentAuth() ctx: AuthContext, @Query('search') search?: string) { return this.svc.list(ctx, search); }
+
+  @Get(':id/purchase-profile') @RequirePermissions('customers.view')
+  profile(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.svc.profile(ctx, id); }
 
   @Post() @RequirePermissions('customers.manage')
   create(@CurrentAuth() ctx: AuthContext, @Body() dto: CreateCustomerDto) { return this.svc.create(ctx, dto); }

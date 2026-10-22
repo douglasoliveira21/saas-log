@@ -5,6 +5,7 @@ import { IsInt, IsOptional, Max, Min } from 'class-validator';
 import { AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
+import { asDateColumn, localToday } from './cutoff';
 
 type Tx = Prisma.TransactionClient;
 
@@ -42,11 +43,17 @@ export class OrdersDashboardService {
       const delLimit = new Date(now.getTime() - delD * DAY);
       const startToday = new Date(`${dayKey(now)}T00:00:00-03:00`);
 
-      const lateShipWhere: Prisma.SalesOrderWhereInput = { ...base, status: { in: PREPARING }, confirmedAt: { lt: shipLimit } };
+      // Com horário de corte, a data de saída prevista manda; pedidos sem ela (marketplace, anteriores ao corte) seguem o prazo em horas.
+      const todayLocal = asDateColumn(localToday(now));
+      const lateShipWhere: Prisma.SalesOrderWhereInput = {
+        ...base, status: { in: PREPARING },
+        OR: [{ dispatchDate: { lt: todayLocal } }, { dispatchDate: null, confirmedAt: { lt: shipLimit } }],
+      };
       const lateDelWhere: Prisma.SalesOrderWhereInput = { ...base, status: 'SHIPPED', shippedAt: { lt: delLimit } };
       const pick = { id: true, number: true, status: true, channel: true, total: true, confirmedAt: true, shippedAt: true, customer: { select: { name: true } } } as const;
 
-      const [byStatus, byChannel, newToday, createdInPeriod, shippedInPeriod, deliveredInPeriod, cancelledInPeriod, lateShipCount, lateDelCount, lateShip, lateDel, inPeriod] = await Promise.all([
+      const [dispatchToday, byStatus, byChannel, newToday, createdInPeriod, shippedInPeriod, deliveredInPeriod, cancelledInPeriod, lateShipCount, lateDelCount, lateShip, lateDel, inPeriod] = await Promise.all([
+        tx.salesOrder.count({ where: { ...base, status: { in: PREPARING }, dispatchDate: todayLocal } }),
         tx.salesOrder.groupBy({ by: ['status'], where: base, _count: { _all: true } }),
         tx.salesOrder.groupBy({ by: ['channel'], where: { ...base, createdAt: { gte: from }, status: { notIn: ['DRAFT', 'CANCELLED'] } }, _count: { _all: true }, _sum: { total: true } }),
         tx.salesOrder.count({ where: { ...base, createdAt: { gte: startToday }, status: { not: 'DRAFT' } } }),
@@ -87,6 +94,7 @@ export class OrdersDashboardService {
           newToday,
           awaitingApproval: count('PENDING_APPROVAL'),
           toShip: PREPARING.reduce((n, s) => n + count(s), 0),
+          dispatchToday,
           inTransit: count('SHIPPED'),
           open: OPEN.reduce((n, s) => n + count(s), 0),
           lateShipping: lateShipCount,

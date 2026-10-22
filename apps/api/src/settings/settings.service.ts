@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
 import { PrismaService } from '../prisma/prisma.service';
+import { CUTOFF_RE } from '../sales/cutoff';
 
 type Tx = Prisma.TransactionClient;
 
@@ -14,6 +15,10 @@ export interface TenantSettings {
   'purchases.approvalLimit': number;
   'finance.paymentApprovalLimit': number;
   'finance.blockAfterDays': number;
+  /** HH:MM; vazio = sem horário de corte. */
+  'sales.cutoffTime': string;
+  'sales.cutoffBusinessDaysOnly': boolean;
+  'customers.inactiveAfterDays': number;
   'orders.shippingSlaHours': number;
   'orders.deliverySlaDays': number;
 }
@@ -25,6 +30,9 @@ export const DEFAULT_SETTINGS: TenantSettings = {
   'purchases.approvalLimit': 5000,
   'finance.paymentApprovalLimit': 10000,
   'finance.blockAfterDays': 0,
+  'sales.cutoffTime': '',
+  'sales.cutoffBusinessDaysOnly': true,
+  'customers.inactiveAfterDays': 60,
   'orders.shippingSlaHours': 24,
   'orders.deliverySlaDays': 7,
 };
@@ -44,6 +52,15 @@ function validate(key: string, value: unknown): unknown {
     case 'finance.blockAfterDays':
       if (typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 365) return value;
       throw new BadRequestException('Dias para bloqueio por inadimplência: de 0 (desligado) a 365.');
+    case 'sales.cutoffTime':
+      if (value === '' || (typeof value === 'string' && CUTOFF_RE.test(value))) return value;
+      throw new BadRequestException('Horário de corte inválido: use HH:MM (ex.: 16:00) ou deixe vazio para desligar.');
+    case 'sales.cutoffBusinessDaysOnly':
+      if (typeof value === 'boolean') return value;
+      throw new BadRequestException('Informe se o corte considera só dias úteis (sim/não).');
+    case 'customers.inactiveAfterDays':
+      if (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 730) return value;
+      throw new BadRequestException('Dias sem comprar para considerar o cliente inativo: de 1 a 730.');
     case 'orders.shippingSlaHours':
       if (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 720) return value;
       throw new BadRequestException('Prazo de envio deve ser de 1 a 720 horas.');

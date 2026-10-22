@@ -587,6 +587,13 @@ enum FiscalDocChoice {
   NFCE
 }
 
+/// Perfil do cliente no momento da compra: primeira compra, cliente ativo ou cliente que voltou após o período de inatividade.
+enum CustomerPurchaseType {
+  NEW
+  ACTIVE
+  RETURNING
+}
+
 enum OrderStatus {
   DRAFT
   PENDING_APPROVAL
@@ -735,6 +742,11 @@ model SalesOrder {
   warehouseId    String       @map("warehouse_id") @db.Uuid
   channel        SalesChannel @default(DIRECT)
   fiscalDocType  FiscalDocChoice @default(NONE) @map("fiscal_doc_type")
+  /// Data prevista de saída (vendas fora de marketplace, com horário de corte configurado), definida na confirmação.
+  dispatchDate   DateTime?    @map("dispatch_date") @db.Date
+  /// Verdadeiro quando a saída ficou para depois do dia da venda (passou do corte ou caiu em fim de semana).
+  dispatchDeferred Boolean    @default(false) @map("dispatch_deferred")
+  customerType   CustomerPurchaseType? @map("customer_type")
   status         OrderStatus  @default(DRAFT)
   subtotal       Decimal      @default(0) @db.Decimal(14, 2)
   discountTotal  Decimal      @default(0) @map("discount_total") @db.Decimal(14, 2)
