@@ -17,8 +17,6 @@ import { StockService } from '../stock/stock.service';
 type Tx = Prisma.TransactionClient;
 
 export interface OrderInput extends PaymentInput {
-  /** Identificador gerado pelo aplicativo de venda em campo: reenviar o mesmo pedido nunca cria dois. */
-  clientRef?: string;
   customerId: string;
   warehouseId: string;
   salespersonId?: string;
@@ -126,22 +124,18 @@ export class SalesService {
 
   async createInTx(tx: Tx, ctx: AuthContext, dto: OrderInput) {
     {
-      if (dto.clientRef) {
-        const dup = await tx.salesOrder.findFirst({ where: { tenantId: ctx.tenantId!, clientRef: dto.clientRef }, select: { id: true, number: true } });
-        if (dup) return { id: dup.id, number: dup.number, duplicate: true };
-      }
       await assertWithinPlan(tx, ctx.tenantId!, 'ordersPerMonth');
       const data = await this.prepare(tx, ctx, dto);
       const number = await this.settings.nextNumber(tx, ctx, 'sales_order');
       const order = await tx.salesOrder.create({
         data: {
           tenantId: ctx.tenantId!, number, customerId: dto.customerId, warehouseId: dto.warehouseId, salespersonId: data.salespersonId,
-          channel: dto.channel ?? 'DIRECT', fiscalDocType: dto.fiscalDocType ?? 'NONE', customerType: await this.customerTypeOf(tx, ctx, dto.customerId), notes: dto.notes, clientRef: dto.clientRef, createdById: ctx.userId, ...normalizePayment(dto, localToday()), ...data.totals,
+          channel: dto.channel ?? 'DIRECT', fiscalDocType: dto.fiscalDocType ?? 'NONE', customerType: await this.customerTypeOf(tx, ctx, dto.customerId), notes: dto.notes, createdById: ctx.userId, ...normalizePayment(dto, localToday()), ...data.totals,
         },
       });
       await tx.salesOrderItem.createMany({ data: data.rows.map((r) => ({ ...r, orderId: order.id })) });
       await this.audit.record(tx, ctx, { action: 'sales.created', entity: 'sales_order', entityId: order.id, metadata: { number, total: data.totals.total } });
-      return { id: order.id, number, duplicate: false };
+      return { id: order.id, number };
     }
   }
 

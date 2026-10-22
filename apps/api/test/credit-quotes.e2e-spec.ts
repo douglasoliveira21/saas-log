@@ -10,7 +10,7 @@ let seq = 0;
 const uid = () => `${run}${++seq}`;
 const day = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
 
-describe('Crédito do cliente, orçamentos e pedido idempotente (venda em campo)', () => {
+describe('Crédito do cliente e orçamentos', () => {
   let app: INestApplication;
   type Agent = ReturnType<typeof request.agent>;
   let owner: Agent; let other: Agent; let wh: string; let prod: string;
@@ -139,20 +139,6 @@ describe('Crédito do cliente, orçamentos e pedido idempotente (venda em campo)
       const q = (await quote(await customer()).expect(201)).body.id;
       await other.get(`/api/quotes/${q}`).expect(404);
       await other.post(`/api/quotes/${q}/convert`).set(H).send({ paymentMethod: 'PIX' }).expect(404);
-    });
-  });
-
-  describe('venda em campo: envio repetido não duplica', () => {
-    it('o mesmo clientRef devolve o mesmo pedido', async () => {
-      const c = await customer();
-      const ref = `campo-${uid()}`;
-      const a = (await order(c, 1, { paymentMethod: 'PIX' }, { clientRef: ref }).expect(201)).body;
-      const b = (await order(c, 1, { paymentMethod: 'PIX' }, { clientRef: ref }).expect(201)).body;
-      expect(b.id).toBe(a.id);
-      expect(b.duplicate).toBe(true);
-      const list = (await owner.get('/api/sales/orders?limit=100').expect(200)).body.items;
-      expect(list.filter((x: any) => x.id === a.id)).toHaveLength(1);
-      expect(list.filter((x: any) => x.number === a.number)).toHaveLength(1);
     });
   });
 });

@@ -4,7 +4,7 @@ import { BRAND } from '@/lib/brand';
 import { UiProvider } from '@/components/ui';
 import './globals.css';
 
-export const metadata: Metadata = { title: BRAND.name, description: 'ERP SaaS para distribuidoras', manifest: '/manifest.webmanifest' };
+export const metadata: Metadata = { title: BRAND.name, description: 'ERP SaaS para distribuidoras' };
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: [{ media: '(prefers-color-scheme: light)', color: '#ffffff' }, { media: '(prefers-color-scheme: dark)', color: '#0b0f17' }] };
 
 // Aplica o tema salvo (ou o do sistema) antes da pintura, evitando o "flash" claro → escuro.
