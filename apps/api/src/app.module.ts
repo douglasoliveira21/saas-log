@@ -58,6 +58,8 @@ import { OrdersDashboardController, OrdersDashboardService } from './sales/order
 import { DelinquencyController, DelinquencyService } from './finance/delinquency';
 import { NegotiationsController, NegotiationsService } from './finance/negotiations';
 import { ManagementController, ManagementService } from './management/management';
+import { CreditController, CreditService } from './finance/credit';
+import { QuotesController, QuotesService } from './sales/quotes';
 import { DeliveryController } from './delivery/delivery.controller';
 import { DeliveryService } from './delivery/delivery.service';
 import { ReportsController } from './reports/reports.controller';
@@ -85,7 +87,7 @@ class HealthController {
       skipIf: () => process.env.NODE_ENV === 'test',
     }),
   ],
-  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, FinanceController, ReportsController, DeliveryController, DelinquencyController, NegotiationsController, ManagementController, OrdersDashboardController, LogisticsController, BillingController, PlatformController, ObservabilityController, LookupController, BrandingController, ProductImagesController, MediaController, ProductQualityController, ChannelProductsController],
+  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, FinanceController, ReportsController, DeliveryController, DelinquencyController, NegotiationsController, ManagementController, CreditController, QuotesController, OrdersDashboardController, LogisticsController, BillingController, PlatformController, ObservabilityController, LookupController, BrandingController, ProductImagesController, MediaController, ProductQualityController, ChannelProductsController],
   providers: [
     AuthService,
     StructureService,
@@ -119,6 +121,8 @@ class HealthController {
     DelinquencyService,
     NegotiationsService,
     ManagementService,
+    CreditService,
+    QuotesService,
     OrdersDashboardService,
     LogisticsService,
     BillingService,

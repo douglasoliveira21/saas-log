@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { brl, dateBr, ORDER_STATUS } from '@/lib/format';
 import { useUi, PageHeader, Alert, Skeleton, EmptyState, Dialog } from '@/components/ui';
+import type { CreditInfo } from '@/components/credit-dialog';
 import { boletoPreview, FLOW, PAYMENT_LABEL, STATUS_INFO, SUMMARY_GROUPS } from '@/lib/order-flow';
 import { useSession } from '@/lib/session';
 import { PurchaseBadge, purchaseHint, type PurchaseInfo, type PurchaseType } from '@/components/purchase-badge';
@@ -43,6 +44,7 @@ export default function VendasPage() {
   const [whs, setWhs] = useState<Warehouse[]>([]);
   const [lines, setLines] = useState<Line[]>([{ productId: '', quantity: '1', unitPrice: '', discountPct: '' }]);
   const [meta, setMeta] = useState({ customerId: '', warehouseId: '', channel: 'DIRECT', shipping: '', notes: '', fiscalDocType: 'NONE' as FiscalChoice, paymentMethod: '', installments: '1', firstDueDate: '', intervalDays: '30' });
+  const [credit, setCredit] = useState<CreditInfo | null>(null);
   const [profile, setProfile] = useState<PurchaseInfo | null>(null);
   const [cutoff, setCutoff] = useState<{ enabled: boolean; cutoffTime: string | null; businessDaysOnly: boolean; dispatchDate: string | null; deferred: boolean } | null>(null);
   const [fiscalView, setFiscalView] = useState<{ id: string; docType: FiscalChoice } | null>(null);
@@ -60,7 +62,8 @@ export default function VendasPage() {
   useEffect(() => { api<NonNullable<typeof cutoff>>('/sales/cutoff').then(setCutoff).catch(() => undefined); }, []);
   useEffect(() => {
     setProfile(null);
-    if (form && meta.customerId) api<PurchaseInfo>(`/customers/${meta.customerId}/purchase-profile`).then(setProfile).catch(() => undefined);
+    setCredit(null);
+    if (form && meta.customerId) { api<PurchaseInfo>(`/customers/${meta.customerId}/purchase-profile`).then(setProfile).catch(() => undefined); api<CreditInfo>(`/customers/${meta.customerId}/credit`).then(setCredit).catch(() => undefined); }
   }, [form, meta.customerId]);
 
   const open = useCallback(async (id: string) => { setError(''); try { setDetail(await api<Detail>(`/sales/orders/${id}`)); } catch (e) { setError((e as Error).message); } }, []);
@@ -213,6 +216,10 @@ export default function VendasPage() {
                 {Number(meta.installments) > 1 && <div><label htmlFor="pv">Dias entre as parcelas</label><input id="pv" inputMode="numeric" value={meta.intervalDays} onChange={(e) => setMeta({ ...meta, intervalDays: e.target.value })} /></div>}
               </>}
             </div>
+            {credit?.limit != null && ['BOLETO', 'CHECK', 'OTHER'].includes(meta.paymentMethod) && (() => {
+              const over = Math.round(calc.total * 100) > Math.round(Number(credit.available) * 100);
+              return <div className={`alert ${over ? 'warn' : 'info'}`} role="status" style={{ marginTop: 12 }}><div>Crédito do cliente: limite {brl(credit.limit)}, em aberto {brl(credit.exposure)}, disponível <strong>{brl(credit.available ?? 0)}</strong>.{over ? ' Este pedido passa do limite: ele vai para aprovação de um gestor antes de ser confirmado.' : ' Este pedido cabe no limite.'}</div></div>;
+            })()}
             {meta.paymentMethod === 'BOLETO' && (plan.length > 0
               ? <div className="table-wrap" style={{ marginTop: 12 }}><table><thead><tr><th>Parcela</th><th>Vencimento</th><th className="num">Valor</th></tr></thead><tbody>{plan.map((p, i) => <tr key={i}><td>{i + 1}/{plan.length}</td><td>{dateBr(p.due)}</td><td className="num">{brl(p.cents / 100)}</td></tr>)}</tbody></table></div>
               : <p className="muted" style={{ marginBottom: 0 }}>Informe o vencimento para ver as parcelas.</p>)}

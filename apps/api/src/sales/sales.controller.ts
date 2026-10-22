@@ -30,6 +30,7 @@ class OrderDto {
   @IsOptional() @IsDateString() firstDueDate?: string;
   @IsOptional() @IsInt() @Min(1) @Max(365) intervalDays?: number;
   @IsOptional() @IsString() @MaxLength(1000) notes?: string;
+  @IsOptional() @IsString() @MaxLength(80) clientRef?: string;
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(500) @ValidateNested({ each: true }) @Type(() => OrderItemDto) items: OrderItemDto[];
 }
 class ListQuery {

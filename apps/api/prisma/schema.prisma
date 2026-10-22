@@ -412,6 +412,7 @@ model Product {
   fiscalDocumentItems FiscalDocumentItem[]
   images              ProductImage[]
   channelItems        ChannelItem[]
+  quoteItems QuoteItem[]
 
   @@unique([tenantId, sku])
   @@unique([tenantId, barcode])
@@ -675,12 +676,15 @@ model Customer {
   blockReleasedUntil  DateTime?  @map("block_released_until")
   blockReleaseReason  String?    @map("block_release_reason")
   blockReleasedById   String?    @map("block_released_by_id") @db.Uuid
+  /// Limite de crédito para vendas a prazo (boleto, cheque); nulo = sem controle.
+  creditLimit       Decimal?     @map("credit_limit") @db.Decimal(14, 2)
   createdAt         DateTime     @default(now()) @map("created_at")
   updatedAt         DateTime     @updatedAt @map("updated_at")
 
   tenant Tenant       @relation(fields: [tenantId], references: [id])
   orders SalesOrder[]
   negotiations Negotiation[]
+  quotes Quote[]
 
   @@unique([tenantId, document])
   @@unique([tenantId, id])
@@ -754,6 +758,8 @@ model SalesOrder {
   installmentCount Int        @default(1) @map("installment_count")
   firstDueDate   DateTime?    @map("first_due_date") @db.Date
   installmentIntervalDays Int @default(30) @map("installment_interval_days")
+  /// Identificador do app de venda em campo (idempotência do envio offline).
+  clientRef      String?      @map("client_ref")
   status         OrderStatus  @default(DRAFT)
   subtotal       Decimal      @default(0) @db.Decimal(14, 2)
   discountTotal  Decimal      @default(0) @map("discount_total") @db.Decimal(14, 2)
@@ -787,6 +793,7 @@ model SalesOrder {
 
   @@unique([tenantId, number])
   @@unique([tenantId, externalSource, externalRef])
+  @@unique([tenantId, clientRef])
   @@unique([tenantId, id])
   @@index([tenantId, status])
   @@map("sales_orders")
@@ -1983,4 +1990,52 @@ model BudgetLine {
 
   @@unique([tenantId, lineKey, period])
   @@map("budget_lines")
+}
+
+/// Orçamento (cotação) de venda: preços fixados, validade, e conversão em pedido.
+model Quote {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  number        Int
+  customerId    String   @map("customer_id") @db.Uuid
+  salespersonId String?  @map("salesperson_id") @db.Uuid
+  warehouseId   String   @map("warehouse_id") @db.Uuid
+  status        String   @default("OPEN") // OPEN | CONVERTED | LOST
+  validUntil    DateTime @map("valid_until") @db.Date
+  paymentMethod String?  @map("payment_method")
+  subtotal      Decimal  @default(0) @db.Decimal(14, 2)
+  discountTotal Decimal  @default(0) @map("discount_total") @db.Decimal(14, 2)
+  shipping      Decimal  @default(0) @db.Decimal(14, 2)
+  total         Decimal  @default(0) @db.Decimal(14, 2)
+  notes         String?
+  orderId       String?  @map("order_id") @db.Uuid
+  lostReason    String?  @map("lost_reason")
+  createdById   String?  @map("created_by_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  customer Customer    @relation(fields: [tenantId, customerId], references: [tenantId, id])
+  items    QuoteItem[]
+
+  @@unique([tenantId, number])
+  @@unique([tenantId, id])
+  @@index([tenantId, status])
+  @@map("quotes")
+}
+
+model QuoteItem {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+  quoteId     String  @map("quote_id") @db.Uuid
+  productId   String  @map("product_id") @db.Uuid
+  quantity    Int
+  unitPrice   Decimal @map("unit_price") @db.Decimal(14, 2)
+  discountPct Decimal @default(0) @map("discount_pct") @db.Decimal(5, 2)
+  total       Decimal @db.Decimal(14, 2)
+
+  quote   Quote   @relation(fields: [tenantId, quoteId], references: [tenantId, id])
+  product Product @relation(fields: [tenantId, productId], references: [tenantId, id])
+
+  @@unique([quoteId, productId])
+  @@map("quote_items")
 }

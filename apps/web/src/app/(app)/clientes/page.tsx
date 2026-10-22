@@ -8,6 +8,7 @@ import { CepField, DocumentField, MaskedInput, UfSelect } from '@/components/fie
 import { docOrDash, formatPhone } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { PurchaseBadge, type PurchaseInfo } from '@/components/purchase-badge';
+import { CreditDialog } from '@/components/credit-dialog';
 
 interface Customer { id: string; kind: 'PF' | 'PJ'; name: string; document: string | null; email: string | null; phone: string | null; city: string | null; state: string | null; active: boolean; purchase?: PurchaseInfo }
 
@@ -19,6 +20,7 @@ export default function ClientesPage() {
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [adding, setAdding] = useState(false);
+  const [credit, setCredit] = useState<Customer | null>(null);
 
   const load = useCallback(() => { api<Customer[]>(`/customers${search ? `?search=${encodeURIComponent(search)}` : ''}`).then(setItems).catch((e) => setError(e.message)); }, [search]);
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
@@ -73,13 +75,14 @@ export default function ClientesPage() {
                   <td>{c.name}</td><td>{c.kind}</td><td className="nowrap">{docOrDash(c.document)}</td><td>{[c.email, c.phone ? formatPhone(c.phone) : null].filter(Boolean).join(' · ') || '—'}</td>
                   <td>{[c.city, c.state].filter(Boolean).join('/') || '—'}</td>
                   <td><PurchaseBadge type={c.purchase?.type} daysSince={c.purchase?.daysSince} at="now" />{c.purchase && c.purchase.orders > 0 && <div className="muted" style={{ fontSize: '0.76rem' }}>{c.purchase.orders} pedido(s) · última {c.purchase.lastPurchaseAt ? new Date(c.purchase.lastPurchaseAt).toLocaleDateString('pt-BR') : '—'}</div>}</td>
-                  <td>{manage && <button className="btn sm" onClick={() => toggle(c)}>{c.active ? 'Inativar' : 'Reativar'}</button>}</td>
+                  <td className="actions"><button className="btn sm" onClick={() => setCredit(c)}>Crédito</button> {manage && <button className="btn sm" onClick={() => toggle(c)}>{c.active ? 'Inativar' : 'Reativar'}</button>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </section>
+      {credit && <CreditDialog customerId={credit.id} customerName={credit.name} canManage={can('credit.manage')} onClose={() => setCredit(null)} />}
     </>
   );
 }

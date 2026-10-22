@@ -1,6 +1,7 @@
 import { buildFiscalPreview } from './fiscal-preview';
 import { asDateColumn, computeDispatch, localToday } from './cutoff';
 import { boletoPlan, normalizePayment, PaymentInput } from './payment';
+import { creditCheck } from '../finance/credit';
 import { purchaseProfiles } from '../customers/purchase-profile';
 import { DelinquencyService } from '../finance/delinquency';
 import { assertWithinPlan } from '../billing/limits';
@@ -16,6 +17,8 @@ import { StockService } from '../stock/stock.service';
 type Tx = Prisma.TransactionClient;
 
 export interface OrderInput extends PaymentInput {
+  /** Identificador gerado pelo aplicativo de venda em campo: reenviar o mesmo pedido nunca cria dois. */
+  clientRef?: string;
   customerId: string;
   warehouseId: string;
   salespersonId?: string;
@@ -118,20 +121,28 @@ export class SalesService {
   // ───────────── rascunho ─────────────
 
   create(ctx: AuthContext, dto: OrderInput) {
-    return this.prisma.withContext(ctx, async (tx) => {
+    return this.prisma.withContext(ctx, (tx) => this.createInTx(tx, ctx, dto));
+  }
+
+  async createInTx(tx: Tx, ctx: AuthContext, dto: OrderInput) {
+    {
+      if (dto.clientRef) {
+        const dup = await tx.salesOrder.findFirst({ where: { tenantId: ctx.tenantId!, clientRef: dto.clientRef }, select: { id: true, number: true } });
+        if (dup) return { id: dup.id, number: dup.number, duplicate: true };
+      }
       await assertWithinPlan(tx, ctx.tenantId!, 'ordersPerMonth');
       const data = await this.prepare(tx, ctx, dto);
       const number = await this.settings.nextNumber(tx, ctx, 'sales_order');
       const order = await tx.salesOrder.create({
         data: {
           tenantId: ctx.tenantId!, number, customerId: dto.customerId, warehouseId: dto.warehouseId, salespersonId: data.salespersonId,
-          channel: dto.channel ?? 'DIRECT', fiscalDocType: dto.fiscalDocType ?? 'NONE', customerType: await this.customerTypeOf(tx, ctx, dto.customerId), notes: dto.notes, createdById: ctx.userId, ...normalizePayment(dto, localToday()), ...data.totals,
+          channel: dto.channel ?? 'DIRECT', fiscalDocType: dto.fiscalDocType ?? 'NONE', customerType: await this.customerTypeOf(tx, ctx, dto.customerId), notes: dto.notes, clientRef: dto.clientRef, createdById: ctx.userId, ...normalizePayment(dto, localToday()), ...data.totals,
         },
       });
       await tx.salesOrderItem.createMany({ data: data.rows.map((r) => ({ ...r, orderId: order.id })) });
       await this.audit.record(tx, ctx, { action: 'sales.created', entity: 'sales_order', entityId: order.id, metadata: { number, total: data.totals.total } });
-      return { id: order.id, number };
-    });
+      return { id: order.id, number, duplicate: false };
+    }
   }
 
   update(ctx: AuthContext, id: string, dto: OrderInput) {
@@ -155,7 +166,11 @@ export class SalesService {
   // ───────────── fluxo ─────────────
 
   submit(ctx: AuthContext, id: string) {
-    return this.prisma.withContext(ctx, async (tx) => {
+    return this.prisma.withContext(ctx, (tx) => this.submitInTx(tx, ctx, id));
+  }
+
+  async submitInTx(tx: Tx, ctx: AuthContext, id: string) {
+    {
       const order = await this.lock(tx, ctx, id);
       if (order.status !== 'DRAFT') throw new ConflictException(`Operação inválida: o pedido está "${order.status}".`);
       if (!order.items.length) throw new BadRequestException('O pedido não possui itens.');
@@ -168,6 +183,10 @@ export class SalesService {
         const net = toCents(i.unitPrice) * (10000 - Math.round(Number(i.discountPct) * 100)) / 10000;
         if (min && net < toCents(min)) reasons.push(`${i.product.sku}: preço líquido abaixo do mínimo autorizado`);
       }
+      if (order.channel !== 'MARKETPLACE') {
+        const credit = await creditCheck(tx, ctx.tenantId!, order.customerId, toCents(order.total), order.paymentMethod);
+        if (credit.exceeded) reasons.push(credit.message);
+      }
       if (reasons.length) {
         await tx.salesOrder.update({ where: { id }, data: { status: 'PENDING_APPROVAL', approvalReason: reasons.join('; ') } });
         await this.audit.record(tx, ctx, { action: 'sales.approval_requested', entity: 'sales_order', entityId: id, metadata: { reasons } });
@@ -175,7 +194,7 @@ export class SalesService {
       }
       await this.confirm(tx, ctx, order);
       return { id, status: 'CONFIRMED' as const, reasons };
-    });
+    }
   }
 
   approve(ctx: AuthContext, id: string) {
@@ -412,13 +431,16 @@ export class SalesService {
   }
 
   /** Valida referências do tenant, calcula preços/descontos/totais em centavos e resolve o vendedor. */
-  private async prepare(tx: Tx, ctx: AuthContext, dto: OrderInput) {
+  /** Calcula preços, descontos e totais (usado também pelos orçamentos). */
+  async priceItems(tx: Tx, ctx: AuthContext, dto: OrderInput, opts: { skipDelinquency?: boolean } = {}) { return this.prepare(tx, ctx, dto, opts); }
+
+  private async prepare(tx: Tx, ctx: AuthContext, dto: OrderInput, opts: { skipDelinquency?: boolean } = {}) {
     const [customer, wh] = await Promise.all([
       tx.customer.findFirst({ where: { id: dto.customerId, tenantId: ctx.tenantId!, active: true } }),
       tx.warehouse.findFirst({ where: { id: dto.warehouseId, tenantId: ctx.tenantId!, active: true } }),
     ]);
     if (!customer) throw new BadRequestException('Cliente inválido ou inativo.');
-    if (dto.channel !== 'MARKETPLACE') await this.delinquency.assertNotBlocked(tx, ctx.tenantId!, customer.id);
+    if (dto.channel !== 'MARKETPLACE' && !opts.skipDelinquency) await this.delinquency.assertNotBlocked(tx, ctx.tenantId!, customer.id);
     if (!wh) throw new BadRequestException('Depósito inválido ou inativo.');
     if (!dto.items.length) throw new BadRequestException('Inclua ao menos um item.');
     if (new Set(dto.items.map((i) => i.productId)).size !== dto.items.length) throw new BadRequestException('Produto repetido no pedido: some as quantidades em uma linha.');
