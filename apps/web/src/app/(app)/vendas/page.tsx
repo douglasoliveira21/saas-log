@@ -23,6 +23,7 @@ interface Line { productId: string; quantity: string; unitPrice: string; discoun
 const CHANNELS: [string, string][] = [['DIRECT', 'Atendimento comercial'], ['WHATSAPP', 'WhatsApp'], ['PHONE', 'Telefone'], ['EMAIL', 'E-mail'], ['STORE', 'Loja física'], ['WEB', 'Loja virtual'], ['REPRESENTATIVE', 'Representante']];
 const NEXT: Record<string, [string, string]> = { CONFIRMED: ['PICKING', 'Iniciar separação'], PICKING: ['PACKED', 'Marcar embalado'], PACKED: ['SHIPPED', 'Expedir (baixa estoque)'], SHIPPED: ['DELIVERED', 'Confirmar entrega'], DELIVERED: ['CLOSED', 'Encerrar'] };
 const suggestFiscal = (c?: Customer): FiscalChoice | undefined => (c?.document ? (c.document.replace(/\D/g, '').length === 14 ? 'NFE' : 'NFCE') : undefined);
+const STEPS = ['Cliente', 'Produtos', 'Pagamento', 'Entrega e nota'];
 const num = (v: string) => (v.trim() === '' ? undefined : Number(v.replace(',', '.')));
 
 export default function VendasPage() {
@@ -35,6 +36,7 @@ export default function VendasPage() {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
+  const [step, setStep] = useState(0);
   const [form, setForm] = useState<{ id?: string } | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -69,6 +71,7 @@ export default function VendasPage() {
   };
 
   function startForm(d?: Detail) {
+    setError(''); setStep(0);
     setForm({ id: d?.id });
     setMeta(d ? { customerId: d.customerId, warehouseId: d.warehouseId, channel: d.channel, shipping: String(Number(d.shipping) || ''), notes: d.notes ?? '', fiscalDocType: d.fiscalDocType ?? 'NONE', paymentMethod: d.paymentMethod ?? '', installments: String(d.installmentCount ?? 1), firstDueDate: d.firstDueDate?.slice(0, 10) ?? '', intervalDays: String(d.installmentIntervalDays ?? 30) } : { customerId: customers[0]?.id ?? '', warehouseId: whs[0]?.id ?? '', channel: 'DIRECT', shipping: '', notes: '', fiscalDocType: 'NONE', paymentMethod: '', installments: '1', firstDueDate: '', intervalDays: '30' });
     setLines(d ? d.items.map((i) => ({ productId: i.productId, quantity: String(i.quantity), unitPrice: i.unitPrice, discountPct: String(Number(i.discountPct) || '') })) : [{ productId: '', quantity: '1', unitPrice: '', discountPct: '' }]);
@@ -76,8 +79,8 @@ export default function VendasPage() {
 
   async function save() {
     setError(''); setOk('');
-    if (!meta.paymentMethod) { setError('Escolha a forma de pagamento (passo 3).'); return; }
-    if (meta.paymentMethod === 'BOLETO' && !meta.firstDueDate) { setError('Boleto: informe a data de vencimento da primeira parcela.'); return; }
+    if (!meta.paymentMethod) { setStep(2); setError('Escolha a forma de pagamento.'); return; }
+    if (meta.paymentMethod === 'BOLETO' && !meta.firstDueDate) { setStep(2); setError('Boleto: informe a data de vencimento da primeira parcela.'); return; }
     const { installments, firstDueDate, intervalDays, ...rest } = meta;
     const body = {
       ...rest, ...(meta.paymentMethod === 'BOLETO' ? { installments: Number(installments) || 1, firstDueDate, intervalDays: Number(intervalDays) || 30 } : {}), shipping: num(meta.shipping) ?? 0, notes: meta.notes || undefined,
@@ -89,6 +92,20 @@ export default function VendasPage() {
     } catch (e) { setError((e as Error).message); }
   }
 
+  function goNext() {
+    setError('');
+    if (step === 0 && (!meta.customerId || !meta.warehouseId)) { setError('Escolha o cliente e o depósito de saída.'); return; }
+    if (step === 1) {
+      const filled = lines.filter((l) => l.productId);
+      if (!filled.length) { setError('Escolha ao menos um produto.'); return; }
+      if (filled.some((l) => !(Number(l.quantity) >= 1))) { setError('Informe a quantidade de cada produto (mínimo 1).'); return; }
+    }
+    if (step === 2) {
+      if (!meta.paymentMethod) { setError('Escolha a forma de pagamento.'); return; }
+      if (meta.paymentMethod === 'BOLETO' && !meta.firstDueDate) { setError('Boleto: informe a data de vencimento da primeira parcela.'); return; }
+    }
+    setStep(step + 1);
+  }
   const setLine = (i: number, patch: Partial<Line>) => setLines(lines.map((l, k) => (k === i ? { ...l, ...patch } : l)));
 
   async function doReturn(d: Detail) {
@@ -137,10 +154,13 @@ export default function VendasPage() {
       {can('sales.create') && (!customers.length || !whs.length) && <Alert kind="warn">Para criar pedidos é preciso ter ao menos {!customers.length ? 'um cliente em “Clientes”' : 'um depósito ativo em “Empresa”'}.</Alert>}
 
       {form && (
-        <section className="card" style={{ marginBottom: 16 }} aria-label={form.id ? 'Editar rascunho' : 'Novo pedido'}>
-          <div className="card-head"><h2>{form.id ? 'Editar rascunho' : 'Novo pedido'}</h2></div>
-          <p className="muted" style={{ marginTop: 0 }}>O pedido é salvo como rascunho: nada é reservado no estoque até você confirmar.</p>
-
+        <Dialog title={form.id ? 'Editar rascunho' : 'Novo pedido'} description="O pedido é salvo como rascunho: nada é reservado no estoque até você confirmar." onClose={() => setForm(null)} xl>
+          <div className="modal-body">
+          <ol className="journey" aria-label="Etapas do pedido">
+            {STEPS.map((t, i) => <li key={t} className={i < step ? 'done' : i === step ? 'now' : ''} aria-current={i === step ? 'step' : undefined}>{i < step ? '✓ ' : `${i + 1}. `}{t}</li>)}
+          </ol>
+          {error && <Alert kind="error">{error}</Alert>}
+          {step === 0 && (
           <div className="form-sec"><span className="num-badge">1</span><div>
             <h3>Quem compra e de onde sai</h3>
             <p className="sub">Escolha o cliente e o depósito que vai separar os produtos.</p>
@@ -151,7 +171,8 @@ export default function VendasPage() {
             </div>
             {profile && <div className="alert info" role="status" style={{ marginTop: 12 }}><PurchaseBadge type={profile.type} daysSince={profile.daysSince} />&nbsp;{purchaseHint(profile)}</div>}
           </div></div>
-
+          )}
+          {step === 1 && (
           <div className="form-sec"><span className="num-badge">2</span><div>
             <h3>Produtos</h3>
             <p className="sub">Ao escolher o produto, o preço sugerido é preenchido. Você pode ajustar o preço e dar desconto em %.</p>
@@ -170,7 +191,8 @@ export default function VendasPage() {
             ))}
             <button type="button" className="btn sm" onClick={() => setLines([...lines, { productId: '', quantity: '1', unitPrice: '', discountPct: '' }])}><Plus aria-hidden />Adicionar produto</button>
           </div></div>
-
+          )}
+          {step === 2 && (
           <div className="form-sec"><span className="num-badge">3</span><div>
             <h3>Forma de pagamento</h3>
             <p className="sub">Como o cliente vai pagar. No boleto, informe em quantas parcelas e o vencimento: as contas a receber são criadas quando o pedido for confirmado.</p>
@@ -186,7 +208,8 @@ export default function VendasPage() {
               ? <div className="table-wrap" style={{ marginTop: 12 }}><table><thead><tr><th>Parcela</th><th>Vencimento</th><th className="num">Valor</th></tr></thead><tbody>{plan.map((p, i) => <tr key={i}><td>{i + 1}/{plan.length}</td><td>{dateBr(p.due)}</td><td className="num">{brl(p.cents / 100)}</td></tr>)}</tbody></table></div>
               : <p className="muted" style={{ marginBottom: 0 }}>Informe o vencimento para ver as parcelas.</p>)}
           </div></div>
-
+          )}
+          {step === 3 && (
           <div className="form-sec"><span className="num-badge">4</span><div>
             <h3>Entrega e nota fiscal</h3>
             <p className="sub">Informe o frete, se houver, e se o cliente receberá NF-e ou NFC-e.</p>
@@ -198,12 +221,19 @@ export default function VendasPage() {
             )}
             <FiscalChoicePicker value={meta.fiscalDocType} onChange={(v) => setMeta({ ...meta, fiscalDocType: v })} suggestion={suggestFiscal(customers.find((c) => c.id === meta.customerId))} />
           </div></div>
+          )}
 
           <div className="totals-bar" aria-live="polite">
             <span>Produtos {brl(calc.sub)}</span><span>Descontos − {brl(calc.disc)}</span><span>Frete {brl(num(meta.shipping) ?? 0)}</span><span className="grand">Total {brl(calc.total)}</span>
           </div>
-          <div className="row" style={{ marginTop: 12 }}><button className="btn primary" onClick={save}>Salvar rascunho</button><button className="btn" onClick={() => setForm(null)}>Cancelar</button></div>
-        </section>
+          </div>
+          <div className="modal-foot">
+            <button className="btn" onClick={() => (step === 0 ? setForm(null) : setStep(step - 1))}>{step === 0 ? 'Cancelar' : 'Voltar'}</button>
+            {step < STEPS.length - 1
+              ? <button className="btn primary" onClick={goNext}>Próximo: {STEPS[step + 1]}</button>
+              : <button className="btn primary" onClick={save}>Salvar rascunho</button>}
+          </div>
+        </Dialog>
       )}
 
       <div className="sum-grid" role="group" aria-label="Resumo dos pedidos por situação">
