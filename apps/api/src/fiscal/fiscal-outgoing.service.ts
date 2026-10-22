@@ -111,7 +111,7 @@ export class FiscalOutgoingService {
         const products = g.items.reduce((s, x) => s + x.totalCents, 0);
         const doc = await tx.fiscalDocument.create({
           data: {
-            tenantId: ctx.tenantId!, direction: 'EXIT', model, status: 'DRAFT', providerState: dto.paymentMethod ? { paymentMethod: dto.paymentMethod } : {}, environment: cfg.environment, establishmentId: est.id, series: cfg.nfeSeries,
+            tenantId: ctx.tenantId!, direction: 'EXIT', model, status: 'DRAFT', providerState: (dto.paymentMethod ?? order.paymentMethod) ? { paymentMethod: dto.paymentMethod ?? order.paymentMethod } : {}, environment: cfg.environment, establishmentId: est.id, series: cfg.nfeSeries,
             emitterDoc: est.cnpj ? onlyDigits(est.cnpj) : null, emitterName: est.company.legalName, emitterUf: est.state, recipientDoc: order.customer.document,
             totalProducts: (products / 100).toFixed(2), totalInvoice: ((products + g.freightCents) / 100).toFixed(2), totalFreight: (g.freightCents / 100).toFixed(2), salesOrderId: order.id, importedById: ctx.userId,
             ...(groups.length > 1 ? { splitIndex: gi + 1, splitTotal: groups.length } : {}),

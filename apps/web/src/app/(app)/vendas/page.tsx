@@ -5,14 +5,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { brl, dateBr, ORDER_STATUS } from '@/lib/format';
 import { useUi, PageHeader, Alert, Skeleton, EmptyState } from '@/components/ui';
-import { FLOW, STATUS_INFO, SUMMARY_GROUPS } from '@/lib/order-flow';
+import { boletoPreview, FLOW, PAYMENT_LABEL, STATUS_INFO, SUMMARY_GROUPS } from '@/lib/order-flow';
 import { useSession } from '@/lib/session';
 import { PurchaseBadge, purchaseHint, type PurchaseInfo, type PurchaseType } from '@/components/purchase-badge';
 import { FISCAL_LABEL, FiscalChoicePicker, FiscalPreviewDialog, type FiscalChoice } from './fiscal';
 
-interface OrderRow { id: string; number: number; status: string; channel: string; total: string; createdAt: string; customerType?: PurchaseType | null; dispatchDate?: string | null; dispatchDeferred?: boolean; customer: { name: string }; salesperson: { name: string } | null }
+interface OrderRow { paymentMethod?: string | null; id: string; number: number; status: string; channel: string; total: string; createdAt: string; customerType?: PurchaseType | null; dispatchDate?: string | null; dispatchDeferred?: boolean; customer: { name: string }; salesperson: { name: string } | null }
 interface Detail extends OrderRow {
-  customerId: string; warehouseId: string; fiscalDocType: FiscalChoice; notes?: string | null; subtotal: string; discountTotal: string; shipping: string; approvalReason: string | null; cancelReason: string | null; warehouse: { code: string };
+  customerId: string; warehouseId: string; fiscalDocType: FiscalChoice; installmentCount: number; firstDueDate: string | null; installmentIntervalDays: number; installments: { id: string; installmentNo: number; installmentTotal: number; dueDate: string; amount: string; status: string }[]; notes?: string | null; subtotal: string; discountTotal: string; shipping: string; approvalReason: string | null; cancelReason: string | null; warehouse: { code: string };
   items: { id: string; productId: string; quantity: number; unitPrice: string; discountPct: string; total: string; returnedQty: number; product: { sku: string; name: string } }[];
 }
 interface Product { id: string; sku: string; name: string; suggestedPrice: string | null }
@@ -41,7 +41,7 @@ export default function VendasPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [whs, setWhs] = useState<Warehouse[]>([]);
   const [lines, setLines] = useState<Line[]>([{ productId: '', quantity: '1', unitPrice: '', discountPct: '' }]);
-  const [meta, setMeta] = useState({ customerId: '', warehouseId: '', channel: 'DIRECT', shipping: '', notes: '', fiscalDocType: 'NONE' as FiscalChoice });
+  const [meta, setMeta] = useState({ customerId: '', warehouseId: '', channel: 'DIRECT', shipping: '', notes: '', fiscalDocType: 'NONE' as FiscalChoice, paymentMethod: '', installments: '1', firstDueDate: '', intervalDays: '30' });
   const [profile, setProfile] = useState<PurchaseInfo | null>(null);
   const [cutoff, setCutoff] = useState<{ enabled: boolean; cutoffTime: string | null; businessDaysOnly: boolean; dispatchDate: string | null; deferred: boolean } | null>(null);
   const [fiscalView, setFiscalView] = useState<{ id: string; docType: FiscalChoice } | null>(null);
@@ -71,14 +71,17 @@ export default function VendasPage() {
 
   function startForm(d?: Detail) {
     setForm({ id: d?.id });
-    setMeta(d ? { customerId: d.customerId, warehouseId: d.warehouseId, channel: d.channel, shipping: String(Number(d.shipping) || ''), notes: d.notes ?? '', fiscalDocType: d.fiscalDocType ?? 'NONE' } : { customerId: customers[0]?.id ?? '', warehouseId: whs[0]?.id ?? '', channel: 'DIRECT', shipping: '', notes: '', fiscalDocType: 'NONE' });
+    setMeta(d ? { customerId: d.customerId, warehouseId: d.warehouseId, channel: d.channel, shipping: String(Number(d.shipping) || ''), notes: d.notes ?? '', fiscalDocType: d.fiscalDocType ?? 'NONE', paymentMethod: d.paymentMethod ?? '', installments: String(d.installmentCount ?? 1), firstDueDate: d.firstDueDate?.slice(0, 10) ?? '', intervalDays: String(d.installmentIntervalDays ?? 30) } : { customerId: customers[0]?.id ?? '', warehouseId: whs[0]?.id ?? '', channel: 'DIRECT', shipping: '', notes: '', fiscalDocType: 'NONE', paymentMethod: '', installments: '1', firstDueDate: '', intervalDays: '30' });
     setLines(d ? d.items.map((i) => ({ productId: i.productId, quantity: String(i.quantity), unitPrice: i.unitPrice, discountPct: String(Number(i.discountPct) || '') })) : [{ productId: '', quantity: '1', unitPrice: '', discountPct: '' }]);
   }
 
   async function save() {
     setError(''); setOk('');
+    if (!meta.paymentMethod) { setError('Escolha a forma de pagamento (passo 3).'); return; }
+    if (meta.paymentMethod === 'BOLETO' && !meta.firstDueDate) { setError('Boleto: informe a data de vencimento da primeira parcela.'); return; }
+    const { installments, firstDueDate, intervalDays, ...rest } = meta;
     const body = {
-      ...meta, shipping: num(meta.shipping) ?? 0, notes: meta.notes || undefined,
+      ...rest, ...(meta.paymentMethod === 'BOLETO' ? { installments: Number(installments) || 1, firstDueDate, intervalDays: Number(intervalDays) || 30 } : {}), shipping: num(meta.shipping) ?? 0, notes: meta.notes || undefined,
       items: lines.filter((l) => l.productId).map((l) => ({ productId: l.productId, quantity: Number(l.quantity), unitPrice: num(l.unitPrice), discountPct: num(l.discountPct) })),
     };
     try {
@@ -122,6 +125,8 @@ export default function VendasPage() {
     const sub = items.reduce((a, x) => a + x.gross, 0); const total = items.reduce((a, x) => a + x.total, 0);
     return { items, sub, disc: sub - total, total: total + (num(meta.shipping) ?? 0) };
   }, [lines, meta.shipping]);
+
+  const plan = meta.paymentMethod === 'BOLETO' ? boletoPreview(Math.round(calc.total * 100), Math.max(1, Math.min(36, Number(meta.installments) || 1)), meta.firstDueDate, Math.max(1, Number(meta.intervalDays) || 30)) : [];
 
   return (
     <>
@@ -168,6 +173,22 @@ export default function VendasPage() {
           </div></div>
 
           <div className="form-sec"><span className="num-badge">3</span><div>
+            <h3>Forma de pagamento</h3>
+            <p className="sub">Como o cliente vai pagar. No boleto, informe em quantas parcelas e o vencimento: as contas a receber são criadas quando o pedido for confirmado.</p>
+            <div className="form-grid">
+              <div><label htmlFor="pm">Forma de pagamento *</label><select id="pm" value={meta.paymentMethod} onChange={(e) => setMeta({ ...meta, paymentMethod: e.target.value })}><option value="">Selecione…</option>{Object.entries(PAYMENT_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
+              {meta.paymentMethod === 'BOLETO' && <>
+                <div><label htmlFor="pi">Parcelas *</label><select id="pi" value={meta.installments} onChange={(e) => setMeta({ ...meta, installments: e.target.value })}>{Array.from({ length: 36 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n === 1 ? '1x (à vista no boleto)' : `${n}x`}</option>)}</select></div>
+                <div><label htmlFor="pd">Vencimento da 1ª parcela *</label><input id="pd" type="date" min={new Date().toISOString().slice(0, 10)} value={meta.firstDueDate} onChange={(e) => setMeta({ ...meta, firstDueDate: e.target.value })} /></div>
+                {Number(meta.installments) > 1 && <div><label htmlFor="pv">Dias entre as parcelas</label><input id="pv" inputMode="numeric" value={meta.intervalDays} onChange={(e) => setMeta({ ...meta, intervalDays: e.target.value })} /></div>}
+              </>}
+            </div>
+            {meta.paymentMethod === 'BOLETO' && (plan.length > 0
+              ? <div className="table-wrap" style={{ marginTop: 12 }}><table><thead><tr><th>Parcela</th><th>Vencimento</th><th className="num">Valor</th></tr></thead><tbody>{plan.map((p, i) => <tr key={i}><td>{i + 1}/{plan.length}</td><td>{dateBr(p.due)}</td><td className="num">{brl(p.cents / 100)}</td></tr>)}</tbody></table></div>
+              : <p className="muted" style={{ marginBottom: 0 }}>Informe o vencimento para ver as parcelas.</p>)}
+          </div></div>
+
+          <div className="form-sec"><span className="num-badge">4</span><div>
             <h3>Entrega e nota fiscal</h3>
             <p className="sub">Informe o frete, se houver, e se o cliente receberá NF-e ou NFC-e.</p>
             <div className="form-grid"><div><label htmlFor="sh">Frete (R$)</label><input id="sh" inputMode="decimal" placeholder="0,00" value={meta.shipping} onChange={(e) => setMeta({ ...meta, shipping: e.target.value })} /></div></div>
@@ -267,9 +288,13 @@ export default function VendasPage() {
             <div className="row" style={{ marginBottom: 12 }}>
               <PurchaseBadge type={detail.customerType} />
               {detail.dispatchDate && <span className={`badge ${detail.dispatchDeferred ? 'warn' : ''}`} title={detail.dispatchDeferred ? 'Confirmado depois do horário de corte (ou fora de dia útil)' : 'Confirmado antes do horário de corte'}>Saída prevista: {dateBr(detail.dispatchDate)}{detail.dispatchDeferred ? ' · após o corte' : ''}</span>}
+              <span className="badge">Pagamento: {detail.paymentMethod ? PAYMENT_LABEL[detail.paymentMethod] : 'não informado'}{detail.paymentMethod === 'BOLETO' ? ` em ${detail.installmentCount}x` : ''}</span>
               <span className={`badge ${detail.fiscalDocType === 'NONE' ? '' : 'brand'}`}>Documento fiscal: {FISCAL_LABEL[detail.fiscalDocType ?? 'NONE']}</span>
               <button className="btn sm" onClick={() => setFiscalView({ id: detail.id, docType: detail.fiscalDocType ?? 'NONE' })}>{detail.fiscalDocType === 'NONE' ? 'Ver modelos (NF-e e NFC-e)' : 'Ver documento'}</button>
             </div>
+            {detail.paymentMethod === 'BOLETO' && (detail.installments.length > 0
+              ? <div className="table-wrap" style={{ marginBottom: 12 }}><table><thead><tr><th>Parcela</th><th>Vencimento</th><th className="num">Valor</th><th>Situação</th></tr></thead><tbody>{detail.installments.map((t) => <tr key={t.id}><td>{t.installmentNo}/{t.installmentTotal}</td><td>{dateBr(t.dueDate)}</td><td className="num">{brl(t.amount)}</td><td><span className={`badge ${t.status === 'PAID' ? 'ok' : t.status === 'CANCELLED' ? 'danger' : ''}`}>{t.status === 'PAID' ? 'Paga' : t.status === 'PARTIAL' ? 'Paga em parte' : t.status === 'CANCELLED' ? 'Cancelada' : 'Em aberto'}</span></td></tr>)}</tbody></table></div>
+              : detail.firstDueDate && <p className="muted" style={{ marginTop: 0 }}>Boleto em {detail.installmentCount}x, 1º vencimento em {dateBr(detail.firstDueDate)}. As contas a receber são criadas quando o pedido for confirmado.</p>)}
             {detail.approvalReason && <Alert kind="warn">{detail.approvalReason}</Alert>}
             {detail.cancelReason && <Alert kind="error">Cancelado: {detail.cancelReason}</Alert>}
             <div className="table-wrap">

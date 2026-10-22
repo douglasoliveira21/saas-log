@@ -747,6 +747,11 @@ model SalesOrder {
   /// Verdadeiro quando a saída ficou para depois do dia da venda (passou do corte ou caiu em fim de semana).
   dispatchDeferred Boolean    @default(false) @map("dispatch_deferred")
   customerType   CustomerPurchaseType? @map("customer_type")
+  /// Forma de pagamento: CASH | PIX | DEBIT | CREDIT | BOLETO | CHECK | OTHER. Boleto exige parcelas e 1º vencimento; ao confirmar, gera as contas a receber.
+  paymentMethod  String?      @map("payment_method")
+  installmentCount Int        @default(1) @map("installment_count")
+  firstDueDate   DateTime?    @map("first_due_date") @db.Date
+  installmentIntervalDays Int @default(30) @map("installment_interval_days")
   status         OrderStatus  @default(DRAFT)
   subtotal       Decimal      @default(0) @db.Decimal(14, 2)
   discountTotal  Decimal      @default(0) @map("discount_total") @db.Decimal(14, 2)

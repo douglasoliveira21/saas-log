@@ -1,5 +1,6 @@
 import { buildFiscalPreview } from './fiscal-preview';
-import { asDateColumn, computeDispatch } from './cutoff';
+import { asDateColumn, computeDispatch, localToday } from './cutoff';
+import { boletoPlan, normalizePayment, PaymentInput } from './payment';
 import { purchaseProfiles } from '../customers/purchase-profile';
 import { DelinquencyService } from '../finance/delinquency';
 import { assertWithinPlan } from '../billing/limits';
@@ -14,7 +15,7 @@ import { StockService } from '../stock/stock.service';
 
 type Tx = Prisma.TransactionClient;
 
-export interface OrderInput {
+export interface OrderInput extends PaymentInput {
   customerId: string;
   warehouseId: string;
   salespersonId?: string;
@@ -63,7 +64,7 @@ export class SalesService {
       const [items, total] = await Promise.all([
         tx.salesOrder.findMany({
           where, orderBy: { number: 'desc' }, take: q.limit ?? 50, skip: q.offset ?? 0,
-          select: { id: true, number: true, status: true, channel: true, total: true, createdAt: true, customerType: true, dispatchDate: true, dispatchDeferred: true, customer: { select: { name: true } }, salesperson: { select: { name: true } } },
+          select: { id: true, number: true, status: true, channel: true, paymentMethod: true, total: true, createdAt: true, customerType: true, dispatchDate: true, dispatchDeferred: true, customer: { select: { name: true } }, salesperson: { select: { name: true } } },
         }),
         tx.salesOrder.count({ where }),
       ]);
@@ -82,7 +83,8 @@ export class SalesService {
         },
       });
       if (!order) throw new NotFoundException('Pedido não encontrado.');
-      return { ...order, items: order.items.map(({ returnItems, ...i }) => ({ ...i, returnedQty: returnItems.reduce((s, r) => s + r.quantity, 0) })) };
+      const titles = await tx.financialTitle.findMany({ where: { tenantId: ctx.tenantId!, origin: 'SALES_ORDER', originRef: { startsWith: `${id}:` } }, orderBy: { installmentNo: 'asc' }, select: { id: true, installmentNo: true, installmentTotal: true, dueDate: true, amount: true, status: true } });
+      return { ...order, installments: titles, items: order.items.map(({ returnItems, ...i }) => ({ ...i, returnedQty: returnItems.reduce((s, r) => s + r.quantity, 0) })) };
     });
   }
 
@@ -122,7 +124,7 @@ export class SalesService {
       const order = await tx.salesOrder.create({
         data: {
           tenantId: ctx.tenantId!, number, customerId: dto.customerId, warehouseId: dto.warehouseId, salespersonId: data.salespersonId,
-          channel: dto.channel ?? 'DIRECT', fiscalDocType: dto.fiscalDocType ?? 'NONE', customerType: await this.customerTypeOf(tx, ctx, dto.customerId), notes: dto.notes, createdById: ctx.userId, ...data.totals,
+          channel: dto.channel ?? 'DIRECT', fiscalDocType: dto.fiscalDocType ?? 'NONE', customerType: await this.customerTypeOf(tx, ctx, dto.customerId), notes: dto.notes, createdById: ctx.userId, ...normalizePayment(dto, localToday()), ...data.totals,
         },
       });
       await tx.salesOrderItem.createMany({ data: data.rows.map((r) => ({ ...r, orderId: order.id })) });
@@ -140,7 +142,7 @@ export class SalesService {
       await tx.salesOrder.update({
         where: { id },
         data: {
-          customerId: dto.customerId, warehouseId: dto.warehouseId, salespersonId: data.salespersonId, channel: dto.channel ?? 'DIRECT', fiscalDocType: dto.fiscalDocType ?? 'NONE', customerType: await this.customerTypeOf(tx, ctx, dto.customerId, id), notes: dto.notes, ...data.totals,
+          customerId: dto.customerId, warehouseId: dto.warehouseId, salespersonId: data.salespersonId, channel: dto.channel ?? 'DIRECT', fiscalDocType: dto.fiscalDocType ?? 'NONE', customerType: await this.customerTypeOf(tx, ctx, dto.customerId, id), notes: dto.notes, ...normalizePayment(dto, localToday()), ...data.totals,
         },
       });
       await tx.salesOrderItem.createMany({ data: data.rows.map((r) => ({ ...r, orderId: id })) });
@@ -236,6 +238,9 @@ export class SalesService {
         throw new ConflictException(order.status === 'CANCELLED' ? 'O pedido já está cancelado.' : 'Pedido já expedido: registre uma devolução em vez de cancelar.');
       }
       for (const i of order.items) if (i.reservationId) await this.stock.resolveReservationTx(tx, ctx, i.reservationId, 'RELEASED');
+      const titles = await tx.financialTitle.findMany({ where: { tenantId: ctx.tenantId!, origin: 'SALES_ORDER', originRef: { startsWith: `${id}:` }, NOT: { status: 'CANCELLED' } }, select: { id: true, paidPrincipal: true } });
+      if (titles.some((t) => toCents(t.paidPrincipal) > 0)) throw new ConflictException('Há parcelas deste pedido já pagas: estorne a baixa no Financeiro antes de cancelar.');
+      if (titles.length) await tx.financialTitle.updateMany({ where: { tenantId: ctx.tenantId!, id: { in: titles.map((t) => t.id) } }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: `Pedido ${order.number} cancelado: ${reason}` } });
       await this.commissions.reverseAll(tx, ctx, id, `Cancelamento: ${reason}`);
       await tx.salesOrder.update({ where: { id }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: reason } });
       await this.audit.record(tx, ctx, { action: 'sales.cancelled', entity: 'sales_order', entityId: id, metadata: { reason, from: order.status } });
@@ -339,11 +344,28 @@ export class SalesService {
       where: { id: order.id },
       data: { status: 'CONFIRMED', confirmedAt: now, customerType: profile?.type, ...(cut ? { dispatchDate: asDateColumn(cut.dispatchDate), dispatchDeferred: cut.deferred } : {}) },
     });
+    if (order.paymentMethod === 'BOLETO' && order.channel !== 'MARKETPLACE') await this.createBoletoTitles(tx, ctx, order);
     const n = await this.commissions.accrue(
       tx, ctx, { id: order.id, salespersonId: order.salespersonId, customerId: order.customerId, channel: order.channel },
       order.items.map((i) => ({ id: i.id, productId: i.productId, quantity: i.quantity, total: i.total, categoryId: i.product.categoryId })),
     );
     await this.audit.record(tx, ctx, { action: 'sales.confirmed', entity: 'sales_order', entityId: order.id, metadata: { number: order.number, commissionEntries: n } });
+  }
+
+  /** Boleto: gera as contas a receber (uma por parcela) ao confirmar. Pedido de marketplace entra pela conciliação. */
+  private async createBoletoTitles(tx: Tx, ctx: AuthContext, order: Awaited<ReturnType<SalesService['lock']>>) {
+    if (!order.firstDueDate) throw new BadRequestException('Boleto sem data de vencimento: edite o pedido.');
+    if (order.firstDueDate.toISOString().slice(0, 10) < localToday()) throw new ConflictException('O vencimento do boleto já passou: edite o rascunho e informe uma nova data.');
+    const customer = await tx.customer.findFirstOrThrow({ where: { id: order.customerId, tenantId: ctx.tenantId! }, select: { name: true } });
+    const plan = boletoPlan(toCents(order.total), order.installmentCount, order.firstDueDate, order.installmentIntervalDays);
+    for (const [i, p] of plan.entries()) {
+      await tx.financialTitle.create({
+        data: {
+          tenantId: ctx.tenantId!, direction: 'RECEIVABLE', counterpartyKind: 'CUSTOMER', customerId: order.customerId, counterpartyName: customer.name, description: `Pedido ${order.number} — ${customer.name} (boleto)`,
+          documentRef: String(order.number), installmentNo: i + 1, installmentTotal: plan.length, issueDate: new Date(), dueDate: p.due, amount: fromCents(p.cents), origin: 'SALES_ORDER', originRef: `${order.id}:${i + 1}`, createdById: ctx.userId,
+        },
+      });
+    }
   }
 
   private async lock(tx: Tx, ctx: AuthContext, id: string, scoped = true) {

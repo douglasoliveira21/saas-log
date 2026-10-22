@@ -2,11 +2,12 @@ import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query
 import { FiscalDocChoice, CommissionRuleKind, CommissionStatus, OrderStatus, SalesChannel } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
-  ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsEmail, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateNested,
+  ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsEmail, IsEnum, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateNested,
 } from 'class-validator';
 import { AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
 import { IsBrPhone } from '../common/phone';
 import { CommissionsService } from '../commissions/commissions.service';
+import { PAYMENT_METHODS } from './payment';
 import { SalesService } from './sales.service';
 
 const money = { maxDecimalPlaces: 2, allowNaN: false, allowInfinity: false } as const;
@@ -24,6 +25,10 @@ class OrderDto {
   @IsOptional() @IsEnum(SalesChannel) channel?: SalesChannel;
   @IsOptional() @IsEnum(FiscalDocChoice) fiscalDocType?: FiscalDocChoice;
   @IsOptional() @IsNumber(money) @Min(0) shipping?: number;
+  @IsOptional() @IsIn(PAYMENT_METHODS) paymentMethod?: (typeof PAYMENT_METHODS)[number];
+  @IsOptional() @IsInt() @Min(1) @Max(36) installments?: number;
+  @IsOptional() @IsDateString() firstDueDate?: string;
+  @IsOptional() @IsInt() @Min(1) @Max(365) intervalDays?: number;
   @IsOptional() @IsString() @MaxLength(1000) notes?: string;
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(500) @ValidateNested({ each: true }) @Type(() => OrderItemDto) items: OrderItemDto[];
 }

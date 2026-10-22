@@ -23,3 +23,15 @@ export const SUMMARY_GROUPS: { key: string; label: string; hint: string; statuse
   { key: 'transit', label: 'A caminho', hint: 'Já saíram do depósito', statuses: ['SHIPPED'], tone: 'brand' },
   { key: 'done', label: 'Entregues', hint: 'Entregues ou encerrados', statuses: ['DELIVERED', 'CLOSED'], tone: 'ok' },
 ];
+
+export const PAYMENT_LABEL: Record<string, string> = { CASH: 'Dinheiro', PIX: 'Pix', DEBIT: 'Cartão de débito', CREDIT: 'Cartão de crédito', BOLETO: 'Boleto', CHECK: 'Cheque', OTHER: 'Outra forma' };
+
+/** Parcelas do boleto como o servidor calcula: centavos exatos, última parcela absorve a diferença. */
+export function boletoPreview(totalCents: number, count: number, firstDue: string, intervalDays: number): { due: string; cents: number }[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(firstDue) || count < 1) return [];
+  const base = Math.floor(totalCents / count);
+  return Array.from({ length: count }, (_, i) => ({
+    due: new Date(Date.parse(`${firstDue}T12:00:00Z`) + i * intervalDays * 86_400_000).toISOString().slice(0, 10),
+    cents: i === count - 1 ? totalCents - base * (count - 1) : base,
+  }));
+}
