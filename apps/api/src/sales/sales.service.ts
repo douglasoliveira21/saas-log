@@ -199,8 +199,16 @@ export class SalesService {
   }
 
   advance(ctx: AuthContext, id: string, to: OrderStatus) {
-    return this.prisma.withContext(ctx, async (tx) => {
-      const order = await this.lock(tx, ctx, id);
+    return this.prisma.withContext(ctx, (tx) => this.advanceInTx(tx, ctx, id, to));
+  }
+
+  /**
+   * Avança a situação do pedido dentro de uma transação já aberta. `unscoped` ignora o escopo "só meus pedidos": usado pelas rotas de entrega,
+   * em que quem inicia a rota (expedição) e quem confirma a entrega (motorista) não são os vendedores do pedido.
+   */
+  async advanceInTx(tx: Tx, ctx: AuthContext, id: string, to: OrderStatus, opts: { unscoped?: boolean } = {}) {
+    {
+      const order = await this.lock(tx, ctx, id, !opts.unscoped);
       if (NEXT[order.status] !== to) throw new ConflictException(`Transição inválida: ${order.status} → ${to}.`);
       const data: Prisma.SalesOrderUpdateInput = { status: to };
       if (to === 'SHIPPED') {
@@ -214,7 +222,7 @@ export class SalesService {
       if (to === 'DELIVERED') await this.commissions.onOrderEvent(tx, ctx, id, 'DELIVERED');
       await this.audit.record(tx, ctx, { action: `sales.${to.toLowerCase()}`, entity: 'sales_order', entityId: id });
       return { id, status: to };
-    });
+    }
   }
 
   cancel(ctx: AuthContext, id: string, reason: string) {
@@ -338,11 +346,11 @@ export class SalesService {
     await this.audit.record(tx, ctx, { action: 'sales.confirmed', entity: 'sales_order', entityId: order.id, metadata: { number: order.number, commissionEntries: n } });
   }
 
-  private async lock(tx: Tx, ctx: AuthContext, id: string) {
+  private async lock(tx: Tx, ctx: AuthContext, id: string, scoped = true) {
     const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM sales_orders WHERE id = ${id}::uuid AND tenant_id = ${ctx.tenantId}::uuid FOR UPDATE`;
     const order = rows.length
       ? await tx.salesOrder.findFirst({
-          where: { id, tenantId: ctx.tenantId!, AND: [await this.scope(tx, ctx)] },
+          where: { id, tenantId: ctx.tenantId!, ...(scoped ? { AND: [await this.scope(tx, ctx)] } : {}) },
           include: { items: { include: { product: { select: { sku: true, categoryId: true } } }, orderBy: { id: 'asc' } } },
         })
       : null;

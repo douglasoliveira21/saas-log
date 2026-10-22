@@ -776,6 +776,7 @@ model SalesOrder {
   externalOrders  ExternalOrder[]
   fiscalDocuments FiscalDocument[]
   shipments       Shipment[]
+  deliveryStops   DeliveryStop[]
 
   @@unique([tenantId, number])
   @@unique([tenantId, externalSource, externalRef])
@@ -1746,4 +1747,110 @@ model ChannelItem {
   @@unique([connectionId, externalId])
   @@index([tenantId, connectionId, status])
   @@map("channel_items")
+}
+
+// ── Roteirização e entrega pelo motorista (comprovante/canhoto obrigatório) ──
+
+model Driver {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  /// Acesso do motorista ao sistema (membro com o papel "Motorista").
+  userId    String   @map("user_id") @db.Uuid
+  name      String
+  phone     String?
+  vehicle   String?
+  plate     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  routes DeliveryRoute[]
+
+  @@unique([tenantId, userId])
+  @@unique([tenantId, id])
+  @@map("drivers")
+}
+
+model DeliveryRoute {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  number       Int
+  routeDate    DateTime  @map("route_date") @db.Date
+  driverId     String    @map("driver_id") @db.Uuid
+  status       String    @default("PLANNED") // PLANNED | IN_PROGRESS | COMPLETED | CANCELLED
+  notes        String?
+  startedAt    DateTime? @map("started_at")
+  finishedAt   DateTime? @map("finished_at")
+  cancelledAt  DateTime? @map("cancelled_at")
+  cancelReason String?   @map("cancel_reason")
+  createdById  String?   @map("created_by_id") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  driver Driver         @relation(fields: [tenantId, driverId], references: [tenantId, id])
+  stops  DeliveryStop[]
+
+  @@unique([tenantId, number])
+  @@unique([tenantId, id])
+  @@index([tenantId, routeDate, status])
+  @@index([tenantId, driverId, status])
+  @@map("delivery_routes")
+}
+
+model DeliveryStop {
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  routeId          String    @map("route_id") @db.Uuid
+  salesOrderId     String    @map("sales_order_id") @db.Uuid
+  sequence         Int
+  status           String    @default("PENDING") // PENDING | DELIVERED | FAILED | CANCELLED
+  customerName     String    @map("customer_name")
+  customerPhone    String?   @map("customer_phone")
+  addressText      String    @map("address_text")
+  zipCode          String?   @map("zip_code")
+  city             String?
+  state            String?   @db.Char(2)
+  deliveredAt      DateTime? @map("delivered_at")
+  receiverName     String?   @map("receiver_name")
+  receiverDocument String?   @map("receiver_document")
+  notes            String?
+  failureReason    String?   @map("failure_reason")
+  lat              Decimal?  @db.Decimal(9, 6)
+  lng              Decimal?  @db.Decimal(9, 6)
+  accuracyM        Int?      @map("accuracy_m")
+  resolvedById     String?   @map("resolved_by_id") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  route  DeliveryRoute   @relation(fields: [tenantId, routeId], references: [tenantId, id])
+  order  SalesOrder      @relation(fields: [tenantId, salesOrderId], references: [tenantId, id])
+  proofs DeliveryProof[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, routeId, salesOrderId])
+  @@index([tenantId, routeId, sequence])
+  @@index([tenantId, salesOrderId])
+  @@map("delivery_stops")
+}
+
+/// Foto do canhoto assinado (entrega) ou da ocorrência (não entregue). Guardada no banco, com limites; o hash impede reutilizar a mesma foto.
+model DeliveryProof {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  stopId      String   @map("stop_id") @db.Uuid
+  kind        String // DELIVERY | FAILURE
+  contentType String   @map("content_type")
+  bytes       Int
+  width       Int
+  height      Int
+  sha256      String
+  content     Bytes
+  takenById   String?  @map("taken_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  stop DeliveryStop @relation(fields: [tenantId, stopId], references: [tenantId, id])
+
+  @@unique([tenantId, stopId, kind])
+  @@unique([tenantId, sha256])
+  @@map("delivery_proofs")
 }

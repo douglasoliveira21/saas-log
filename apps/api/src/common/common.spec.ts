@@ -37,8 +37,9 @@ describe('papéis de sistema', () => {
     expect(owner.permissions).toHaveLength(ALL_PERMISSIONS.length);
     expect(SYSTEM_ROLES.find((r) => r.key === 'admin')!.permissions).not.toContain('tenant.manage');
   });
-  it('cobre os 12 papéis iniciais da especificação', () => {
-    expect(SYSTEM_ROLES).toHaveLength(12);
+  it('cobre os 12 papéis iniciais da especificação e o papel Motorista (somente confirma as próprias entregas)', () => {
+    expect(SYSTEM_ROLES).toHaveLength(13);
+    expect(SYSTEM_ROLES.find((r) => r.key === 'driver')!.permissions).toEqual(['delivery.perform']);
   });
 });
 

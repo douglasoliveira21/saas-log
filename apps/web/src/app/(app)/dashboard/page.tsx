@@ -2,6 +2,7 @@
 
 import { AlertTriangle, ArrowRight, Boxes, Building2, Check, PackageX, Users, Wallet, Warehouse } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Alert, PageHeader, Skeleton, StatCard } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -19,16 +20,19 @@ interface FinanceSummary { PAYABLE: Record<string, string>; RECEIVABLE: Record<s
 
 export default function DashboardPage() {
   const { me, can } = useSession();
+  const router = useRouter();
+  const driverOnly = can('delivery.perform') && !can('routes.view') && !can('sales.view') && !can('company.view');
   const [m, setM] = useState<Metrics | null>(null);
   const [fin, setFin] = useState<FinanceSummary | null>(null);
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (driverOnly) { router.replace('/motorista'); return; }
     api<Overview>('/dashboard/overview').then(setData).catch((e) => setError(e.message));
     if (can('stock.view')) api<Metrics>('/stock/metrics').then(setM).catch(() => undefined);
     if (can('finance.view')) api<FinanceSummary>('/finance/summary').then(setFin).catch(() => undefined);
-  }, [can]);
+  }, [can, driverOnly, router]);
 
   const done = data?.checklist.filter((c) => c.done).length ?? 0;
   const total = data?.checklist.length ?? 0;

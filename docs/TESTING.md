@@ -111,6 +111,9 @@ Escolha NF-e/NFC-e/nenhum guardada e trocável no rascunho (valor inválido recu
 ## Horário de corte e perfil do cliente (`cutoff-profile.e2e-spec.ts`, 11 testes + `cutoff.spec.ts`, 9 testes)
 Unitários: antes/no/depois do corte, fuso do Brasil (madrugada UTC), dias úteis × fim de semana, horário inválido, classificação novo/ativo/voltou e prazo configurável. Integração: perfil na 1ª compra, ativo, voltou após 61 dias, rascunho/cancelado não contam, prazo configurável, lista de clientes, isolamento; corte desligado por padrão, validação e permissão, corte às 23:59 (sai hoje) e 00:00 (fica para amanhã), marketplace sem corte, painel de pedidos (atrasado pela data de saída e "saem hoje").
 
+## Rotas e entregas (`delivery.e2e-spec.ts`, 14 testes)
+Permissões por perfil (motorista não vê rotas alheias); cadastro do motorista com acesso próprio; pedidos elegíveis; ordem por região × manual; recusas (pedido fora de condição, repetido, em outra rota, de outra empresa, motorista inválido); reordenar/remover/adicionar parada; iniciar expede e baixa estoque; **foto do canhoto obrigatória** (sem foto, arquivo falso, base64 inválido, resolução baixa); foto real servida só a quem pode; mesma foto em duas entregas recusada; idempotência e envios simultâneos; só o motorista da rota confirma; "não entreguei" mantém o pedido em trânsito; cancelamento; inativar motorista; auditoria e comprovante imutável. A tela do celular foi conferida no navegador com uma foto real enviada pelo formulário.
+
 ## Não coberto ainda
 Throttling (desligado em `NODE_ENV=test`), UI (sem testes de componente/E2E de navegador), **qualquer chamada à API real do Mercado Livre ou da SEFAZ**, conformidade do leiaute da NF-e e a API real dos Correios, formatos reais de extrato/relatório de liquidação, UI gateway de pagamento, MFA, carga/desempenho e pentest.
 

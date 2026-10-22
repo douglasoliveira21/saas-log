@@ -1,6 +1,6 @@
 import {
   BarChart3, Building2, ClipboardCheck, CreditCard, Handshake, LayoutDashboard, type LucideIcon, Package, PackageSearch,
-  Percent, Plug, ReceiptText, ScrollText, Settings2, ShieldCheck, ShoppingCart, Store, Truck, Users, Wallet, Warehouse,
+  Navigation, Percent, Plug, ReceiptText, Route, ScrollText, Settings2, ShieldCheck, ShoppingCart, Store, Truck, Users, Wallet, Warehouse,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -33,6 +33,8 @@ export const NAV: NavItem[] = [
 
   { href: '/integracoes', label: 'Marketplaces', icon: Plug, group: 'Canais e logística', permission: 'integrations.view', implemented: true },
   { href: '/expedicao', label: 'Expedição', icon: Truck, group: 'Canais e logística', permission: 'logistics.view', implemented: true },
+  { href: '/rotas', label: 'Rotas e entregas', icon: Route, group: 'Canais e logística', permission: 'routes.view', implemented: true },
+  { href: '/motorista', label: 'Minhas entregas', icon: Navigation, group: 'Canais e logística', permission: 'delivery.perform', implemented: true },
 
   { href: '/financeiro', label: 'Financeiro', icon: Wallet, group: 'Financeiro e fiscal', permission: 'finance.view', implemented: true },
   { href: '/fiscal', label: 'Fiscal e notas', icon: ReceiptText, group: 'Financeiro e fiscal', permission: 'fiscal.view', implemented: true },
