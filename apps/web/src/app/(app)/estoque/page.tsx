@@ -5,6 +5,8 @@ import { api } from '@/lib/api';
 import { useUi, PageHeader, Alert, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { StockDialog, type StockProduct } from './stock-dialog';
+import { LotsTab } from './lots-tab';
+import { LocationsTab } from './locations-tab';
 
 interface Row { productId: string; sku: string; name: string; minStock: number; onHand: number; reserved: number; blocked: number; available: number }
 interface Warehouse { id: string; code: string; name: string; active: boolean }
@@ -29,6 +31,7 @@ export default function EstoquePage() {
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
+  const [tab, setTab] = useState<'saldos' | 'lotes' | 'enderecos'>('saldos');
   const [panel, setPanel] = useState<'move' | 'transfer' | null>(null);
   const [edit, setEdit] = useState<{ mode: 'edit' | 'delete'; product: StockProduct } | null>(null);
 
@@ -53,7 +56,7 @@ export default function EstoquePage() {
     const key = crypto.randomUUID(); // evita lançamento duplicado em duplo clique/reenvio
     try {
       if (kind === 'move') {
-        await api('/stock/movements', 'POST', { productId: f.get('productId'), warehouseId: f.get('warehouseId'), type: f.get('type'), quantity: num(f, 'quantity'), reason: f.get('reason') || undefined, idempotencyKey: key });
+        await api('/stock/movements', 'POST', { productId: f.get('productId'), warehouseId: f.get('warehouseId'), type: f.get('type'), quantity: num(f, 'quantity'), reason: f.get('reason') || undefined, idempotencyKey: key, lotCode: f.get('lotCode') || undefined, expiresAt: f.get('expiresAt') || undefined, locationCode: f.get('locationCode') || undefined });
       } else {
         await api('/stock/transfers', 'POST', { productId: f.get('productId'), fromWarehouseId: f.get('from'), toWarehouseId: f.get('to'), quantity: num(f, 'quantity'), reason: f.get('reason') || undefined, idempotencyKey: key });
       }
@@ -76,6 +79,10 @@ export default function EstoquePage() {
       <PageHeader title="Estoque" description={<>Disponível = físico − reservado − bloqueado. Editar e excluir geram ajustes registrados no histórico (nada é apagado); lançamentos errados são corrigidos com estorno.</>} actions={<>
           {canMove && <div className="row"><button className="btn" onClick={() => setPanel('transfer')}>Transferir</button><button className="btn primary" onClick={() => setPanel('move')}>Movimentar</button></div>}
         </>} />
+      <div className="tabs" role="tablist">{([['saldos', 'Saldos e movimentos'], ['lotes', 'Lotes e validade'], ['enderecos', 'Endereços']] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`tab ${tab === k ? 'active' : ''}`} onClick={() => setTab(k)}>{l}</button>)}</div>
+      {tab === 'lotes' && <LotsTab canAdjust={canAdjust} />}
+      {tab === 'enderecos' && <LocationsTab warehouses={whs} canManage={can('warehouse.manage')} canMove={canMove} />}
+      {tab === 'saldos' && <>
       {error && <Alert kind="error">{error}</Alert>}
       {ok && <Alert kind="ok">{ok}</Alert>}
 
@@ -88,6 +95,9 @@ export default function EstoquePage() {
             <div><label htmlFor="type">Tipo</label><select id="type" name="type" required>{TYPES.filter(([, , crit]) => !crit || canAdjust).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
             <div><label htmlFor="quantity">Quantidade (ajuste aceita negativo)</label><input id="quantity" name="quantity" inputMode="numeric" required /></div>
             <div><label htmlFor="reason">Motivo (obrigatório em perdas, avarias e ajustes)</label><input id="reason" name="reason" /></div>
+            <div><label htmlFor="lot">Lote (produtos com controle de lote)</label><input id="lot" name="lotCode" maxLength={60} /></div>
+            <div><label htmlFor="exp">Validade do lote</label><input id="exp" name="expiresAt" type="date" /></div>
+            <div><label htmlFor="loc">Endereço onde guardar (entradas)</label><input id="loc" name="locationCode" maxLength={40} /></div>
           </div>
           <div className="row" style={{ marginTop: 12 }}><button className="btn primary">Registrar</button><button type="button" className="btn" onClick={() => setPanel(null)}>Cancelar</button></div>
         </form>
@@ -154,6 +164,7 @@ export default function EstoquePage() {
           </table>
         </div>
       </section>
+      </>}
       {edit && <StockDialog mode={edit.mode} product={edit.product} warehouses={whs} onClose={() => setEdit(null)} onDone={(msg) => { setEdit(null); setOk(msg); load(); }} />}
     </>
   );

@@ -151,7 +151,7 @@ export class PurchasingService {
 
   // ───────────── recebimento ─────────────
 
-  async receive(ctx: AuthContext, id: string, dto: { note?: string; idempotencyKey?: string; items: { productId: string; quantity: number; unitCost?: number; note?: string }[] }) {
+  async receive(ctx: AuthContext, id: string, dto: { note?: string; idempotencyKey?: string; items: { productId: string; quantity: number; unitCost?: number; note?: string; lotCode?: string; expiresAt?: string; locationCode?: string }[] }) {
     const run = () => this.prisma.withContext(ctx, (tx) => this.receiveTx(tx, ctx, id, dto));
     try {
       return await run();
@@ -161,7 +161,7 @@ export class PurchasingService {
     }
   }
 
-  private async receiveTx(tx: Tx, ctx: AuthContext, id: string, dto: { note?: string; idempotencyKey?: string; items: { productId: string; quantity: number; unitCost?: number; note?: string }[] }) {
+  private async receiveTx(tx: Tx, ctx: AuthContext, id: string, dto: { note?: string; idempotencyKey?: string; items: { productId: string; quantity: number; unitCost?: number; note?: string; lotCode?: string; expiresAt?: string; locationCode?: string }[] }) {
     const po = await this.lock(tx, ctx, id);
     // Relido após o lock da ordem: uma requisição concorrente com a mesma chave já pode ter confirmado.
     if (dto.idempotencyKey) {
@@ -191,6 +191,7 @@ export class PurchasingService {
       const mv = await this.stock.applyMovement(tx, ctx, {
         productId: it.productId, warehouseId: po.warehouseId, type: 'PURCHASE_ENTRY', quantity: it.quantity,
         reason: `Recebimento da OC ${po.number}`, reference: `compra:${po.number}`, idempotencyKey: `receipt:${receipt.id}:${it.productId}`,
+        lotCode: it.lotCode, expiresAt: it.expiresAt, locationCode: it.locationCode,
       });
       await tx.goodsReceiptItem.create({ data: { tenantId: ctx.tenantId!, receiptId: receipt.id, productId: it.productId, quantity: it.quantity, unitCost: cost, movementId: mv.id, note: it.note } });
       await tx.purchaseOrderItem.update({ where: { id: line.id }, data: { qtyReceived: { increment: it.quantity } } });

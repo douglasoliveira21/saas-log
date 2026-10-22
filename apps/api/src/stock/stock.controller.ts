@@ -17,6 +17,10 @@ class MoveDto {
   @IsOptional() @IsString() @MaxLength(300) reason?: string;
   @IsOptional() @IsString() @MaxLength(100) reference?: string;
   @IsOptional() @IsString() @MaxLength(100) idempotencyKey?: string;
+  @IsOptional() @IsString() @MaxLength(60) lotCode?: string;
+  @IsOptional() @IsString() @MaxLength(10) expiresAt?: string;
+  @IsOptional() @IsUUID() lotId?: string;
+  @IsOptional() @IsString() @MaxLength(40) locationCode?: string;
 }
 class SetOnHandDto {
   @IsUUID() productId: string;
@@ -24,6 +28,10 @@ class SetOnHandDto {
   @IsInt() @Min(0) @Max(MAXQ) newOnHand: number;
   @IsString() @IsNotEmpty() @MaxLength(300) reason: string;
   @IsOptional() @IsString() @MaxLength(100) idempotencyKey?: string;
+  @IsOptional() @IsString() @MaxLength(60) lotCode?: string;
+  @IsOptional() @IsString() @MaxLength(10) expiresAt?: string;
+  @IsOptional() @IsUUID() lotId?: string;
+  @IsOptional() @IsString() @MaxLength(40) locationCode?: string;
 }
 class TransferDto {
   @IsUUID() productId: string;

@@ -232,6 +232,10 @@ export class SalesService {
     {
       const order = await this.lock(tx, ctx, id, !opts.unscoped);
       if (NEXT[order.status] !== to) throw new ConflictException(`Transição inválida: ${order.status} → ${to}.`);
+      if (to === 'PACKED' && (await this.settings.load(tx, ctx))['warehouse.requireCheck']) {
+        const last = await tx.orderCheck.findFirst({ where: { tenantId: ctx.tenantId!, orderId: id }, orderBy: { createdAt: 'desc' }, select: { status: true } });
+        if (last?.status !== 'OK') throw new ConflictException(last ? 'A última conferência do pedido teve divergência: confira de novo (Armazém → Conferência) antes de embalar.' : 'Este pedido ainda não foi conferido: faça a conferência (Armazém → Conferência) antes de embalar.');
+      }
       const data: Prisma.SalesOrderUpdateInput = { status: to };
       if (to === 'SHIPPED') {
         // Efetiva a venda: consome as reservas (baixa o físico e grava SALE_EXIT no razão).
@@ -274,7 +278,7 @@ export class SalesService {
       const order = await this.lock(tx, ctx, id);
       if (!RETURNABLE.includes(order.status)) throw new ConflictException('Só é possível devolver pedidos já expedidos.');
       const restock = dto.restock ?? true;
-      const lines: { orderItemId: string; itemQty: number; returnedBefore: number; returnedNow: number; productId: string }[] = [];
+      const lines: { orderItemId: string; itemQty: number; returnedBefore: number; returnedNow: number; productId: string; reservationId: string | null }[] = [];
       for (const it of dto.items) {
         const oi = order.items.find((x) => x.id === it.orderItemId);
         if (!oi) throw new BadRequestException('Item não pertence ao pedido.');
@@ -282,7 +286,7 @@ export class SalesService {
         const done = await tx.returnItem.aggregate({ where: { tenantId: ctx.tenantId!, orderItemId: oi.id }, _sum: { quantity: true } });
         const before = done._sum.quantity ?? 0;
         if (it.quantity + before > oi.quantity) throw new ConflictException(`Quantidade devolvida excede o vendido para ${oi.product.sku} (vendido ${oi.quantity}, já devolvido ${before}).`);
-        lines.push({ orderItemId: oi.id, itemQty: oi.quantity, returnedBefore: before, returnedNow: it.quantity, productId: oi.productId });
+        lines.push({ orderItemId: oi.id, itemQty: oi.quantity, returnedBefore: before, returnedNow: it.quantity, productId: oi.productId, reservationId: oi.reservationId });
       }
       const ret = await tx.returnRequest.create({ data: { tenantId: ctx.tenantId!, orderId: id, reason: dto.reason, restock, createdById: ctx.userId } });
       await tx.returnItem.createMany({ data: lines.map((l) => ({ tenantId: ctx.tenantId!, returnId: ret.id, orderItemId: l.orderItemId, quantity: l.returnedNow })) });
@@ -291,6 +295,7 @@ export class SalesService {
           await this.stock.applyMovement(tx, ctx, {
             productId: l.productId, warehouseId: order.warehouseId, type: 'RETURN_ENTRY', quantity: l.returnedNow,
             reason: `Devolução do pedido ${order.number}`, reference: `pedido:${order.number}`, idempotencyKey: `return:${ret.id}:${l.productId}`,
+            restoreFrom: l.reservationId ? `reserva:${l.reservationId}` : undefined,
           });
         }
       }

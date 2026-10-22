@@ -57,7 +57,7 @@ export class CatalogService {
       const [items, total] = await Promise.all([
         tx.product.findMany({
           where, orderBy: { name: 'asc' }, take: q.limit ?? 50, skip: q.offset ?? 0,
-          select: { id: true, sku: true, name: true, barcode: true, brand: true, saleUnit: true, costPrice: true, suggestedPrice: true, minStock: true, ncm: true, active: true, title: true, category: { select: { name: true } }, _count: { select: { images: true } }, images: { where: { position: 0 }, select: { id: true }, take: 1 } },
+          select: { id: true, sku: true, name: true, barcode: true, brand: true, saleUnit: true, trackLots: true, costPrice: true, suggestedPrice: true, minStock: true, ncm: true, active: true, title: true, category: { select: { name: true } }, _count: { select: { images: true } }, images: { where: { position: 0 }, select: { id: true }, take: 1 } },
         }),
         tx.product.count({ where }),
       ]);

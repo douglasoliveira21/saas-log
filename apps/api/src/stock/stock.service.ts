@@ -4,10 +4,11 @@ import { randomUUID } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
 import { AuthContext } from '../common/auth';
 import { PrismaService } from '../prisma/prisma.service';
+import { applyLotsAndLocations, LotInput } from './lots-core';
 
 type Tx = Prisma.TransactionClient;
 
-export interface MovementInput {
+export interface MovementInput extends LotInput {
   productId: string;
   warehouseId: string;
   type: MovementType;
@@ -48,7 +49,7 @@ export class StockService {
   /** Entrada/saída/ajuste simples. `quantity` positiva exceto ADJUSTMENT (com sinal). */
   async move(
     ctx: AuthContext,
-    dto: { productId: string; warehouseId: string; type: MovementType; quantity: number; reason?: string; reference?: string; idempotencyKey?: string },
+    dto: { productId: string; warehouseId: string; type: MovementType; quantity: number; reason?: string; reference?: string; idempotencyKey?: string } & LotInput,
   ) {
     if (dto.type === 'TRANSFER_IN' || dto.type === 'TRANSFER_OUT' || dto.type === 'REVERSAL') {
       throw new BadRequestException('Use os endpoints de transferência e estorno.');
@@ -73,7 +74,7 @@ export class StockService {
    * Não sobrescreve nada: registra um ajuste (ADJUSTMENT) com a diferença, motivo e histórico, calculado sob trava do saldo
    * (movimentos simultâneos não distorcem o resultado). Não desce abaixo de reservado + bloqueado.
    */
-  async setOnHand(ctx: AuthContext, dto: { productId: string; warehouseId: string; newOnHand: number; reason: string; idempotencyKey?: string }) {
+  async setOnHand(ctx: AuthContext, dto: { productId: string; warehouseId: string; newOnHand: number; reason: string; idempotencyKey?: string } & LotInput) {
     if (!ctx.permissions.has('stock.adjust')) throw new ForbiddenException('Você não tem permissão para esta ação.');
     if (!dto.reason?.trim()) throw new BadRequestException('Informe o motivo.');
     return this.idempotent(ctx, dto.idempotencyKey, async (tx) => {
@@ -85,7 +86,7 @@ export class StockService {
       if (dto.newOnHand < cur.reserved + cur.blocked) {
         throw new ConflictException(`Não é possível ficar com ${dto.newOnHand}: há ${cur.reserved} reservado(s) e ${cur.blocked} bloqueado(s). Libere as reservas/bloqueios antes.`);
       }
-      const movement = await this.applyMovement(tx, ctx, { productId: dto.productId, warehouseId: dto.warehouseId, type: 'ADJUSTMENT', quantity: delta, reason: dto.reason.trim(), idempotencyKey: dto.idempotencyKey });
+      const movement = await this.applyMovement(tx, ctx, { productId: dto.productId, warehouseId: dto.warehouseId, type: 'ADJUSTMENT', quantity: delta, reason: dto.reason.trim(), idempotencyKey: dto.idempotencyKey, lotCode: dto.lotCode, expiresAt: dto.expiresAt, lotId: dto.lotId, locationCode: dto.locationCode });
       await this.audit.record(tx, ctx, { action: 'stock.set_on_hand', entity: 'product', entityId: dto.productId, metadata: { warehouseId: dto.warehouseId, from: cur.onHand, to: dto.newOnHand, delta, reason: dto.reason.trim() } });
       return { movement, from: cur.onHand, to: dto.newOnHand, delta };
     });
@@ -210,12 +211,13 @@ export class StockService {
           WHERE tenant_id = ${ctx.tenantId}::uuid AND product_id = ${r.productId}::uuid AND warehouse_id = ${r.warehouseId}::uuid
           RETURNING on_hand`;
         const after = (rows[0] as { on_hand: number }).on_hand;
-        await tx.stockMovement.create({
+        const sale = await tx.stockMovement.create({
           data: {
             tenantId: ctx.tenantId!, productId: r.productId, warehouseId: r.warehouseId, type: 'SALE_EXIT', quantity: -r.quantity,
             balanceBefore: after + r.quantity, balanceAfter: after, reference: `reserva:${r.id}`, idempotencyKey: `consume:${r.id}`, createdById: ctx.userId,
           },
         });
+        await applyLotsAndLocations(tx, ctx, sale, { productId: r.productId, warehouseId: r.warehouseId, type: 'SALE_EXIT', quantity: -r.quantity });
       }
       return { reservation: { ...r, status: target }, replayed: false };
     }
@@ -236,13 +238,15 @@ export class StockService {
       RETURNING on_hand`;
     if (!rows.length) throw new ConflictException('Estoque disponível insuficiente para esta operação.');
     const after = rows[0].on_hand;
-    return tx.stockMovement.create({
+    const mv = await tx.stockMovement.create({
       data: {
         tenantId: ctx.tenantId!, productId: m.productId, warehouseId: m.warehouseId, type: m.type, quantity: m.quantity,
         balanceBefore: after - m.quantity, balanceAfter: after, reason: m.reason, reference: m.reference,
         idempotencyKey: m.idempotencyKey, reversalOfId: m.reversalOfId, transferId: m.transferId, createdById: ctx.userId,
       },
     });
+    await applyLotsAndLocations(tx, ctx, mv, m); // lote (PEPS/FEFO) e endereço; falha aqui desfaz o movimento inteiro
+    return mv;
   }
 
   /** Executa `fn` numa transação com idempotência por chave; a repetição devolve o resultado original. */

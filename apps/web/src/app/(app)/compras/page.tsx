@@ -35,6 +35,7 @@ export default function ComprasPage() {
   const [meta, setMeta] = useState({ supplierId: '', warehouseId: '', freight: '', expectedDate: '' });
   const [lines, setLines] = useState<Line[]>([{ productId: '', quantity: '1', unitCost: '' }]);
   const [recv, setRecv] = useState<Record<string, string>>({});
+  const [recvLot, setRecvLot] = useState<Record<string, { lot?: string; exp?: string; loc?: string }>>({});
 
   const load = useCallback(() => {
     api<{ items: Row[] }>('/purchases?limit=100').then((r) => setRows(r.items)).catch((e) => setError(e.message));
@@ -74,7 +75,7 @@ export default function ComprasPage() {
 
   const receive = () => detail && act(() => api(`/purchases/${detail.id}/receipts`, 'POST', {
     idempotencyKey: crypto.randomUUID(),
-    items: Object.entries(recv).filter(([, v]) => Number(v) > 0).map(([productId, v]) => ({ productId, quantity: Number(v) })),
+    items: Object.entries(recv).filter(([, v]) => Number(v) > 0).map(([productId, v]) => ({ productId, quantity: Number(v), ...(recvLot[productId]?.lot ? { lotCode: recvLot[productId].lot, expiresAt: recvLot[productId].exp || undefined } : {}), ...(recvLot[productId]?.loc ? { locationCode: recvLot[productId].loc } : {}) })),
   }), 'Recebimento registrado e estoque atualizado.');
 
   const setLine = (i: number, patch: Partial<Line>) => setLines(lines.map((l, k) => (k === i ? { ...l, ...patch } : l)));
@@ -160,7 +161,7 @@ export default function ComprasPage() {
             <thead><tr><th>Produto</th><th>Pedido</th><th>Recebido</th><th>Custo un.</th>{['APPROVED', 'PARTIALLY_RECEIVED'].includes(detail.status) && can('purchases.receive') && <th>Receber agora</th>}</tr></thead>
             <tbody>{detail.items.map((i) => (
               <tr key={i.id}><td>{i.product.sku} — {i.product.name}</td><td>{i.qtyOrdered}</td><td>{i.qtyReceived}</td><td className="num">{brl(i.unitCost)}</td>
-                {['APPROVED', 'PARTIALLY_RECEIVED'].includes(detail.status) && can('purchases.receive') && <td><input type="number" min={0} max={i.qtyOrdered - i.qtyReceived} aria-label={`Receber ${i.product.sku}`} style={{ width: 90 }} value={recv[i.productId] ?? ''} onChange={(e) => setRecv({ ...recv, [i.productId]: e.target.value })} /></td>}
+                {['APPROVED', 'PARTIALLY_RECEIVED'].includes(detail.status) && can('purchases.receive') && <td><input type="number" min={0} max={i.qtyOrdered - i.qtyReceived} aria-label={`Receber ${i.product.sku}`} style={{ width: 90 }} value={recv[i.productId] ?? ''} onChange={(e) => setRecv({ ...recv, [i.productId]: e.target.value })} />{Number(recv[i.productId]) > 0 && <div className="row" style={{ marginTop: 6, gap: 6 }}><input aria-label={`Lote de ${i.product.sku}`} placeholder="Lote" style={{ width: 90 }} value={recvLot[i.productId]?.lot ?? ''} onChange={(e) => setRecvLot({ ...recvLot, [i.productId]: { ...recvLot[i.productId], lot: e.target.value } })} /><input type="date" aria-label={`Validade de ${i.product.sku}`} style={{ width: 140 }} value={recvLot[i.productId]?.exp ?? ''} onChange={(e) => setRecvLot({ ...recvLot, [i.productId]: { ...recvLot[i.productId], exp: e.target.value } })} /><input aria-label={`Endereço de ${i.product.sku}`} placeholder="Endereço" style={{ width: 90 }} value={recvLot[i.productId]?.loc ?? ''} onChange={(e) => setRecvLot({ ...recvLot, [i.productId]: { ...recvLot[i.productId], loc: e.target.value } })} /></div>}</td>}
               </tr>
             ))}</tbody>
           </table></div>

@@ -23,6 +23,8 @@ export interface TenantSettings {
   'orders.deliverySlaDays': number;
   /** Valor máximo de cada cupom (NFC-e), em R$; acima disso o pedido é dividido em vários cupons. 0 = sem divisão. */
   'fiscal.nfceMaxValue': number;
+  /** Exige conferência (leitura de código de barras) sem divergência antes de marcar o pedido como embalado. */
+  'warehouse.requireCheck': boolean;
 }
 
 /** Valores padrão documentados em docs/COMMERCIAL.md. "Recebimento confirmado"/"faturada" dependem de Financeiro/Fiscal. */
@@ -38,6 +40,7 @@ export const DEFAULT_SETTINGS: TenantSettings = {
   'orders.shippingSlaHours': 24,
   'orders.deliverySlaDays': 7,
   'fiscal.nfceMaxValue': 9999,
+  'warehouse.requireCheck': false,
 };
 
 function validate(key: string, value: unknown): unknown {
@@ -73,6 +76,9 @@ function validate(key: string, value: unknown): unknown {
     case 'fiscal.nfceMaxValue':
       if (typeof value === 'number' && value >= 0 && value <= 1e7) return Math.round(value * 100) / 100;
       throw new BadRequestException('Valor máximo do cupom: informe um valor em reais (0 desliga a divisão).');
+    case 'warehouse.requireCheck':
+      if (typeof value === 'boolean') return value;
+      throw new BadRequestException('Informe se a conferência é obrigatória (sim/não).');
     default:
       throw new BadRequestException(`Configuração desconhecida: ${key}`);
   }

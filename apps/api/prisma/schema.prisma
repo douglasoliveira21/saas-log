@@ -266,6 +266,8 @@ model Warehouse {
   tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
   establishment          Establishment           @relation(fields: [tenantId, establishmentId], references: [tenantId, id])
   stockBalances          StockBalance[]
+  stockLots              StockLot[]
+  locations              WarehouseLocation[]
   stockMovements         StockMovement[]
   stockReservations      StockReservation[]
   inventoryCounts        InventoryCount[]
@@ -379,6 +381,8 @@ model Product {
   minPrice         Decimal?    @map("min_price") @db.Decimal(14, 2)
   targetMarginPct  Decimal?    @map("target_margin_pct") @db.Decimal(6, 2)
   minStock         Int         @default(0) @map("min_stock")
+  /// Controle de lote e validade (PEPS/FEFO): entradas exigem lote e as saídas consomem o que vence primeiro.
+  trackLots        Boolean     @default(false) @map("track_lots")
   maxStock         Int?        @map("max_stock")
   reorderPoint     Int?        @map("reorder_point")
   leadTimeDays     Int?        @map("lead_time_days")
@@ -413,6 +417,8 @@ model Product {
   images              ProductImage[]
   channelItems        ChannelItem[]
   quoteItems QuoteItem[]
+  stockLots StockLot[]
+  locationItems StockLocationItem[]
 
   @@unique([tenantId, sku])
   @@unique([tenantId, barcode])
@@ -790,6 +796,7 @@ model SalesOrder {
   fiscalDocuments FiscalDocument[]
   shipments       Shipment[]
   deliveryStops   DeliveryStop[]
+  checks          OrderCheck[]
 
   @@unique([tenantId, number])
   @@unique([tenantId, externalSource, externalRef])
@@ -2038,4 +2045,96 @@ model QuoteItem {
 
   @@unique([quoteId, productId])
   @@map("quote_items")
+}
+
+/// Lote de um produto em um depósito (quantidade física e validade). Só existe para produtos com controle de lote.
+model StockLot {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  productId  String    @map("product_id") @db.Uuid
+  warehouseId String   @map("warehouse_id") @db.Uuid
+  code       String
+  expiresAt  DateTime? @map("expires_at") @db.Date
+  onHand     Int       @default(0) @map("on_hand")
+  receivedAt DateTime  @default(now()) @map("received_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  product   Product   @relation(fields: [tenantId, productId], references: [tenantId, id])
+  warehouse Warehouse @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  movements StockLotMovement[]
+  locationItems StockLocationItem[]
+
+  @@unique([tenantId, productId, warehouseId, code])
+  @@unique([tenantId, id])
+  @@index([tenantId, productId, warehouseId, expiresAt])
+  @@map("stock_lots")
+}
+
+/// De onde (ou para onde) cada movimento de estoque tirou (ou pôs) quantidade: rastreabilidade por lote.
+model StockLotMovement {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  movementId String   @map("movement_id") @db.Uuid
+  lotId      String   @map("lot_id") @db.Uuid
+  quantity   Int
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  lot StockLot @relation(fields: [tenantId, lotId], references: [tenantId, id])
+
+  @@index([tenantId, movementId])
+  @@index([tenantId, lotId])
+  @@map("stock_lot_movements")
+}
+
+/// Endereço dentro do depósito (ex.: A-01-02 = rua A, prédio 01, nível 02).
+model WarehouseLocation {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  warehouseId String   @map("warehouse_id") @db.Uuid
+  code        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  warehouse Warehouse @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  items     StockLocationItem[]
+
+  @@unique([tenantId, warehouseId, code])
+  @@unique([tenantId, id])
+  @@map("warehouse_locations")
+}
+
+/// Quantidade de um produto (e lote) guardada em um endereço. A soma dos endereços nunca passa do saldo físico do depósito.
+model StockLocationItem {
+  id         String  @id @default(uuid()) @db.Uuid
+  tenantId   String  @map("tenant_id") @db.Uuid
+  locationId String  @map("location_id") @db.Uuid
+  productId  String  @map("product_id") @db.Uuid
+  lotId      String? @map("lot_id") @db.Uuid
+  lotKey     String  @default("NONE") @map("lot_key")
+  quantity   Int
+
+  location WarehouseLocation @relation(fields: [tenantId, locationId], references: [tenantId, id])
+  product  Product           @relation(fields: [tenantId, productId], references: [tenantId, id])
+  lot      StockLot?         @relation(fields: [tenantId, lotId], references: [tenantId, id])
+
+  @@unique([tenantId, locationId, productId, lotKey])
+  @@index([tenantId, productId])
+  @@map("stock_location_items")
+}
+
+/// Conferência de um pedido na separação (leitura de códigos de barras): resultado e divergências.
+model OrderCheck {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  orderId     String   @map("order_id") @db.Uuid
+  status      String // OK | DIVERGENT
+  items       Json     @default("[]")
+  createdById String?  @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  order SalesOrder @relation(fields: [tenantId, orderId], references: [tenantId, id])
+
+  @@index([tenantId, orderId])
+  @@map("order_checks")
 }

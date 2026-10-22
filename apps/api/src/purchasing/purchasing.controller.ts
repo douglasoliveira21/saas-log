@@ -29,6 +29,9 @@ class ReceiptItemDto {
   @IsInt() @Min(1) @Max(1_000_000) quantity: number;
   @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) unitCost?: number;
   @IsOptional() @IsString() @MaxLength(300) note?: string;
+  @IsOptional() @IsString() @MaxLength(60) lotCode?: string;
+  @IsOptional() @IsString() @MaxLength(10) expiresAt?: string;
+  @IsOptional() @IsString() @MaxLength(40) locationCode?: string;
 }
 class ReceiptDto {
   @IsOptional() @IsString() @MaxLength(300) note?: string;
