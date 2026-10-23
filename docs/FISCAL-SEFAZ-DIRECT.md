@@ -34,9 +34,11 @@ Fiscal → Configuração → *Como emitir as notas* → **Direto na SEFAZ**. An
 | NFC-e de MG | XML/QR Code/assinatura testados; **versão do QR Code vigente em MG não confirmada** (existe a 2.00 com CSC e a 3.00 assinada, sem CSC); regras de impressão e contingência da UF não verificadas | confirmar na documentação da SEFAZ-MG |
 | Regras de homologação não documentadas nas páginas lidas | `dest/xNome` fixo e `xProd` do 1º item da NFC-e em homologação estão como **[A VALIDAR]** | só a homologação real confirma |
 | Contingência (SVC, EPEC, NFC-e offline) | **Não implementada** (a página do SPED MG não cita SVC; EPEC é da RFB) | decisão de produto + verificação por UF |
-| DANFE oficial a partir do XML autorizado (NF-e A4 e DANFE NFC-e térmico) | **Não implementado** (existe só o espelho de Vendas) | desenho do leiaute oficial + impressão térmica |
+| DANFE a partir do XML autorizado (NF-e A4 e DANFE NFC-e 80 mm com QR Code) | **Implementado (aproximação do leiaute)**: gerado do XML guardado, com código de barras Code 128 da chave e QR Code; **não conferido pixel a pixel com o Manual de Orientação do Contribuinte** nem validado por contador/SEFAZ da UF. O documento com validade é o XML | validar o leiaute com o contador e a UF antes de usar como documento oficial impresso |
 | ST, DIFAL, FCP, IPI, benefícios, importação, CSOSN 101/500/900, CST 10/20/60/70/90 | Não suportados (recusados com mensagem) | regras do contador e do motor tributário |
-| Carta de correção, manifestação do destinatário, distribuição DF-e | Não implementados | — |
+| Carta de correção (CC-e) | **Implementada** (evento 110110, serviço de eventos da UF — mesmo endereço verificado do cancelamento; XSD do evento e assinatura conferidos por teste; só com servidor de teste) | homologação real |
+| Manifestação do destinatário (ciência, confirmação, desconhecimento, não realizada) | **Implementada, mas desligada por padrão**: vai ao Ambiente Nacional (cOrgao 91) e o **endereço do serviço NÃO foi verificado em fonte oficial** por este projeto: o administrador informa `FISCAL_SEFAZ_AN_EVENT_URL_HOMOLOGACAO` / `_PRODUCAO` depois de conferir no Portal Nacional da NF-e. Sem isso é recusada com explicação | conferir o endereço oficial + homologação real |
+| Distribuição DF-e (baixar as notas emitidas contra o CNPJ) | Não implementada | — |
 | Fila assíncrona com retentativa/dead-letter própria para emissão | Não feita (a transmissão é síncrona; consulta manual) | trabalho de infraestrutura |
 | CNPJ alfanumérico (leiaute 2026) | O XSD aceita; cadastro e validações de CNPJ do sistema ainda são numéricos | adequar cadastros |
 

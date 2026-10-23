@@ -126,6 +126,35 @@ describe('Lote e validade (PEPS/FEFO) e armazém (endereços, separação e conf
       await track(p, false).expect(409);
     });
 
+    it('validade mínima do cliente: pula lote curto na expedição e recusa confirmar sem lote que atenda', async () => {
+      const p = await product();
+      await track(p).expect(200);
+      await entry(p, 10, { lotCode: 'CURTO', expiresAt: day(10) }).expect(201);
+      await entry(p, 10, { lotCode: 'LONGO', expiresAt: day(100) }).expect(201);
+      const c = (await owner.post('/api/customers').set(H).send({ kind: 'PF', name: `Exigente ${uid()}` }).expect(201)).body.id;
+      await owner.put(`/api/customers/${c}/min-shelf-life`).set(H).send({ days: 30 }).expect(200);
+      expect((await owner.get(`/api/customers/${c}/credit`).expect(200)).body.minShelfLifeDays).toBe(30);
+      const mk = async (qty: number) => (await owner.post('/api/sales/orders').set(H).send({ customerId: c, warehouseId: wh, paymentMethod: 'PIX', items: [{ productId: p, quantity: qty, unitPrice: 10 }] }).expect(201)).body.id as string;
+      const o = await mk(4);
+      await owner.post(`/api/sales/orders/${o}/submit`).set(H).expect(200);
+      for (const to of ['PICKING', 'PACKED', 'SHIPPED']) await owner.post(`/api/sales/orders/${o}/advance`).set(H).send({ to }).expect(200);
+      expect(await lotQty(p, 'CURTO')).toBe(10); // não serve a este cliente
+      expect(await lotQty(p, 'LONGO')).toBe(6);
+      // sobram 6 em lote longo: pedir 8 não confirma, mesmo havendo 16 no total
+      const big = await mk(8);
+      const r = await owner.post(`/api/sales/orders/${big}/submit`).set(H).expect(409);
+      expect(JSON.stringify(r.body)).toMatch(/pelo menos 30 dia/);
+      // cliente sem exigência leva o lote curto (FEFO)
+      const c2 = (await owner.post('/api/customers').set(H).send({ kind: 'PF', name: `Normal ${uid()}` }).expect(201)).body.id;
+      await owner.put(`/api/customers/${c2}/min-shelf-life`).set(H).send({ days: 30 }).expect(200);
+      await owner.put(`/api/customers/${c2}/min-shelf-life`).set(H).send({ days: null }).expect(200);
+      expect((await owner.get(`/api/customers/${c2}/credit`).expect(200)).body.minShelfLifeDays).toBeNull();
+      await owner.put(`/api/customers/${c}/min-shelf-life`).set(H).send({ days: -1 }).expect(400);
+      await owner.put('/api/settings').set(H).send({ 'lots.marketplaceMinShelfLifeDays': 15 }).expect(200);
+      await owner.put('/api/settings').set(H).send({ 'lots.marketplaceMinShelfLifeDays': -2 }).expect(400);
+      await owner.put('/api/settings').set(H).send({ 'lots.marketplaceMinShelfLifeDays': 0 }).expect(200);
+    });
+
     it('outra empresa não vê os lotes', async () => {
       const p = await product();
       await track(p).expect(200);

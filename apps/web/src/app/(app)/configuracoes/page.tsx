@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { PageHeader, Alert, Skeleton } from '@/components/ui';
 
-interface Settings { 'commission.event': string; 'sales.maxDiscountPct': number; 'purchases.approvalLimit': number; 'sales.cutoffTime': string; 'sales.cutoffBusinessDaysOnly': boolean; 'customers.inactiveAfterDays': number; 'fiscal.nfceMaxValue': number; 'warehouse.requireCheck': boolean }
+interface Settings { 'commission.event': string; 'sales.maxDiscountPct': number; 'purchases.approvalLimit': number; 'sales.cutoffTime': string; 'sales.cutoffBusinessDaysOnly': boolean; 'customers.inactiveAfterDays': number; 'fiscal.nfceMaxValue': number; 'warehouse.requireCheck': boolean; 'lots.marketplaceMinShelfLifeDays': number }
 
 export default function ConfiguracoesPage() {
   const [s, setS] = useState<Settings | null>(null);
@@ -25,6 +25,7 @@ export default function ConfiguracoesPage() {
         'sales.cutoffBusinessDaysOnly': f.get('weekdays') === 'on',
         'customers.inactiveAfterDays': Number(f.get('inactive')),
         'warehouse.requireCheck': f.get('reqcheck') === 'on',
+        'lots.marketplaceMinShelfLifeDays': Number(f.get('mkshelf') || 0),
         'fiscal.nfceMaxValue': Number(String(f.get('nfcemax') ?? '0').replace(/\./g, '').replace(',', '.')),
       }));
       setOk('Políticas salvas (alteração registrada na auditoria).');
@@ -54,6 +55,7 @@ export default function ConfiguracoesPage() {
           <div className="field"><label style={{ display: 'flex', gap: 8, alignItems: 'center' }}><input type="checkbox" name="weekdays" defaultChecked={s['sales.cutoffBusinessDaysOnly']} style={{ width: 'auto' }} />Considerar só dias úteis (seg–sex); fim de semana sai na segunda</label></div>
           <h2 style={{ marginTop: 20 }}>Armazém</h2>
           <div className="field"><label style={{ display: 'flex', gap: 8, alignItems: 'center' }}><input type="checkbox" name="reqcheck" defaultChecked={s['warehouse.requireCheck']} style={{ width: 'auto' }} />Exigir conferência por código de barras (sem divergência) antes de marcar o pedido como embalado</label></div>
+          <div className="field"><label htmlFor="mkshelf">Validade mínima dos lotes em pedidos de marketplace (dias)</label><input id="mkshelf" name="mkshelf" inputMode="numeric" defaultValue={s['lots.marketplaceMinShelfLifeDays']} style={{ maxWidth: 160 }} /><p className="muted">Marketplace não deixa escolher o lote: o sistema pula os que têm menos dias de validade que isso. 0 = qualquer lote dentro da validade.</p></div>
           <h2 style={{ marginTop: 20 }}>Cupom fiscal (NFC-e)</h2>
           <div className="field"><label htmlFor="nfcemax">Valor máximo de cada cupom (R$)</label><input id="nfcemax" name="nfcemax" inputMode="decimal" defaultValue={String(s['fiscal.nfceMaxValue']).replace('.', ',')} style={{ maxWidth: 160 }} /><p className="muted">Pedido em NFC-e acima desse valor é dividido automaticamente em vários cupons, cada um até o limite (ex.: R$ 400.000,00 com limite de R$ 9.999,00 vira 41 cupons). Uma unidade nunca é partida, então um cupom pode fechar um pouco abaixo do limite. Use <strong>0</strong> para não dividir. Não vale para NF-e.</p></div>
           <h2 style={{ marginTop: 20 }}>Perfil do cliente</h2>

@@ -5,6 +5,7 @@ import { AuthContext } from '../common/auth';
 import { isValidCnpj, isValidCpf, onlyDigits } from '../common/cnpj';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildChave } from './chave';
+import { renderDanfce, renderDanfe } from './danfe';
 import { ENGINE_VERSION, EngineOutput } from './engine';
 import { FISCAL_PROVIDER, FiscalEnvironment, FiscalModel, FiscalProvider, OutgoingDocument, ProviderCtx, RemoteDoc } from './fiscal-provider';
 import { ProviderContextService } from './fiscal-provider.router';
@@ -450,7 +451,41 @@ export class FiscalOutgoingService {
     });
   }
 
-  /** DANFE (do provedor) ou XML autorizado (cópia guardada aqui; se faltar, baixa do provedor). */
+  /** Carta de correção (CC-e, evento 110110) de uma NF-e autorizada. Cada carta tem número de sequência (1 a 20); a mais recente prevalece. */
+  async correct(ctx: AuthContext, id: string, text: string) {
+    const clean = text.trim();
+    if (clean.length < 15 || clean.length > 1000) throw new BadRequestException('A correção precisa ter de 15 a 1000 caracteres.');
+    const ref = await this.prisma.withContext(ctx, async (tx) => {
+      const d = await this.lock(tx, ctx, id);
+      if (d.model !== '55') throw new ConflictException('Carta de correção só existe para NF-e (modelo 55); NFC-e não aceita.');
+      if (d.status !== 'AUTHORIZED') throw new ConflictException('Só é possível corrigir uma nota autorizada.');
+      if (!d.accessKey) throw new ConflictException('Nota sem chave de acesso.');
+      const pc = await this.pctx.resolve(tx, ctx.tenantId!, d.establishmentId!, d.model as FiscalModel, (d.environment as FiscalEnvironment) ?? 'HOMOLOGACAO');
+      if (!this.provider.sendEvent || !this.provider.isConfigured(pc)) throw new HttpException({ message: 'O provedor configurado não envia carta de correção por aqui.', code: 'NOT_SUPPORTED' }, HttpStatus.FAILED_DEPENDENCY);
+      const last = await tx.fiscalEvent.aggregate({ where: { tenantId: ctx.tenantId!, documentId: id, tpEvento: '110110' }, _max: { seq: true } });
+      const seq = (last._max.seq ?? 0) + 1;
+      if (seq > 20) throw new ConflictException('Limite de 20 cartas de correção por nota atingido.');
+      return { pc, accessKey: d.accessKey, seq, cnpj: onlyDigits(d.emitterDoc ?? d.accessKey.slice(6, 20)) };
+    });
+    const r = await this.provider.sendEvent!({ kind: 'CCE', accessKey: ref.accessKey, seq: ref.seq, text: clean, cnpj: ref.cnpj }, ref.pc);
+    return this.prisma.withContext(ctx, async (tx) => {
+      await this.lock(tx, ctx, id);
+      const ok = r.kind === 'REGISTERED';
+      const ev = await tx.fiscalEvent.create({ data: { tenantId: ctx.tenantId!, documentId: id, kind: 'CCE', tpEvento: '110110', seq: ref.seq, text: clean, status: ok ? 'REGISTERED' : 'REJECTED', statusCode: r.kind === 'UNAVAILABLE' ? null : r.statusCode, protocol: ok ? r.protocol : null, message: ok ? null : r.reason, createdById: ctx.userId } });
+      await this.audit.record(tx, ctx, { action: ok ? 'fiscal.cce_registered' : 'fiscal.cce_failed', entity: 'fiscal_document', entityId: id, metadata: { seq: ref.seq, result: r.kind, statusCode: r.kind === 'UNAVAILABLE' ? null : r.statusCode } });
+      if (r.kind === 'REGISTERED') return { id: ev.id, seq: ref.seq, protocol: r.protocol, statusCode: r.statusCode };
+      throw new ConflictException(r.kind === 'REJECTED' ? `Carta de correção recusada (${r.statusCode}): ${r.reason}` : r.reason);
+    });
+  }
+
+  events(ctx: AuthContext, id: string) {
+    return this.prisma.withContext(ctx, async (tx) => {
+      if (!(await tx.fiscalDocument.findFirst({ where: { id, tenantId: ctx.tenantId! }, select: { id: true } }))) throw new NotFoundException('Documento não encontrado.');
+      return tx.fiscalEvent.findMany({ where: { tenantId: ctx.tenantId!, documentId: id }, orderBy: { createdAt: 'desc' }, select: { id: true, kind: true, tpEvento: true, seq: true, text: true, status: true, statusCode: true, protocol: true, message: true, createdAt: true } });
+    });
+  }
+
+  /** DANFE (do provedor, quando ele fornece; senão gerado aqui do XML autorizado) ou XML autorizado (cópia guardada aqui; se faltar, baixa do provedor). */
   async file(ctx: AuthContext, id: string, kind: 'danfe' | 'xml') {
     const d = await this.prisma.withContext(ctx, async (tx) => {
       const doc = await tx.fiscalDocument.findFirst({ where: { id, tenantId: ctx.tenantId!, direction: 'EXIT' } });
@@ -459,7 +494,13 @@ export class FiscalOutgoingService {
       const pc = await this.pctx.resolve(tx, ctx.tenantId!, doc.establishmentId!, doc.model as FiscalModel, (doc.environment as FiscalEnvironment) ?? 'HOMOLOGACAO');
       return { doc, xml, pc };
     });
+    // DANFE gerado aqui a partir do XML autorizado (NF-e retrato A4 / NFC-e bobina 80 mm); sem XML guardado, usa o do provedor.
     const st = (d.doc.providerState ?? {}) as { xmlPath?: string | null; danfePath?: string | null };
+    // provedor que entrega o próprio DANFE (leiaute oficial dele) continua valendo; sem isso (emissão direta), geramos aqui
+    if (kind === 'danfe' && d.xml && !(st.danfePath && this.provider.download)) {
+      const html = d.doc.model === '65' ? await renderDanfce(d.xml.content) : renderDanfe(d.xml.content);
+      return { content: Buffer.from(html, 'utf8'), contentType: 'text/html; charset=utf-8', name: `danfe-${d.doc.accessKey ?? d.doc.id}.html` };
+    }
     if (kind === 'xml' && d.xml) return { content: Buffer.from(d.xml.content, 'utf8'), contentType: 'application/xml; charset=utf-8', name: `nfe-${d.doc.accessKey ?? d.doc.id}.xml` };
     const p = kind === 'xml' ? st.xmlPath : st.danfePath;
     if (!p || !this.provider.download) throw new NotFoundException(kind === 'xml' ? 'XML não disponível para este documento.' : 'DANFE não disponível: o documento ainda não foi autorizado por um provedor.');

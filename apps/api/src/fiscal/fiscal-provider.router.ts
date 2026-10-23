@@ -5,7 +5,7 @@ import { Prisma } from '@prisma/client';
 import { CryptoService } from '../integrations/crypto.service';
 import { FocusNfeProvider } from './focus-nfe.provider';
 import {
-  CancelResult, ConsultResult, FiscalEnvironment, FiscalModel, FiscalProvider, InutInput, NullFiscalProvider, OutgoingDocument, ProviderCtx, TransmitInput, TransmitResult, ValidationIssue,
+  CancelResult, ConsultResult, EventInput, FiscalEnvironment, FiscalModel, FiscalProvider, InutInput, NullFiscalProvider, OutgoingDocument, ProviderCtx, TransmitInput, TransmitResult, ValidationIssue,
 } from './fiscal-provider';
 
 type Tx = Prisma.TransactionClient;
@@ -35,6 +35,11 @@ export class FiscalProviderRouter implements FiscalProvider {
     const p = this.pick(ctx);
     return p.cancel ? p.cancel(ref, reason, ctx, doc) : { kind: 'UNAVAILABLE', reason: 'O provedor configurado não suporta cancelamento por aqui.' };
   }
+  async sendEvent(p: EventInput, ctx: ProviderCtx) {
+    const impl = this.pick(ctx);
+    return impl.sendEvent ? impl.sendEvent(p, ctx) : { kind: 'UNAVAILABLE' as const, reason: 'O provedor configurado não envia carta de correção nem manifestação por aqui: use o painel do provedor ou a emissão direta.' };
+  }
+
   async inutilize(p: InutInput, ctx: ProviderCtx) {
     const impl = this.pick(ctx);
     return impl.inutilize ? impl.inutilize(p, ctx) : { kind: 'UNAVAILABLE' as const, reason: 'O provedor configurado não suporta inutilização por aqui.' };

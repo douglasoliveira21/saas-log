@@ -176,12 +176,16 @@ export class WarehouseService {
   pickingList(ctx: AuthContext, orderIds: string[]) {
     if (!orderIds.length || orderIds.length > 50) throw new BadRequestException('Escolha de 1 a 50 pedidos.');
     return this.prisma.withContext(ctx, async (tx) => {
-      const orders = await tx.salesOrder.findMany({ where: { tenantId: ctx.tenantId!, id: { in: orderIds } }, include: { customer: { select: { name: true } }, warehouse: { select: { code: true, id: true } }, items: { include: { product: { select: { sku: true, name: true, barcode: true, trackLots: true, saleUnit: true } } } } }, orderBy: { number: 'asc' } });
+      const orders = await tx.salesOrder.findMany({ where: { tenantId: ctx.tenantId!, id: { in: orderIds } }, include: { customer: { select: { name: true, minShelfLifeDays: true } }, warehouse: { select: { code: true, id: true } }, items: { include: { product: { select: { sku: true, name: true, barcode: true, trackLots: true, saleUnit: true } } } } }, orderBy: { number: 'asc' } });
       if (orders.length !== new Set(orderIds).size) throw new NotFoundException('Algum pedido não foi encontrado.');
       if (orders.some((o) => !['CONFIRMED', 'PICKING'].includes(o.status))) throw new ConflictException('A lista é só para pedidos confirmados ou em separação.');
       if (new Set(orders.map((o) => o.warehouse.id)).size > 1) throw new ConflictException('Os pedidos são de depósitos diferentes: gere uma lista por depósito.');
       const warehouseId = orders[0].warehouse.id;
       const today = localToday();
+      const mkSetting = await tx.tenantSetting.findFirst({ where: { tenantId: ctx.tenantId!, key: 'lots.marketplaceMinShelfLifeDays' } });
+      const minOf = (o: (typeof orders)[number]) => (o.channel === 'MARKETPLACE' ? (typeof mkSetting?.value === 'number' ? mkSetting.value : 0) : o.customer.minShelfLifeDays ?? 0);
+      const minDays = new Map<string, number>(); // por produto: a maior exigência entre os pedidos da lista
+      for (const o of orders) for (const i of o.items) minDays.set(i.productId, Math.max(minDays.get(i.productId) ?? 0, minOf(o)));
       const need = new Map<string, { sku: string; name: string; barcode: string | null; unit: string; tracked: boolean; qty: number; orders: { number: number; qty: number }[] }>();
       for (const o of orders) for (const i of o.items) {
         const n = need.get(i.productId) ?? { sku: i.product.sku, name: i.product.name, barcode: i.product.barcode, unit: i.product.saleUnit, tracked: i.product.trackLots, qty: 0, orders: [] };
@@ -197,6 +201,7 @@ export class WarehouseService {
           for (const l of lots) {
             if (left === 0) break;
             if (l.expiresAt && day(l.expiresAt)! < today) continue; // vencido não vai para venda
+            if (l.expiresAt && (l.expiresAt.getTime() - Date.parse(`${today}T00:00:00Z`)) / DAY < (minDays.get(productId) ?? 0)) continue; // validade menor que a exigida pelo cliente/canal
             let lotLeft = Math.min(left, l.onHand);
             const here = locItems.filter((x) => x.lotId === l.id).sort((a, b) => a.location.code.localeCompare(b.location.code));
             for (const h of here) { if (lotLeft === 0) break; const t = Math.min(lotLeft, h.quantity); picks.push({ lotCode: l.code, expiresAt: day(l.expiresAt), location: h.location.code, qty: t }); lotLeft -= t; left -= t; }

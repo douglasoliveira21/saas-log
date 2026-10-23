@@ -8,6 +8,7 @@ import { useUi, PageHeader, Alert, Skeleton } from '@/components/ui';
 import { formatAccessKey, formatCnpj } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { ProviderCard } from './provider-card';
+import { EventsPanel } from './events-panel';
 import { CoverageCard } from './coverage-card';
 
 type Tab = 'config' | 'inbound' | 'rules' | 'outgoing';
@@ -214,6 +215,7 @@ function InboundTab({ act, can }: TabProps) {
           </div>
           <p className="muted">Chave <span className="mono">{formatAccessKey(sel.accessKey)}</span> · fornecedor {sel.supplier?.legalName ?? 'não vinculado'}</p>
           <IssueList issues={sel.issues} />
+          <EventsPanel kind="inbound" id={sel.id} canAct={can('fiscal.emit')} />
           <div className="table-wrap"><table>
             <thead><tr><th>#</th><th>Código</th><th>Descrição</th><th>Qtd. XML</th><th>Un.</th><th>Total</th><th>NCM</th><th>Produto do ERP</th><th>Estoque</th></tr></thead>
             <tbody>
@@ -466,6 +468,7 @@ function OutgoingTab({ act, can }: TabProps) {
           {sel.status === 'CANCELLED' && <div className="alert warn">Nota cancelada. O pedido pode ser faturado de novo.</div>}
           {sel.accessKey && <p className="muted">Chave <span className="mono">{formatAccessKey(sel.accessKey)}</span> · protocolo {sel.authProtocol ?? '—'}</p>}
           <IssueList issues={sel.issues} />
+          <EventsPanel kind="outgoing" id={sel.id} canAct={emit} authorized55={sel.status === 'AUTHORIZED' && sel.model === '55'} />
           <div className="table-wrap"><table>
             <thead><tr><th>#</th><th>Descrição</th><th>NCM</th><th>CFOP</th><th>Total</th><th>Impostos calculados (regra aprovada)</th></tr></thead>
             <tbody>{sel.items.map((i) => <tr key={i.line}><td>{i.line}</td><td>{i.description}</td><td>{i.ncm ?? '—'}</td><td>{i.cfop ?? '—'}</td><td className="num">{brl(i.totalValue)}</td><td className="muted">{Object.entries(i.declaredTax?.taxes ?? {}).map(([c, t]) => `${c} ${t.amount.toFixed(2)}`).join(' · ') || '—'}</td></tr>)}</tbody>

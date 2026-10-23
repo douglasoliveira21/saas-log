@@ -106,12 +106,19 @@ export class MockSefaz {
 
     if (op === 'NFeRecepcaoEvento4') {
       const v = await validateAgainst('envEvento_v1.00.xsd', inner);
-      call.xmlValid = v.valid; call.xsdErrors = v.errors.map((e) => e.message);
+      const tp = /<tpEvento>(\d+)<\/tpEvento>/.exec(inner)?.[1] ?? '';
+      // eventos com XSD próprio do detalhe (CC-e e manifestação): valida também o <detEvento>
+      const detOk = tp === '110111' ? true : (await validateAgainst(`e${tp}_v1.00.xsd`, (/<detEvento[\s\S]*?<\/detEvento>/.exec(inner)?.[0] ?? '').replace('<detEvento ', `<detEvento xmlns="${NS}" `))).valid;
+      call.xmlValid = v.valid && detOk; call.xsdErrors = v.errors.map((e) => e.message);
       call.sigValid = verifySignature(inner).valid;
+      (call as { tpEvento?: string; cOrgao?: string; seq?: string }).tpEvento = tp;
+      (call as { cOrgao?: string }).cOrgao = /<cOrgao>(\d+)<\/cOrgao>/.exec(inner)?.[1];
+      (call as { seq?: string }).seq = /<nSeqEvento>(\d+)<\/nSeqEvento>/.exec(inner)?.[1];
       const chave = /<chNFe>(\d{44})<\/chNFe>/.exec(inner)?.[1] ?? '';
-      const ok = v.valid && this.known.has(chave);
-      if (ok) this.known.get(chave)!.cancelled = true;
-      return send(`<retEnvEvento xmlns="${NS}" versao="1.00"><idLote>1</idLote><tpAmb>2</tpAmb><verAplic>MG</verAplic><cOrgao>31</cOrgao><cStat>128</cStat><xMotivo>Lote de Evento Processado</xMotivo><retEvento versao="1.00"><infEvento><tpAmb>2</tpAmb><cStat>${ok ? '135' : '573'}</cStat><xMotivo>${ok ? 'Evento registrado e vinculado a NF-e' : 'Rejeicao: Duplicidade de evento'}</xMotivo><chNFe>${chave}</chNFe><tpEvento>110111</tpEvento>${ok ? '<nProt>131260000000999</nProt>' : ''}</infEvento></retEvento></retEnvEvento>`);
+      const valid = v.valid && detOk && call.sigValid;
+      const ok = tp === '110111' ? valid && this.known.has(chave) : tp === '110110' ? valid && this.known.has(chave) && !this.known.get(chave)!.cancelled : valid;
+      if (ok && tp === '110111') this.known.get(chave)!.cancelled = true;
+      return send(`<retEnvEvento xmlns="${NS}" versao="1.00"><idLote>1</idLote><tpAmb>2</tpAmb><verAplic>MG</verAplic><cOrgao>${/<cOrgao>(\d+)<\/cOrgao>/.exec(inner)?.[1] ?? '31'}</cOrgao><cStat>128</cStat><xMotivo>Lote de Evento Processado</xMotivo><retEvento versao="1.00"><infEvento><tpAmb>2</tpAmb><cStat>${ok ? '135' : '573'}</cStat><xMotivo>${ok ? 'Evento registrado e vinculado a NF-e' : 'Rejeicao: Duplicidade de evento'}</xMotivo><chNFe>${chave}</chNFe><tpEvento>${tp}</tpEvento>${ok ? '<nProt>131260000000999</nProt>' : ''}</infEvento></retEvento></retEnvEvento>`);
     }
 
     if (op === 'NFeInutilizacao4') {

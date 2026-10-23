@@ -82,7 +82,7 @@ export default function ClientesPage() {
           </table>
         </div>
       </section>
-      {credit && <CreditDialog customerId={credit.id} customerName={credit.name} canManage={can('credit.manage')} onClose={() => setCredit(null)} />}
+      {credit && <CreditDialog customerId={credit.id} customerName={credit.name} canManage={can('credit.manage')} canEditCustomer={manage} onClose={() => setCredit(null)} />}
     </>
   );
 }

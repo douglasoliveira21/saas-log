@@ -90,6 +90,10 @@ export type ConsultResult =
 
 export type CancelResult = { kind: 'CANCELLED'; statusCode: string; xmlPath?: string } | { kind: 'REJECTED'; statusCode: string; reason: string } | { kind: 'UNAVAILABLE'; reason: string };
 
+/** Evento fiscal de uma nota: carta de correção (CC-e) ou manifestação do destinatário. */
+export interface EventInput { kind: 'CCE' | 'MANIFEST'; accessKey: string; seq: number; text?: string; action?: 'CIENCIA' | 'CONFIRMACAO' | 'DESCONHECIMENTO' | 'NAO_REALIZADA'; cnpj: string }
+export type EventResult = { kind: 'REGISTERED'; statusCode: string; protocol: string } | { kind: 'REJECTED'; statusCode: string; reason: string } | { kind: 'UNAVAILABLE'; reason: string };
+
 export interface ValidationIssue { code: string; message: string }
 
 export interface FiscalProvider {
@@ -107,6 +111,8 @@ export interface FiscalProvider {
   readonly needsDocument?: boolean;
   needsDocumentFor?(ctx: ProviderCtx): boolean;
   cancel?(ref: string, reason: string, ctx: ProviderCtx, doc?: { accessKey?: string | null; protocol?: string | null }): Promise<CancelResult>;
+  /** Carta de correção e manifestação do destinatário (emissão direta). */
+  sendEvent?(p: EventInput, ctx: ProviderCtx): Promise<EventResult>;
   /** Inutilização de faixa de numeração (emissão direta). */
   inutilize?(p: InutInput, ctx: ProviderCtx): Promise<{ kind: 'OK'; protocol: string; statusCode: string } | { kind: 'REJECTED'; statusCode: string; reason: string } | { kind: 'UNAVAILABLE'; reason: string }>;
   /** Baixa XML/DANFE do provedor (caminho relativo devolvido por ele). */

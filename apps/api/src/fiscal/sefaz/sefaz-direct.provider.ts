@@ -1,12 +1,12 @@
 import { buildChave } from '../chave';
 import {
-  CancelResult, ConsultResult, FiscalEnvironment, FiscalProvider, InutInput, OutgoingDocument, ProviderCtx, TransmitInput, TransmitResult, ValidationIssue,
+  CancelResult, ConsultResult, EventInput, EventResult, FiscalEnvironment, FiscalProvider, InutInput, OutgoingDocument, ProviderCtx, TransmitInput, TransmitResult, ValidationIssue,
 } from '../fiscal-provider';
 import { PAYMENT_CODE } from '../focus-nfe.provider';
 import * as M from './messages';
 import { buildNfeXml, NfeInput } from './nfe-builder';
 import { pfxToPem } from './pfx';
-import { NFCE_QRCODE, service, SefazModel, UfNotAnalyzedError, Uf } from './registry';
+import { anEventUrl, NFCE_QRCODE, service, SefazModel, UfNotAnalyzedError, Uf } from './registry';
 import { signXml, verifySignature } from './signature';
 import { Mtls, soapCall, TlsSetupError } from './soap';
 import { validateAgainst } from './xsd';
@@ -173,6 +173,34 @@ export class SefazDirectProvider implements FiscalProvider {
       return { kind: 'REJECTED', statusCode: r.event?.cStat ?? r.cStat, reason: r.event?.xMotivo ?? r.xMotivo };
     } catch (e) {
       return { kind: 'UNAVAILABLE', reason: e instanceof TlsSetupError ? e.message : 'Sem resposta da SEFAZ ao cancelar. Consulte a situação antes de tentar de novo.' };
+    }
+  }
+
+  /** Carta de correção (110110, serviço de eventos da UF) e manifestação do destinatário (2102xx, Ambiente Nacional). */
+  async sendEvent(p: EventInput, ctx: ProviderCtx): Promise<EventResult> {
+    if (!ctx.certificate) return { kind: 'UNAVAILABLE', reason: 'Certificado A1 não disponível.' };
+    const manifest = p.kind === 'MANIFEST';
+    const cfg = manifest ? M.MANIFEST[p.action ?? ''] : undefined;
+    if (manifest && !cfg) return { kind: 'REJECTED', statusCode: 'tipo', reason: 'Tipo de manifestação inválido.' };
+    if (manifest && cfg!.needsReason && (p.text ?? '').trim().length < 15) return { kind: 'REJECTED', statusCode: 'justificativa', reason: 'A justificativa precisa ter no mínimo 15 caracteres.' };
+    if (!manifest && ((p.text ?? '').trim().length < 15 || (p.text ?? '').trim().length > 1000)) return { kind: 'REJECTED', statusCode: 'correcao', reason: 'A correção precisa ter de 15 a 1000 caracteres.' };
+    try {
+      const url = manifest ? anEventUrl(ctx.environment) : this.svc(ctx, 'evento').url;
+      if (!url) return { kind: 'UNAVAILABLE', reason: 'O endereço do serviço de eventos do Ambiente Nacional não está configurado: confira no Portal Nacional da NF-e e informe em FISCAL_SEFAZ_AN_EVENT_URL_PRODUCAO / _HOMOLOGACAO.' };
+      const at = new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }).replace(' ', 'T') + '-03:00';
+      const tpEvento = manifest ? cfg!.tp : '110110';
+      const det = manifest ? M.manifestDetail(p.action!, p.text) : M.cceDetail(p.text!);
+      const body = signXml(M.eventEnvelope({ tpEvento, chave: p.accessKey, env: ctx.environment, cnpj: p.cnpj, at, seq: p.seq, orgao: manifest ? '91' : p.accessKey.slice(0, 2), det }), { keyPem: ctx.certificate.keyPem, certPem: ctx.certificate.certPem, tagToSign: 'infEvento', after: 'infEvento' });
+      const env = await validateAgainst('envEvento_v1.00.xsd', body);
+      const det2 = await validateAgainst(`e${tpEvento}_v1.00.xsd`, M.detEventoOf(body));
+      if (!env.valid || !det2.valid) return { kind: 'REJECTED', statusCode: 'XSD', reason: `Evento fora do leiaute (não enviado): ${(env.errors[0] ?? det2.errors[0])?.message}` };
+      const reply = await soapCall(url, M.OPS.evento, body, mtls(ctx));
+      const r = M.parseEvent(M.resultOf(reply.text));
+      if (!r.cStat && !r.event) return { kind: 'UNAVAILABLE', reason: 'Resposta inesperada do serviço de eventos. Confira a situação da nota antes de tentar de novo.' };
+      if (r.event && ['135', '136'].includes(r.event.cStat)) return { kind: 'REGISTERED', statusCode: r.event.cStat, protocol: r.event.protocol ?? '' };
+      return { kind: 'REJECTED', statusCode: r.event?.cStat ?? r.cStat, reason: r.event?.xMotivo ?? r.xMotivo };
+    } catch (e) {
+      return { kind: 'UNAVAILABLE', reason: e instanceof TlsSetupError ? e.message : `Sem resposta da SEFAZ: ${(e as Error).message}. Confira a situação antes de tentar de novo.` };
     }
   }
 

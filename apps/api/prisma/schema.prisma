@@ -686,6 +686,8 @@ model Customer {
   blockReleasedById   String?    @map("block_released_by_id") @db.Uuid
   /// Limite de crédito para vendas a prazo (boleto, cheque); nulo = sem controle.
   creditLimit       Decimal?     @map("credit_limit") @db.Decimal(14, 2)
+  /// Validade mínima (dias restantes) dos lotes entregues a este cliente; nulo = qualquer lote dentro da validade.
+  minShelfLifeDays  Int?         @map("min_shelf_life_days")
   createdAt         DateTime     @default(now()) @map("created_at")
   updatedAt         DateTime     @updatedAt @map("updated_at")
 
@@ -1293,6 +1295,7 @@ model FiscalDocument {
   salesOrder SalesOrder?          @relation(fields: [tenantId, salesOrderId], references: [tenantId, id])
   items      FiscalDocumentItem[]
   xmlFiles   FiscalXmlFile[]
+  events     FiscalEvent[]
 
   @@unique([tenantId, accessKey])
   @@unique([tenantId, id])
@@ -2252,4 +2255,26 @@ model FleetCost {
   @@index([tenantId, vehicleId, date])
   @@index([tenantId, routeId])
   @@map("fleet_costs")
+}
+
+/// Evento fiscal enviado à SEFAZ para uma nota: carta de correção (CC-e) ou manifestação do destinatário.
+model FiscalEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  documentId  String   @map("document_id") @db.Uuid
+  kind        String // CCE | MANIFEST
+  tpEvento    String   @map("tp_evento")
+  seq         Int      @default(1)
+  text        String?
+  status      String // REGISTERED | REJECTED
+  statusCode  String?  @map("status_code")
+  protocol    String?
+  message     String?
+  createdById String?  @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  document FiscalDocument @relation(fields: [tenantId, documentId], references: [tenantId, id])
+
+  @@index([tenantId, documentId, tpEvento, seq])
+  @@map("fiscal_events")
 }

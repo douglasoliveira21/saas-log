@@ -32,4 +32,9 @@ publicável = max(0, disponível − segurança do canal), limitado por `maxPubl
 - **Endereços** (`warehouse_locations`, `stock_location_items`): código tipo `A-01-02`. A soma dos endereços nunca passa do saldo físico; o que não tem endereço aparece em "Para guardar". Saídas baixam dos endereços (lote a lote, em ordem de código). Entradas podem informar o endereço.
 - **Lista de separação** (Armazém): por produto, lote que vence primeiro e endereços em ordem de caminho; vários pedidos do mesmo depósito somados; impressão.
 - **Conferência** por leitor de código de barras (ou SKU): resultado OK/DIVERGENTE gravado; com `warehouse.requireCheck` ligado, o pedido só vai a "embalado" com a última conferência OK.
-- **Limites:** sem inventário/contagem cíclica (removido); lote sem controle de quantidade mínima de validade por cliente; os marketplaces não escolhem lote (sai FEFO); transferências entre depósitos exigem que a saída tenha lotes registrados.
+- **Limites:** sem inventário/contagem cíclica (removido); lote sem controle de quantidade mínima de validade por cliente; marketplace não deixa escolher lote (sai FEFO), mas respeita a validade mínima configurada; transferências entre depósitos exigem que a saída tenha lotes registrados.
+
+## Validade mínima por cliente e por canal
+- **Cliente** (Clientes → Crédito → "Validade mínima na entrega"): dias de validade que o lote precisa ter. Na **confirmação** do pedido o sistema confere se há lote que atenda (senão recusa, com o motivo); na **expedição** e na **lista de separação** pula os lotes mais curtos. Lote sem validade informada é aceito.
+- **Marketplace** (Configurações → "Validade mínima dos lotes em pedidos de marketplace"): o marketplace não escolhe o lote, então o sistema aplica essa regra única a todos os pedidos de canal.
+- Não considera prazos de trânsito (a validade é contada da data da expedição).

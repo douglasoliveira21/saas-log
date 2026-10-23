@@ -108,6 +108,8 @@ class ProviderDto {
   @IsOptional() @IsString() @MaxLength(200) tokenProducao?: string;
 }
 class TestProviderDto { @IsOptional() @IsIn(['HOMOLOGACAO', 'PRODUCAO']) environment?: 'HOMOLOGACAO' | 'PRODUCAO'; }
+class CorrectionDto { @IsString() @Length(15, 1000) text: string; }
+class ManifestDto { @IsIn(['CIENCIA', 'CONFIRMACAO', 'DESCONHECIMENTO', 'NAO_REALIZADA']) action: string; @IsOptional() @IsString() @Length(15, 255) justification?: string; }
 class FileQuery { @IsIn(['danfe', 'xml']) kind: 'danfe' | 'xml'; }
 class StatusQuery { @IsOptional() @IsString() @MaxLength(30) status?: string; }
 class ReconcileQuery { @IsOptional() @IsUUID() purchaseOrderId?: string; }
@@ -244,6 +246,18 @@ export class FiscalController {
 
   @Post('outgoing/:id/cancel') @HttpCode(200) @RequirePermissions('fiscal.emit')
   cancelDoc(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelDocDto) { return this.outgoing.cancel(ctx, id, dto.reason); }
+
+  @Post('outgoing/:id/correction') @HttpCode(200) @RequirePermissions('fiscal.emit')
+  correct(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CorrectionDto) { return this.outgoing.correct(ctx, id, dto.text); }
+
+  @Get('outgoing/:id/events') @RequirePermissions('fiscal.view')
+  outgoingEvents(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.outgoing.events(ctx, id); }
+
+  @Post('inbound/:id/manifest') @HttpCode(200) @RequirePermissions('fiscal.emit')
+  manifest(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ManifestDto) { return this.inbound.manifest(ctx, id, dto.action, dto.justification); }
+
+  @Get('inbound/:id/events') @RequirePermissions('fiscal.view')
+  inboundEvents(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.inbound.events(ctx, id); }
 
   @Get('outgoing/:id/file') @RequirePermissions('fiscal.view')
   async file(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: FileQuery, @Res() res: Response) {

@@ -217,7 +217,14 @@ export class StockService {
             balanceBefore: after + r.quantity, balanceAfter: after, reference: `reserva:${r.id}`, idempotencyKey: `consume:${r.id}`, createdById: ctx.userId,
           },
         });
-        await applyLotsAndLocations(tx, ctx, sale, { productId: r.productId, warehouseId: r.warehouseId, type: 'SALE_EXIT', quantity: -r.quantity });
+        // validade mínima exigida pelo cliente (ou pelo canal, em pedido de marketplace)
+        const oi = await tx.salesOrderItem.findFirst({ where: { tenantId: ctx.tenantId!, reservationId: r.id }, select: { order: { select: { channel: true, customer: { select: { minShelfLifeDays: true } } } } } });
+        let minShelfLifeDays = 0;
+        if (oi?.order.channel === 'MARKETPLACE') {
+          const st = await tx.tenantSetting.findFirst({ where: { tenantId: ctx.tenantId!, key: 'lots.marketplaceMinShelfLifeDays' } });
+          minShelfLifeDays = typeof st?.value === 'number' ? st.value : 0;
+        } else minShelfLifeDays = oi?.order.customer.minShelfLifeDays ?? 0;
+        await applyLotsAndLocations(tx, ctx, sale, { productId: r.productId, warehouseId: r.warehouseId, type: 'SALE_EXIT', quantity: -r.quantity, minShelfLifeDays });
       }
       return { reservation: { ...r, status: target }, replayed: false };
     }

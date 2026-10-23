@@ -17,7 +17,9 @@ export interface LotInput {
   /** Entrada: endereço do depósito onde a mercadoria foi guardada. */
   locationCode?: string;
 }
-export interface MovementLike extends LotInput { productId: string; warehouseId: string; type: MovementType; quantity: number; reversalOfId?: string; transferId?: string }
+export interface MovementLike extends LotInput {
+  /** Saída: ignora lotes com menos dias de validade que isso (exigência do cliente/canal). */
+  minShelfLifeDays?: number; productId: string; warehouseId: string; type: MovementType; quantity: number; reversalOfId?: string; transferId?: string }
 
 /** Tipos que podem baixar lote vencido (perda, avaria, ajuste); venda e uso interno não podem. */
 const MAY_USE_EXPIRED: MovementType[] = ['LOSS', 'DAMAGE', 'ADJUSTMENT', 'REVERSAL'];
@@ -61,12 +63,18 @@ async function fefo(tx: Tx, ctx: AuthContext, m: MovementLike, need: number): Pr
     ORDER BY expires_at ASC NULLS LAST, received_at ASC, code ASC FOR UPDATE`;
   const out: { lotId: string; qty: number }[] = [];
   let left = need; let expiredQty = 0;
+  const minDays = excludeExpired ? Math.max(0, m.minShelfLifeDays ?? 0) : 0;
+  let shortQty = 0;
   for (const l of lots) {
     if (excludeExpired && l.expires_at && day(l.expires_at)! < today) { expiredQty += l.on_hand; continue; }
+    if (minDays > 0 && l.expires_at && (Date.parse(`${day(l.expires_at)}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000 < minDays) { shortQty += l.on_hand; continue; }
     if (left === 0) break;
     const take = Math.min(left, l.on_hand);
     await takeFromLot(tx, ctx, l.id, take, l.code);
     out.push({ lotId: l.id, qty: take }); left -= take;
+  }
+  if (left > 0 && shortQty > 0) {
+    throw new ConflictException(`Faltam ${left} unidade(s) em lotes com pelo menos ${minDays} dia(s) de validade (há ${shortQty} em lote com validade mais curta, que este cliente/canal não aceita).`);
   }
   if (left > 0) {
     throw new ConflictException(expiredQty > 0
@@ -160,4 +168,13 @@ export async function applyLotsAndLocations(tx: Tx, ctx: AuthContext, mv: StockM
   if (tracked) await tx.stockLotMovement.createMany({ data: parts.map((p) => ({ tenantId: ctx.tenantId!, movementId: mv.id, lotId: p.lotId!, quantity: mv.quantity < 0 ? -p.qty : p.qty })) });
   if (mv.quantity < 0) await consumeLocations(tx, ctx, mv.productId, mv.warehouseId, parts);
   else if (m.locationCode) for (const p of parts) await addToLocation(tx, ctx, mv.warehouseId, m.locationCode, mv.productId, p.lotId, p.qty);
+}
+
+/** Unidades em lotes que ainda atendem à validade mínima (para conferir na confirmação do pedido). Produto sem controle de lote: nulo. */
+export async function validShelfLifeQty(tx: Tx, tenantId: string, productId: string, warehouseId: string, minDays: number): Promise<number | null> {
+  const p = await tx.product.findFirst({ where: { id: productId, tenantId }, select: { trackLots: true } });
+  if (!p?.trackLots) return null;
+  const limit = new Date(Date.parse(`${localToday()}T00:00:00Z`) + Math.max(0, minDays) * 86_400_000);
+  const agg = await tx.stockLot.aggregate({ where: { tenantId, productId, warehouseId, onHand: { gt: 0 }, OR: [{ expiresAt: null }, { expiresAt: { gte: limit } }] }, _sum: { onHand: true } });
+  return agg._sum.onHand ?? 0;
 }

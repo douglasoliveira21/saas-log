@@ -97,3 +97,13 @@ export function coverage(): CoverageRow[] {
   }
   return rows;
 }
+
+/**
+ * Serviço de eventos do Ambiente Nacional (manifestação do destinatário). O endereço NÃO foi verificado em fonte oficial por este projeto
+ * (o portal da NF-e não pôde ser lido automaticamente), então não vai embutido: o operador informa em FISCAL_SEFAZ_AN_EVENT_URL_PRODUCAO /
+ * FISCAL_SEFAZ_AN_EVENT_URL_HOMOLOGACAO depois de conferir no Portal Nacional da NF-e. Sem isso a manifestação é recusada com explicação.
+ */
+export function anEventUrl(env: SefazEnv): string | null {
+  const v = process.env[env === 'PRODUCAO' ? 'FISCAL_SEFAZ_AN_EVENT_URL_PRODUCAO' : 'FISCAL_SEFAZ_AN_EVENT_URL_HOMOLOGACAO'];
+  return v && /^https:\/\//.test(v) ? v : null;
+}

@@ -28,6 +28,27 @@ export function cancelEvent(p: { chave: string; env: SefazEnv; cnpj: string; pro
   return `<envEvento xmlns="${NS}" versao="1.00"><idLote>${p.idLote ?? 1}</idLote><evento xmlns="${NS}" versao="1.00"><infEvento Id="${id}"><cOrgao>${p.chave.slice(0, 2)}</cOrgao><tpAmb>${tpAmb(p.env)}</tpAmb><CNPJ>${p.cnpj}</CNPJ><chNFe>${p.chave}</chNFe><dhEvento>${p.at}</dhEvento><tpEvento>110111</tpEvento><nSeqEvento>${seq}</nSeqEvento><verEvento>1.00</verEvento><detEvento versao="1.00"><descEvento>Cancelamento</descEvento><nProt>${p.protocol}</nProt><xJust>${esc(p.reason.trim())}</xJust></detEvento></infEvento></evento></envEvento>`;
 }
 
+/** Texto fixo das condições de uso da Carta de Correção (versão sem acentos aceita pelo leiaute; conferida no XSD e110110). */
+export const CCE_COND_USE = 'A Carta de Correcao e disciplinada pelo paragrafo 1o-A do art. 7o do Convenio S/N, de 15 de dezembro de 1970 e pode ser utilizada para regularizacao de erro ocorrido na emissao de documento fiscal, desde que o erro nao esteja relacionado com: I - as variaveis que determinam o valor do imposto tais como: base de calculo, aliquota, diferenca de preco, quantidade, valor da operacao ou da prestacao; II - a correcao de dados cadastrais que implique mudanca do remetente ou do destinatario; III - a data de emissao ou de saida.';
+
+/** Manifestação do destinatário: tipo de evento e descrição exigida pelo leiaute (e2102xx). */
+export const MANIFEST: Record<string, { tp: string; desc: string; needsReason: boolean; label: string }> = {
+  CIENCIA: { tp: '210210', desc: 'Ciencia da Operacao', needsReason: false, label: 'Ciência da operação' },
+  CONFIRMACAO: { tp: '210200', desc: 'Confirmacao da Operacao', needsReason: false, label: 'Confirmação da operação' },
+  DESCONHECIMENTO: { tp: '210220', desc: 'Desconhecimento da Operacao', needsReason: false, label: 'Desconhecimento da operação' },
+  NAO_REALIZADA: { tp: '210240', desc: 'Operacao nao Realizada', needsReason: true, label: 'Operação não realizada' },
+};
+
+/** Evento genérico (CC-e, manifestação...), SEM assinatura. `orgao` = UF da chave (CC-e) ou 91 (Ambiente Nacional, manifestação). */
+export function eventEnvelope(p: { tpEvento: string; chave: string; env: SefazEnv; cnpj: string; at: string; seq: number; orgao: string; det: string; idLote?: number }): string {
+  const id = `ID${p.tpEvento}${p.chave}${String(p.seq).padStart(2, '0')}`;
+  return `<envEvento xmlns="${NS}" versao="1.00"><idLote>${p.idLote ?? 1}</idLote><evento xmlns="${NS}" versao="1.00"><infEvento Id="${id}"><cOrgao>${p.orgao}</cOrgao><tpAmb>${tpAmb(p.env)}</tpAmb><CNPJ>${p.cnpj}</CNPJ><chNFe>${p.chave}</chNFe><dhEvento>${p.at}</dhEvento><tpEvento>${p.tpEvento}</tpEvento><nSeqEvento>${p.seq}</nSeqEvento><verEvento>1.00</verEvento>${p.det}</infEvento></evento></envEvento>`;
+}
+export const cceDetail = (correction: string) => `<detEvento versao="1.00"><descEvento>Carta de Correcao</descEvento><xCorrecao>${esc(correction.trim())}</xCorrecao><xCondUso>${CCE_COND_USE}</xCondUso></detEvento>`;
+export const manifestDetail = (action: keyof typeof MANIFEST, reason?: string) => `<detEvento versao="1.00"><descEvento>${MANIFEST[action].desc}</descEvento>${MANIFEST[action].needsReason ? `<xJust>${esc((reason ?? '').trim())}</xJust>` : ''}</detEvento>`;
+/** Extrai o <detEvento> do envelope para validar no XSD específico do tipo de evento (e110110, e210200...). */
+export const detEventoOf = (envelopeXml: string) => (/<detEvento[\s\S]*?<\/detEvento>/.exec(envelopeXml)?.[0] ?? '').replace('<detEvento ', `<detEvento xmlns="${NS}" `);
+
 /** Inutilização de numeração, SEM assinatura (a assinatura cobre infInut e fica dentro de <inutNFe>). */
 export function inutNFe(p: { uf: Uf; env: SefazEnv; year: string; cnpj: string; model: '55' | '65'; series: number; from: number; to: number; reason: string }): string {
   const id = `ID${UF_IBGE[p.uf]}${p.year}${p.cnpj}${p.model}${String(p.series).padStart(3, '0')}${String(p.from).padStart(9, '0')}${String(p.to).padStart(9, '0')}`;

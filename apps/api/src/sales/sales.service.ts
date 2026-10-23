@@ -2,6 +2,7 @@ import { buildFiscalPreview } from './fiscal-preview';
 import { asDateColumn, computeDispatch, localToday } from './cutoff';
 import { boletoPlan, normalizePayment, PaymentInput } from './payment';
 import { creditCheck } from '../finance/credit';
+import { validShelfLifeQty } from '../stock/lots-core';
 import { purchaseProfiles } from '../customers/purchase-profile';
 import { DelinquencyService } from '../finance/delinquency';
 import { assertWithinPlan } from '../billing/limits';
@@ -346,6 +347,17 @@ export class SalesService {
   // ───────────── internos ─────────────
 
   private async confirm(tx: Tx, ctx: AuthContext, order: Awaited<ReturnType<SalesService['lock']>>) {
+    let minDays = 0;
+    if (order.channel === 'MARKETPLACE') {
+      const st = await tx.tenantSetting.findFirst({ where: { tenantId: ctx.tenantId!, key: 'lots.marketplaceMinShelfLifeDays' } });
+      minDays = typeof st?.value === 'number' ? st.value : 0;
+    } else minDays = (await tx.customer.findFirst({ where: { id: order.customerId, tenantId: ctx.tenantId! }, select: { minShelfLifeDays: true } }))?.minShelfLifeDays ?? 0;
+    if (minDays > 0) {
+      for (const i of order.items) {
+        const ok = await validShelfLifeQty(tx, ctx.tenantId!, i.productId, order.warehouseId, minDays);
+        if (ok !== null && ok < i.quantity) throw new ConflictException(`${i.product.sku}: só há ${ok} unidade(s) em lotes com pelo menos ${minDays} dia(s) de validade, que este cliente exige.`);
+      }
+    }
     for (const i of order.items) {
       const res = await this.stock
         .reserveTx(tx, ctx, { productId: i.productId, warehouseId: order.warehouseId, quantity: i.quantity, reference: `pedido:${order.number}`, idempotencyKey: `order:${order.id}:${i.productId}` })

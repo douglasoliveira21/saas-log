@@ -58,7 +58,7 @@ import { OrdersDashboardController, OrdersDashboardService } from './sales/order
 import { DelinquencyController, DelinquencyService } from './finance/delinquency';
 import { NegotiationsController, NegotiationsService } from './finance/negotiations';
 import { ManagementController, ManagementService } from './management/management';
-import { CreditController, CreditService } from './finance/credit';
+import { CreditController, CreditService, ShelfLifeService } from './finance/credit';
 import { QuotesController, QuotesService } from './sales/quotes';
 import { WarehouseController, WarehouseService } from './stock/warehouse';
 import { SmartPurchasingController, SmartPurchasingService } from './purchasing/smart';
@@ -125,6 +125,7 @@ class HealthController {
     NegotiationsService,
     ManagementService,
     CreditService,
+    ShelfLifeService,
     QuotesService,
     WarehouseService,
     SmartPurchasingService,

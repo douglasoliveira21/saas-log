@@ -25,6 +25,8 @@ export interface TenantSettings {
   'fiscal.nfceMaxValue': number;
   /** Exige conferência (leitura de código de barras) sem divergência antes de marcar o pedido como embalado. */
   'warehouse.requireCheck': boolean;
+  /** Validade mínima (dias) dos lotes enviados a pedidos de marketplace; 0 = qualquer lote dentro da validade. */
+  'lots.marketplaceMinShelfLifeDays': number;
 }
 
 /** Valores padrão documentados em docs/COMMERCIAL.md. "Recebimento confirmado"/"faturada" dependem de Financeiro/Fiscal. */
@@ -41,6 +43,7 @@ export const DEFAULT_SETTINGS: TenantSettings = {
   'orders.deliverySlaDays': 7,
   'fiscal.nfceMaxValue': 9999,
   'warehouse.requireCheck': false,
+  'lots.marketplaceMinShelfLifeDays': 0,
 };
 
 function validate(key: string, value: unknown): unknown {
@@ -76,6 +79,9 @@ function validate(key: string, value: unknown): unknown {
     case 'fiscal.nfceMaxValue':
       if (typeof value === 'number' && value >= 0 && value <= 1e7) return Math.round(value * 100) / 100;
       throw new BadRequestException('Valor máximo do cupom: informe um valor em reais (0 desliga a divisão).');
+    case 'lots.marketplaceMinShelfLifeDays':
+      if (typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 3650) return value;
+      throw new BadRequestException('Validade mínima para marketplace: de 0 a 3650 dias.');
     case 'warehouse.requireCheck':
       if (typeof value === 'boolean') return value;
       throw new BadRequestException('Informe se a conferência é obrigatória (sim/não).');

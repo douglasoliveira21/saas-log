@@ -326,6 +326,75 @@ describe('Emissão direta na SEFAZ (MG) com servidor de teste: NF-e, NFC-e, canc
     });
   });
 
+  describe('carta de correção e manifestação do destinatário', () => {
+    const evCalls = () => sefaz.calls.filter((c) => c.path.endsWith('NFeRecepcaoEvento4')) as (typeof sefaz.calls[number] & { tpEvento?: string; cOrgao?: string; seq?: string })[];
+
+    it('CC-e: só em NF-e autorizada, texto de 15 a 1000 caracteres, sequência crescente, evento assinado e no leiaute', async () => {
+      const p = (await prepare(A, await order(A, 'NFE')).expect(200)).body;
+      const url = `/api/fiscal/outgoing/${p.id}/correction`;
+      await A.fiscal.post(url).set(H).send({ text: 'Corrigir o complemento do endereço de entrega' }).expect(409); // ainda não autorizada
+      await transmit(A, p.id).expect(200);
+      await A.fiscal.post(url).set(H).send({ text: 'curta' }).expect(400);
+      sefaz.calls.length = 0;
+      const r1 = (await A.fiscal.post(url).set(H).send({ text: 'Corrigir o complemento do endereço de entrega' }).expect(200)).body;
+      expect(r1).toMatchObject({ seq: 1, statusCode: '135' });
+      const ev = evCalls()[0];
+      expect(ev.xmlValid).toBe(true);
+      expect(ev.sigValid).toBe(true);
+      expect(ev.tpEvento).toBe('110110');
+      expect(ev.cOrgao).toBe('31'); // UF da chave
+      expect(ev.body).toContain('<descEvento>Carta de Correcao</descEvento>');
+      expect(ev.body).toContain('<xCorrecao>Corrigir o complemento do endereço de entrega</xCorrecao>');
+      expect(ev.body).toMatch(/Id="ID110110\d{44}01"/);
+      const r2 = (await A.fiscal.post(url).set(H).send({ text: 'Segunda correção: apenas texto livre' }).expect(200)).body;
+      expect(r2.seq).toBe(2);
+      expect(evCalls()[1].seq).toBe('2');
+      const list = (await A.fiscal.get(`/api/fiscal/outgoing/${p.id}/events`).expect(200)).body;
+      expect(list.map((e: any) => [e.tpEvento, e.seq, e.status])).toEqual([['110110', 2, 'REGISTERED'], ['110110', 1, 'REGISTERED']]);
+      // cancelada: não corrige mais
+      await A.fiscal.post(`/api/fiscal/outgoing/${p.id}/cancel`).set(H).send({ reason: 'Erro de digitação do pedido' }).expect(200);
+      await A.fiscal.post(url).set(H).send({ text: 'Depois de cancelada não vale' }).expect(409);
+    });
+
+    it('manifestação do destinatário: exige o endereço do Ambiente Nacional, vai com órgão 91, não repete e exige justificativa quando é "não realizada"', async () => {
+      const rnd = (n: number) => String(Math.floor(Math.random() * 10 ** n)).padStart(n, '0');
+      const key = `31261045723174000110${'55'}${'001'}${rnd(9)}1${rnd(8)}0`; // UF MG + CNPJ + modelo + série + nº + tpEmis + cNF + DV (o DV não é conferido pelo leiaute)
+      expect(key).toHaveLength(44);
+      const entry = await admin.fiscalDocument.create({ data: { tenantId: A.tenantId, direction: 'ENTRY', model: '55', status: 'IMPORTED', accessKey: key, establishmentId: A.est, recipientDoc: EST_CNPJ, emitterDoc: '11222333000181', emitterName: 'Fornecedor X' } });
+      const url = `/api/fiscal/inbound/${entry.id}/manifest`;
+      // sem o endereço do serviço nacional configurado: recusa com explicação (nada é enviado)
+      sefaz.calls.length = 0;
+      const none = await A.fiscal.post(url).set(H).send({ action: 'CIENCIA' }).expect(409);
+      expect(JSON.stringify(none.body)).toMatch(/Ambiente Nacional/);
+      expect(evCalls()).toHaveLength(0);
+      process.env.FISCAL_SEFAZ_AN_EVENT_URL_HOMOLOGACAO = 'https://hom.exemplo.nfe.invalid/NFeRecepcaoEvento4';
+      try {
+        await A.fiscal.post(url).set(H).send({ action: 'XPTO' }).expect(400);
+        await A.fiscal.post(url).set(H).send({ action: 'NAO_REALIZADA' }).expect(400); // sem justificativa
+        sefaz.calls.length = 0;
+        const ok = (await A.fiscal.post(url).set(H).send({ action: 'CIENCIA' }).expect(200)).body;
+        expect(ok).toMatchObject({ action: 'CIENCIA', statusCode: '135' });
+        const ev = evCalls()[0];
+        expect(ev.xmlValid).toBe(true);
+        expect(ev.sigValid).toBe(true);
+        expect(ev.tpEvento).toBe('210210');
+        expect(ev.cOrgao).toBe('91');
+        expect(ev.body).toContain('<descEvento>Ciencia da Operacao</descEvento>');
+        expect(ev.body).toContain(`<CNPJ>${EST_CNPJ}</CNPJ>`);
+        await A.fiscal.post(url).set(H).send({ action: 'CIENCIA' }).expect(409); // já registrada
+        const nr = (await A.fiscal.post(url).set(H).send({ action: 'NAO_REALIZADA', justification: 'Mercadoria não foi entregue no endereço' }).expect(200)).body;
+        expect(nr.statusCode).toBe('135');
+        expect(evCalls()[1].body).toContain('<xJust>Mercadoria não foi entregue no endereço</xJust>');
+        expect(evCalls()[1].tpEvento).toBe('210240');
+        const list = (await A.fiscal.get(`/api/fiscal/inbound/${entry.id}/events`).expect(200)).body;
+        expect(list.map((e: any) => e.tpEvento).sort()).toEqual(['210210', '210240']);
+        // nota de saída não se manifesta
+        const out = (await prepare(A, await order(A, 'NFE')).expect(200)).body;
+        await A.fiscal.post(`/api/fiscal/inbound/${out.id}/manifest`).set(H).send({ action: 'CIENCIA' }).expect(404);
+      } finally { delete process.env.FISCAL_SEFAZ_AN_EVENT_URL_HOMOLOGACAO; }
+    });
+  });
+
   describe('NFC-e (modelo 65)', () => {
     it('exige CSC; com CSC gera o QR Code (versão 2.00), assina depois do infNFeSupl e autoriza', async () => {
       const T = await setup('sdN');

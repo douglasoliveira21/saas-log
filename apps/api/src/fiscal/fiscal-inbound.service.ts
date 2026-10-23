@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
@@ -6,6 +6,9 @@ import { AuthContext } from '../common/auth';
 import { isValidCnpj, onlyDigits } from '../common/cnpj';
 import { PrismaService } from '../prisma/prisma.service';
 import { PurchasingService } from '../purchasing/purchasing.service';
+import { FISCAL_PROVIDER, FiscalEnvironment, FiscalProvider } from './fiscal-provider';
+import { ProviderContextService } from './fiscal-provider.router';
+import { MANIFEST } from './sefaz/messages';
 import { Issue, NfeParseError, parseNfe, validateNfe } from './nfe-xml';
 
 type Tx = Prisma.TransactionClient;
@@ -28,6 +31,8 @@ export class FiscalInboundService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly purchasing: PurchasingService,
+    @Inject(FISCAL_PROVIDER) private readonly provider: FiscalProvider,
+    private readonly pctx: ProviderContextService,
   ) {}
 
   // ───────────── importação ─────────────
@@ -105,6 +110,45 @@ export class FiscalInboundService {
       if (p) return { p, by: 'GTIN' as const };
     }
     return null;
+  }
+
+  // ───────────── manifestação do destinatário ─────────────
+
+  /**
+   * Manifestação do destinatário sobre uma nota recebida (ciência, confirmação, desconhecimento ou operação não realizada), enviada ao
+   * Ambiente Nacional com o certificado A1 do estabelecimento destinatário. Exige emissão direta configurada para o estabelecimento.
+   */
+  async manifest(ctx: AuthContext, id: string, action: string, justification?: string) {
+    const cfg = MANIFEST[action];
+    if (!cfg) throw new BadRequestException('Tipo de manifestação inválido (ciência, confirmação, desconhecimento ou operação não realizada).');
+    if (cfg.needsReason && (justification ?? '').trim().length < 15) throw new BadRequestException('Operação não realizada exige justificativa de 15 a 255 caracteres.');
+    const ref = await this.prisma.withContext(ctx, async (tx) => {
+      const d = await tx.fiscalDocument.findFirst({ where: { id, tenantId: ctx.tenantId!, direction: 'ENTRY' } });
+      if (!d) throw new NotFoundException('Nota recebida não encontrada.');
+      if (!d.accessKey || d.model !== '55') throw new ConflictException('A manifestação do destinatário vale para NF-e (modelo 55) com chave de acesso.');
+      if (!d.establishmentId) throw new ConflictException('Nota sem estabelecimento destinatário.');
+      const est = await tx.establishment.findFirst({ where: { id: d.establishmentId, tenantId: ctx.tenantId! }, select: { cnpj: true } });
+      const pc = await this.pctx.resolve(tx, ctx.tenantId!, d.establishmentId, '55', ((await tx.fiscalConfiguration.findFirst({ where: { tenantId: ctx.tenantId!, establishmentId: d.establishmentId } }))?.environment as FiscalEnvironment) ?? 'HOMOLOGACAO');
+      if (!this.provider.sendEvent || !this.provider.isConfigured(pc) || pc.providerName !== 'SEFAZ_DIRECT') throw new HttpException({ message: 'A manifestação do destinatário exige a emissão direta na SEFAZ configurada (com certificado A1) neste estabelecimento.', code: 'NOT_SUPPORTED' }, HttpStatus.FAILED_DEPENDENCY);
+      const prior = await tx.fiscalEvent.findFirst({ where: { tenantId: ctx.tenantId!, documentId: id, tpEvento: cfg.tp, status: 'REGISTERED' } });
+      if (prior) throw new ConflictException(`Esta manifestação (${cfg.label}) já foi registrada para a nota.`);
+      return { pc, accessKey: d.accessKey, cnpj: onlyDigits(est?.cnpj ?? d.recipientDoc ?? '') };
+    });
+    const r = await this.provider.sendEvent!({ kind: 'MANIFEST', accessKey: ref.accessKey, seq: 1, action: action as 'CIENCIA', text: justification?.trim(), cnpj: ref.cnpj }, ref.pc);
+    return this.prisma.withContext(ctx, async (tx) => {
+      const ok = r.kind === 'REGISTERED';
+      const ev = await tx.fiscalEvent.create({ data: { tenantId: ctx.tenantId!, documentId: id, kind: 'MANIFEST', tpEvento: cfg.tp, seq: 1, text: justification?.trim() ?? null, status: ok ? 'REGISTERED' : 'REJECTED', statusCode: r.kind === 'UNAVAILABLE' ? null : r.statusCode, protocol: ok ? r.protocol : null, message: ok ? null : r.reason, createdById: ctx.userId } });
+      await this.audit.record(tx, ctx, { action: ok ? 'fiscal.manifest_registered' : 'fiscal.manifest_failed', entity: 'fiscal_document', entityId: id, metadata: { action, result: r.kind, statusCode: r.kind === 'UNAVAILABLE' ? null : r.statusCode } });
+      if (r.kind === 'REGISTERED') return { id: ev.id, action, protocol: r.protocol, statusCode: r.statusCode };
+      throw new ConflictException(r.kind === 'REJECTED' ? `Manifestação recusada (${r.statusCode}): ${r.reason}` : r.reason);
+    });
+  }
+
+  events(ctx: AuthContext, id: string) {
+    return this.prisma.withContext(ctx, async (tx) => {
+      if (!(await tx.fiscalDocument.findFirst({ where: { id, tenantId: ctx.tenantId!, direction: 'ENTRY' }, select: { id: true } }))) throw new NotFoundException('Nota recebida não encontrada.');
+      return tx.fiscalEvent.findMany({ where: { tenantId: ctx.tenantId!, documentId: id }, orderBy: { createdAt: 'desc' }, select: { id: true, kind: true, tpEvento: true, seq: true, text: true, status: true, statusCode: true, protocol: true, message: true, createdAt: true } });
+    });
   }
 
   // ───────────── consulta ─────────────
