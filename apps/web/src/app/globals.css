@@ -558,7 +558,14 @@ th[aria-sort] .sort { opacity: 1; color: var(--brand); }
 .shell.launcher, .shell.launcher.collapsed { grid-template-columns: minmax(0, 1fr); }
 .back-home { height: 40px; padding: 0 18px; font-weight: 650; box-shadow: var(--shadow); }
 .top-logo { max-height: 34px; max-width: 160px; object-fit: contain; }
-.launcher .content { max-width: 1180px; }
+.launcher .content { max-width: none; padding: 24px clamp(14px, 3vw, 56px) 48px; }
+.launcher .topbar { padding: 0 clamp(12px, 3vw, 56px); }
+.launcher .tiles { grid-template-columns: repeat(auto-fill, minmax(clamp(132px, 14vw, 200px), 1fr)); gap: clamp(10px, 1.2vw, 18px); }
+.launcher .tile { min-height: clamp(104px, 11vw, 148px); }
+.launcher .tile .lbl { font-size: clamp(0.92rem, 1vw, 1.1rem); }
+.launcher .tile .ico { width: clamp(24px, 2.2vw, 34px); height: clamp(24px, 2.2vw, 34px); }
+.launcher .home-hello h1 { font-size: clamp(1.5rem, 2.4vw, 2.2rem); }
+.launcher .home-hello p { font-size: clamp(1rem, 1.3vw, 1.25rem); }
 .home-hello { margin: 8px 0 22px; }
 .home-hello h1 { font-size: 1.7rem; margin: 0 0 4px; }
 .home-hello p { margin: 0; color: var(--muted); font-size: 1.05rem; }
@@ -574,7 +581,7 @@ th[aria-sort] .sort { opacity: 1; color: var(--brand); }
 .tile .soon { font-size: .7rem; opacity: .85; }
 .tile.t-blue { --tile: #1f5fbf; } .tile.t-orange { --tile: #c2570c; } .tile.t-teal { --tile: #0f766e; } .tile.t-green { --tile: #15803d; } .tile.t-violet { --tile: #6d28d9; } .tile.t-slate { --tile: #475467; }
 :root[data-theme='dark'] .tile.t-blue { --tile: #2d6fd1; } :root[data-theme='dark'] .tile.t-orange { --tile: #cf6414; } :root[data-theme='dark'] .tile.t-teal { --tile: #148a80; } :root[data-theme='dark'] .tile.t-green { --tile: #1b9a4a; } :root[data-theme='dark'] .tile.t-violet { --tile: #7c3aed; } :root[data-theme='dark'] .tile.t-slate { --tile: #5b6779; }
-@media (max-width: 860px) { .tiles { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; } .back-home span.hide-sm { display: none; } }
+@media (max-width: 860px) { .tiles, .launcher .tiles { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; } .back-home span.hide-sm { display: none; } }
 @media (prefers-reduced-motion: reduce) { .tile { transition: none; } .tile:hover { transform: none; } }
 
 /* ─────────── cartões de indicador (Magic UI) ─────────── */
