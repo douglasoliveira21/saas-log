@@ -24,12 +24,12 @@ export default function LoginPage() {
     try {
       if (mfaToken) {
         const res = await api<{ selectedTenantId: string | null }>('/auth/mfa/verify', 'POST', { mfaToken, code: f.get('code') });
-        router.replace(res.selectedTenantId ? '/dashboard' : '/select-tenant');
+        router.replace(res.selectedTenantId ? '/inicio' : '/select-tenant');
         return;
       }
       const res = await api<LoginResult>('/auth/login', 'POST', { email: f.get('email'), password: f.get('password') });
       if (res.mfaRequired) { setMfaToken(res.mfaToken); setBusy(false); return; }
-      router.replace(res.selectedTenantId ? '/dashboard' : '/select-tenant');
+      router.replace(res.selectedTenantId ? '/inicio' : '/select-tenant');
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);

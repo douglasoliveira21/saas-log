@@ -26,7 +26,7 @@ export default function RegisterPage() {
         email: f.get('email'),
         password: f.get('password'),
       });
-      router.replace('/dashboard');
+      router.replace('/inicio');
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);

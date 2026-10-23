@@ -209,6 +209,17 @@ describe('Conta e segurança: recuperação de senha, convite por e-mail e segun
       expect((await u.a.get('/api/auth/me').expect(200)).body.user.phone).toBeNull();
     });
 
+    it('estilo de navegação: começa clássico, o usuário troca para blocos e volta; valor inválido é recusado e cada usuário tem o seu', async () => {
+      const u = await register('nav'); const v = await register('nav2');
+      expect((await u.a.get('/api/auth/me').expect(200)).body.user.navStyle).toBe('CLASSIC');
+      await u.a.patch('/api/auth/profile').set(H).send({ navStyle: 'LAUNCHER' }).expect(200);
+      expect((await u.a.get('/api/auth/me').expect(200)).body.user.navStyle).toBe('LAUNCHER');
+      expect((await v.a.get('/api/auth/me').expect(200)).body.user.navStyle).toBe('CLASSIC');
+      await u.a.patch('/api/auth/profile').set(H).send({ navStyle: 'OUTRO' }).expect(400);
+      await u.a.patch('/api/auth/profile').set(H).send({ navStyle: 'CLASSIC' }).expect(200);
+      expect((await u.a.get('/api/auth/me').expect(200)).body.user.navStyle).toBe('CLASSIC');
+    });
+
     it('troca a senha exigindo a atual, encerra as outras sessões e mantém a de agora', async () => {
       const u = await register('pwd');
       const other = agent(); await other.post('/api/auth/login').set(H).send({ email: u.email, password: PASSWORD }).expect(200);

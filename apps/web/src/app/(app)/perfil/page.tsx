@@ -44,6 +44,12 @@ export default function PerfilPage() {
     try { await api('/auth/profile', 'PATCH', { name: String(f.get('name')), phone: String(f.get('phone') ?? '') }); await reload(); done('Dados atualizados.'); } catch (err) { fail(err); }
     setBusy('');
   }
+  async function setStyle(navStyle: 'CLASSIC' | 'LAUNCHER') {
+    if (me.user.navStyle === navStyle) return;
+    setBusy('style');
+    try { await api('/auth/profile', 'PATCH', { navStyle }); await reload(); done(navStyle === 'LAUNCHER' ? 'Estilo alterado: início em blocos.' : 'Estilo alterado: menu lateral.'); } catch (e) { fail(e); }
+    setBusy('');
+  }
   async function savePassword(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget; const f = new FormData(form);
@@ -69,6 +75,22 @@ export default function PerfilPage() {
               {me.user.avatarVersion && <button className="btn" disabled={busy === 'photo'} onClick={removePhoto}>Remover</button>}</div>
             <p className="muted" style={{ fontSize: '0.82rem', margin: '8px 0 0' }}>PNG, JPG ou WebP. A imagem é recortada em quadrado e reduzida automaticamente. Colegas da sua empresa veem esta foto.</p>
           </div>
+        </div>
+      </section>
+
+      <section className="card" style={{ marginBottom: 16 }} aria-label="Aparência">
+        <h2>Estilo do sistema</h2>
+        <p className="muted" style={{ marginTop: 0 }}>Escolha como prefere navegar. Vale só para a sua conta e acompanha você em qualquer aparelho.</p>
+        <div className="grid cols-2" role="radiogroup" aria-label="Estilo do sistema">
+          {([['CLASSIC', 'Menu lateral (clássico)', 'Menus que abrem e fecham na lateral, com o painel de indicadores como página inicial.'], ['LAUNCHER', 'Início em blocos', 'Tela inicial com um bloco colorido por módulo. Ao abrir um módulo o menu lateral some e fica só o botão “Voltar ao início”.']] as const).map(([v, t, d]) => {
+            const on = (me.user.navStyle ?? 'CLASSIC') === v;
+            return (
+              <button key={v} type="button" role="radio" aria-checked={on} disabled={busy === 'style'} onClick={() => void setStyle(v)} className="card" style={{ textAlign: 'left', cursor: 'pointer', borderColor: on ? 'var(--brand)' : undefined, boxShadow: on ? '0 0 0 2px var(--brand)' : undefined, margin: 0 }}>
+                <strong>{t}</strong> {on && <span className="badge ok">Em uso</span>}
+                <div className="muted" style={{ fontSize: '0.84rem', marginTop: 4 }}>{d}</div>
+              </button>
+            );
+          })}
         </div>
       </section>
 

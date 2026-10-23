@@ -73,6 +73,8 @@ model User {
   email            String     @unique // sempre minúsculo (normalizado na aplicação)
   name             String
   phone            String?
+  /// Estilo de navegação do usuário: CLASSIC (menu lateral) ou LAUNCHER (início em blocos, sem menu lateral).
+  navStyle         String     @default("CLASSIC") @map("nav_style")
   passwordHash     String     @map("password_hash")
   status           UserStatus @default(ACTIVE)
   failedLoginCount Int        @default(0) @map("failed_login_count")

@@ -188,8 +188,9 @@ export class AuthService {
       if (dto.phone.trim() === '') data.phone = null;
       else { const p = normalizePhone(dto.phone); if (!p) throw new BadRequestException('Telefone inválido: informe DDD + número.'); data.phone = p; }
     }
+    if (dto.navStyle !== undefined) data.navStyle = dto.navStyle;
     if (!Object.keys(data).length) throw new BadRequestException('Nada para alterar.');
-    const u = await this.prisma.user.update({ where: { id: ctx.userId }, data, select: { name: true, phone: true } });
+    const u = await this.prisma.user.update({ where: { id: ctx.userId }, data, select: { name: true, phone: true, navStyle: true } });
     if (ctx.tenantId) await this.prisma.withContext(ctx, (tx) => this.audit.record(tx, ctx, { action: 'user.profile_updated', entity: 'user', entityId: ctx.userId, metadata: { fields: Object.keys(dto) } }));
     return u;
   }
@@ -335,7 +336,7 @@ export class AuthService {
   async me(ctx: AuthContext) {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: ctx.userId },
-      select: { id: true, name: true, email: true, phone: true, totpEnabledAt: true, avatar: { select: { updatedAt: true } } },
+      select: { id: true, name: true, email: true, phone: true, navStyle: true, totpEnabledAt: true, avatar: { select: { updatedAt: true } } },
     });
     const tenants = await this.listTenants(ctx.userId);
     let tenant: { id: string; name: string; slug: string; status: string; plan: string | null; trialEndsAt: Date | null; logoVersion: number | null } | null = null;
@@ -348,7 +349,7 @@ export class AuthService {
       role = tenants.find((x) => x.id === ctx.tenantId)?.role ?? null;
     }
     const [{ is_admin: platformAdmin }] = await this.prisma.withContext({ tenantId: null, userId: ctx.userId }, (tx) => tx.$queryRaw<{ is_admin: boolean }[]>`SELECT platform_is_admin() AS is_admin`);
-    return { user: { id: user.id, name: user.name, email: user.email, phone: user.phone, mfaEnabled: !!user.totpEnabledAt, avatarVersion: user.avatar?.updatedAt.getTime() ?? null }, tenant, role, permissions: [...ctx.permissions].sort(), tenants, platformAdmin, appName: getConfig().appName };
+    return { user: { id: user.id, name: user.name, email: user.email, phone: user.phone, navStyle: user.navStyle, mfaEnabled: !!user.totpEnabledAt, avatarVersion: user.avatar?.updatedAt.getTime() ?? null }, tenant, role, permissions: [...ctx.permissions].sort(), tenants, platformAdmin, appName: getConfig().appName };
   }
 
   private async listTenants(userId: string): Promise<TenantSummary[]> {

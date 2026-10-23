@@ -20,7 +20,7 @@ export default function SelectTenantPage() {
   async function choose(tenantId: string) {
     try {
       await api('/auth/select-tenant', 'POST', { tenantId });
-      router.replace('/dashboard');
+      router.replace('/inicio');
     } catch (e) {
       setError((e as Error).message);
     }

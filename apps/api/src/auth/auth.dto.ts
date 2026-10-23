@@ -20,6 +20,8 @@ export class ProfileDto {
   @IsOptional() @IsString() @Length(2, 120) name?: string;
   /** Telefone com DDD; vazio apaga. */
   @IsOptional() @IsString() @MaxLength(30) phone?: string;
+  /** Estilo da navegação: CLASSIC (menu lateral) ou LAUNCHER (início em blocos). */
+  @IsOptional() @IsIn(['CLASSIC', 'LAUNCHER']) navStyle?: 'CLASSIC' | 'LAUNCHER';
 }
 export class PasswordDto {
   @IsString() @MaxLength(200) currentPassword: string;

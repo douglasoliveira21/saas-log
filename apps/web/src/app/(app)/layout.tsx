@@ -1,10 +1,11 @@
 'use client';
 
-import { Bell, ChevronDown, ChevronsLeft, ChevronsRight, LogOut, Menu, Moon, Repeat, ShieldCheck, Sun, User } from 'lucide-react';
+import { ArrowLeft, Bell, ChevronDown, LayoutGrid, PanelLeft, ChevronsLeft, ChevronsRight, LogOut, Menu, Moon, Repeat, ShieldCheck, Sun, User } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Avatar } from '@/components/avatar';
+import { api } from '@/lib/api';
 import { BRAND } from '@/lib/brand';
 import { NAV, NAV_GROUP_ICONS, NAV_GROUPS } from '@/lib/nav';
 import { SessionProvider, useSession } from '@/lib/session';
@@ -15,7 +16,7 @@ function safeStorage(op: 'get' | 'set', key: string, value?: string): string | n
 }
 
 function Shell({ children }: { children: ReactNode }) {
-  const { me, can, logout } = useSession();
+  const { me, can, logout, reload } = useSession();
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -62,13 +63,19 @@ function Shell({ children }: { children: ReactNode }) {
   // Só mostra o que o usuário pode acessar (o servidor reforça a mesma regra).
   const visible = NAV.filter((n) => can(n.permission));
   const toggleGroup = (g: string, now: boolean) => { const next = { ...openGroups, [g]: !now }; setOpenGroups(next); safeStorage('set', 'dh-nav-open', JSON.stringify(next)); };
+  const launcher = me.user.navStyle === 'LAUNCHER';
+  const atHome = pathname === '/inicio';
+  async function changeStyle() {
+    const next = launcher ? 'CLASSIC' : 'LAUNCHER';
+    try { await api('/auth/profile', 'PATCH', { navStyle: next }); await reload(); router.push(next === 'LAUNCHER' ? '/inicio' : '/dashboard'); } catch { /* o perfil mostra o erro */ }
+  }
   const current = [...visible].sort((a, b) => b.href.length - a.href.length).find((n) => pathname === n.href || pathname.startsWith(n.href + '/'));
   const trialLeft = me.tenant?.status === 'TRIAL' && me.tenant.trialEndsAt ? Math.ceil((new Date(me.tenant.trialEndsAt).getTime() - Date.now()) / 86_400_000) : null;
 
   return (
-    <div className={`shell ${collapsed ? 'collapsed' : ''}`}>
-      {open && <div className="scrim" onClick={() => setOpen(false)} aria-hidden />}
-      <aside className={`sidebar ${open ? 'open' : ''}`}>
+    <div className={`shell ${collapsed ? 'collapsed' : ''} ${launcher ? 'launcher' : ''}`}>
+      {open && !launcher && <div className="scrim" onClick={() => setOpen(false)} aria-hidden />}
+      {!launcher && <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="sidebar-head">
           {me.tenant!.logoVersion && !logoFailed ? (
             // Logotipo da empresa do tenant no lugar do nome/ícone do software (a versão na URL força atualizar após um novo envio).
@@ -127,11 +134,17 @@ function Shell({ children }: { children: ReactNode }) {
           </button>
           <span className="who muted" style={{ fontSize: '0.78rem' }}>{me.tenant!.name}</span>
         </div>
-      </aside>
+      </aside>}
 
       <div className="main">
         <header className="topbar">
-          <button className="btn ghost icon menu-btn" onClick={() => setOpen(!open)} aria-label="Abrir menu" aria-expanded={open}><Menu /></button>
+          {!launcher && <button className="btn ghost icon menu-btn" onClick={() => setOpen(!open)} aria-label="Abrir menu" aria-expanded={open}><Menu /></button>}
+          {launcher && !atHome && <Link href="/inicio" className="btn primary back-home"><ArrowLeft aria-hidden />Voltar ao início</Link>}
+          {launcher && atHome && (me.tenant!.logoVersion && !logoFailed
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img className="tenant-logo top-logo" src={`/api/branding/logo?v=${me.tenant!.logoVersion}`} alt={me.tenant!.name} onError={() => setLogoFailed(true)} />
+            // eslint-disable-next-line @next/next/no-img-element
+            : <img className="sys-logo full top-logo" src="/brand/logo.png" alt={BRAND.name} />)}
           <nav className="crumbs" aria-label="Você está em">
             <span className="hide-sm">{me.tenant!.name}</span>
             {current && <><span className="hide-sm" aria-hidden>/</span><span className="hide-sm">{current.group}</span><span className="hide-sm" aria-hidden>/</span><strong>{current.label}</strong></>}
@@ -165,6 +178,7 @@ function Shell({ children }: { children: ReactNode }) {
                   <div style={{ marginTop: 6 }}><span className="badge">{me.role?.name}</span> {me.tenant!.plan && <span className="badge brand">{me.tenant!.plan}</span>}</div>
                 </div>
                 <button role="menuitem" onClick={() => router.push('/perfil')}><User />Meu perfil</button>
+                <button role="menuitem" onClick={changeStyle}>{launcher ? <PanelLeft /> : <LayoutGrid />}{launcher ? 'Usar menu lateral (clássico)' : 'Usar início em blocos'}</button>
                 <button role="menuitem" onClick={() => router.push('/seguranca')}><ShieldCheck />Segurança da conta</button>
                 {me.tenants.length > 1 && <button role="menuitem" onClick={() => router.push('/select-tenant')}><Repeat />Trocar empresa</button>}
                 <button role="menuitem" onClick={logout}><LogOut />Sair</button>
