@@ -9,9 +9,11 @@ import { formatAccessKey, formatCnpj } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { ProviderCard } from './provider-card';
 import { EventsPanel } from './events-panel';
+import { ReturnsCard } from './returns-card';
 import { CoverageCard } from './coverage-card';
+import { MdfeTab } from './mdfe-tab';
 
-type Tab = 'config' | 'inbound' | 'rules' | 'outgoing';
+type Tab = 'config' | 'inbound' | 'rules' | 'outgoing' | 'mdfe';
 interface Est { id: string; name: string; cnpj: string | null; company: string; environment: string; configStatus: string; certificate: Cert | null }
 interface Cert { id: string; subject: string; cnpj: string | null; serial: string; notAfter: string; daysToExpire: number; expired: boolean; expiringSoon: boolean }
 interface ReadinessItem { key: string; label: string; status: 'OK' | 'PENDING' | 'BLOCKING'; detail?: string; blocksHomologation: boolean; blocksProduction: boolean }
@@ -25,7 +27,7 @@ interface InDoc { id: string; accessKey: string; number: number; series: number;
 interface InItem { id: string; line: number; supplierCode: string | null; description: string; unit: string; quantity: string; totalValue: string; ncm: string | null; productId: string | null; matchedBy: string | null; stockQty: number | null; product: { sku: string } | null }
 interface RuleVersion { id: string; version: number; status: string; validFrom: string; validTo: string | null; sourceReference: string; config: { cfop?: string; taxes: Record<string, { ratePct?: number; cst?: string; csosn?: string; kind?: string }> } }
 interface Rule { id: string; name: string; operation: string; originUf: string | null; destUf: string | null; ncmPrefix: string | null; regime: string | null; active: boolean; versions: RuleVersion[] }
-interface OutDoc { id: string; model?: string; splitIndex?: number | null; splitTotal?: number | null; status: string; number: number | null; series: number | null; accessKey: string | null; environment: string; totalInvoice: string; issues: Issue[]; authProtocol: string | null; salesOrder: { number: number; customer: { name: string } } | null }
+interface OutDoc { id: string; purpose?: string; model?: string; splitIndex?: number | null; splitTotal?: number | null; status: string; number: number | null; series: number | null; accessKey: string | null; environment: string; totalInvoice: string; issues: Issue[]; authProtocol: string | null; salesOrder: { number: number; customer: { name: string } } | null }
 interface Product { id: string; sku: string; name: string }
 interface PO { id: string; number: number; status: string; supplier: { legalName: string } }
 interface OrderRow { id: string; number: number; status: string; fiscalDocType?: string; customer: { name: string } }
@@ -46,7 +48,7 @@ function IssueList({ issues }: { issues: Issue[] }) {
 
 export default function FiscalPage() {
   const { can } = useSession();
-  const [tab, setTab] = useState<Tab>('config');
+  const [tab, setTab] = useState<Tab>(() => (typeof window !== 'undefined' && window.location.hash === '#mdfe' ? 'mdfe' : 'config'));
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const act = async (fn: () => Promise<unknown>, message: string, reload: () => void) => {
@@ -61,7 +63,7 @@ export default function FiscalPage() {
       {error && <Alert kind="error">{error}</Alert>}
       {ok && <Alert kind="ok">{ok}</Alert>}
       <div className="tabs" role="tablist" aria-label="Seções do fiscal">
-        {([['config', 'Configuração e certificado'], ['inbound', 'XML recebidos'], ['rules', 'Regras tributárias'], ['outgoing', 'Notas de saída']] as [Tab, string][]).map(([k, l]) => (
+        {([['config', 'Configuração e certificado'], ['inbound', 'XML recebidos'], ['rules', 'Regras tributárias'], ['outgoing', 'Notas de saída'], ['mdfe', 'MDF-e']] as [Tab, string][]).map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} className={`tab ${tab === k ? 'active' : ''}`} onClick={() => { setTab(k); setError(''); setOk(''); }}>{l}</button>
         ))}
       </div>
@@ -69,6 +71,7 @@ export default function FiscalPage() {
       {tab === 'inbound' && <InboundTab act={act} can={can} />}
       {tab === 'rules' && <RulesTab act={act} can={can} />}
       {tab === 'outgoing' && <OutgoingTab act={act} can={can} />}
+      {tab === 'mdfe' && <MdfeTab act={act} can={can} />}
     </>
   );
 }
@@ -436,6 +439,7 @@ function OutgoingTab({ act, can }: TabProps) {
           <p className="muted" style={{ marginBottom: 0, fontSize: '0.82rem' }}>A forma de pagamento é obrigatória para emitir (NFC-e e NF-e pelo provedor).</p>
         </form>
       )}
+      {emit && <ReturnsCard act={act} open={open} reloadList={load} />}
       {emit && <VoidCard act={act} />}
       <section className="card" style={{ marginBottom: 16 }}>
         <div className="table-wrap"><table>
@@ -443,7 +447,7 @@ function OutgoingTab({ act, can }: TabProps) {
           <tbody>
             {!docs && <tr><td colSpan={7}><Skeleton rows={3} /></td></tr>}
             {docs?.length === 0 && <tr><td colSpan={7} className="empty">Nenhuma nota de saída preparada.</td></tr>}
-            {docs?.map((d) => <tr key={d.id}><td>{d.salesOrder?.number}{d.splitTotal ? <div><span className="badge brand">cupom {d.splitIndex}/{d.splitTotal}</span></div> : null}</td><td>{d.salesOrder?.customer.name}</td><td>{d.number ? `${d.number}/${d.series}` : '—'}</td><td className="num">{brl(d.totalInvoice)}</td><td>{d.environment}</td><td><span className={`badge ${badge(d.status)}`}>{STATUS_LABEL[d.status]}</span></td><td><button className="btn sm" onClick={() => open(d.id)}>Abrir</button></td></tr>)}
+            {docs?.map((d) => <tr key={d.id}><td>{d.salesOrder?.number}{d.purpose === 'RETURN_SALE' ? <div><span className="badge warn">devolução</span></div> : null}{d.splitTotal ? <div><span className="badge brand">cupom {d.splitIndex}/{d.splitTotal}</span></div> : null}</td><td>{d.salesOrder?.customer.name}</td><td>{d.number ? `${d.number}/${d.series}` : '—'}</td><td className="num">{brl(d.totalInvoice)}</td><td>{d.environment}</td><td><span className={`badge ${badge(d.status)}`}>{STATUS_LABEL[d.status]}</span></td><td><button className="btn sm" onClick={() => open(d.id)}>Abrir</button></td></tr>)}
           </tbody>
         </table></div>
       </section>

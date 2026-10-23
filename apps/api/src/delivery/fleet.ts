@@ -17,12 +17,20 @@ class VehicleDto {
   @IsString() @MaxLength(100) description: string;
   @IsOptional() @IsIn(['MOTORCYCLE', 'VAN', 'TRUCK', 'OTHER']) kind?: string;
   @IsOptional() @IsInt() @Min(1) @Max(100_000) capacityKg?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(100_000) tareKg?: number;
+  @IsOptional() @Matches(/^[A-Za-z]{2}$/, { message: 'UF inválida.' }) plateUf?: string;
+  @IsOptional() @Matches(/^\d{9,11}$/, { message: 'RENAVAM deve ter 9 a 11 dígitos.' }) renavam?: string;
+  @IsOptional() @IsIn(['00', '01', '02', '03', '04', '05']) bodyCode?: string;
   @IsOptional() @IsString() @MaxLength(300) notes?: string;
 }
 class VehicleUpdateDto {
   @IsOptional() @IsString() @MaxLength(100) description?: string;
   @IsOptional() @IsIn(['MOTORCYCLE', 'VAN', 'TRUCK', 'OTHER']) kind?: string;
   @IsOptional() @ValidateIf((o) => o.capacityKg !== null) @IsInt() @Min(1) @Max(100_000) capacityKg?: number | null;
+  @IsOptional() @IsInt() @Min(1) @Max(100_000) tareKg?: number;
+  @IsOptional() @Matches(/^[A-Za-z]{2}$/, { message: 'UF inválida.' }) plateUf?: string;
+  @IsOptional() @Matches(/^\d{9,11}$/, { message: 'RENAVAM deve ter 9 a 11 dígitos.' }) renavam?: string;
+  @IsOptional() @IsIn(['00', '01', '02', '03', '04', '05']) bodyCode?: string;
   @IsOptional() @IsString() @MaxLength(300) notes?: string;
   @IsOptional() @IsBoolean() active?: boolean;
 }
@@ -53,7 +61,7 @@ export class FleetService {
     return this.prisma.withContext(ctx, async (tx) => {
       const plate = dto.plate.toUpperCase().replace('-', '');
       if (await tx.vehicle.findFirst({ where: { tenantId: ctx.tenantId!, plate } })) throw new ConflictException(`Já existe um veículo com a placa ${plate}.`);
-      const v = await tx.vehicle.create({ data: { tenantId: ctx.tenantId!, plate, description: dto.description.trim(), kind: dto.kind ?? 'VAN', capacityKg: dto.capacityKg, notes: dto.notes } });
+      const v = await tx.vehicle.create({ data: { tenantId: ctx.tenantId!, plate, description: dto.description.trim(), kind: dto.kind ?? 'VAN', capacityKg: dto.capacityKg, tareKg: dto.tareKg, plateUf: dto.plateUf?.toUpperCase(), renavam: dto.renavam, bodyCode: dto.bodyCode ?? '00', notes: dto.notes } });
       await this.audit.record(tx, ctx, { action: 'fleet.vehicle_created', entity: 'vehicle', entityId: v.id, metadata: { plate } });
       return v;
     });
@@ -64,7 +72,7 @@ export class FleetService {
       const v = await tx.vehicle.findFirst({ where: { id, tenantId: ctx.tenantId! } });
       if (!v) throw new NotFoundException('Veículo não encontrado.');
       if (dto.active === false && (await tx.deliveryRoute.count({ where: { tenantId: ctx.tenantId!, vehicleId: id, status: { in: ['PLANNED', 'IN_PROGRESS'] } } })) > 0) throw new ConflictException('O veículo está em uma viagem planejada ou em andamento.');
-      return tx.vehicle.update({ where: { id }, data: { ...(dto.description !== undefined ? { description: dto.description.trim() } : {}), ...(dto.kind ? { kind: dto.kind } : {}), ...(dto.capacityKg !== undefined ? { capacityKg: dto.capacityKg } : {}), ...(dto.notes !== undefined ? { notes: dto.notes } : {}), ...(dto.active !== undefined ? { active: dto.active } : {}) } });
+      return tx.vehicle.update({ where: { id }, data: { ...(dto.description !== undefined ? { description: dto.description.trim() } : {}), ...(dto.kind ? { kind: dto.kind } : {}), ...(dto.capacityKg !== undefined ? { capacityKg: dto.capacityKg } : {}), ...(dto.tareKg !== undefined ? { tareKg: dto.tareKg } : {}), ...(dto.plateUf ? { plateUf: dto.plateUf.toUpperCase() } : {}), ...(dto.renavam !== undefined ? { renavam: dto.renavam } : {}), ...(dto.bodyCode ? { bodyCode: dto.bodyCode } : {}), ...(dto.notes !== undefined ? { notes: dto.notes } : {}), ...(dto.active !== undefined ? { active: dto.active } : {}) } });
     });
   }
 

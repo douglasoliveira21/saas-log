@@ -60,6 +60,7 @@ export function RouteFleetCard({ routeId, manage, editable }: { routeId: string;
         <div className="row">
           {manage && load?.vehicle && <button className="btn sm" onClick={addCost}><Fuel aria-hidden />Lançar custo</button>}
           <button className="btn sm" onClick={openManifest}><FileText aria-hidden />Manifesto de carga</button>
+          {manage && load?.vehicle && <a className="btn sm" href="/fiscal#mdfe">MDF-e</a>}
         </div>
       </div>
       {load && (

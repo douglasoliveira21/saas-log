@@ -62,6 +62,8 @@ export interface OutgoingDocument {
   totals: { products: number; freight: number; total: number };
   payments: { method: string; amount: number }[];
   additionalInfo: string | null;
+  /** NF-e de devolução de venda: chaves das notas originais (entrada própria, finNFe 4). */
+  returnOf?: string[];
 }
 
 export interface TransmitInput {

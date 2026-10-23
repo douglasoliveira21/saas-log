@@ -108,6 +108,7 @@ class ProviderDto {
   @IsOptional() @IsString() @MaxLength(200) tokenProducao?: string;
 }
 class TestProviderDto { @IsOptional() @IsIn(['HOMOLOGACAO', 'PRODUCAO']) environment?: 'HOMOLOGACAO' | 'PRODUCAO'; }
+class PrepareReturnDto { @IsUUID() returnId: string; }
 class CorrectionDto { @IsString() @Length(15, 1000) text: string; }
 class ManifestDto { @IsIn(['CIENCIA', 'CONFIRMACAO', 'DESCONHECIMENTO', 'NAO_REALIZADA']) action: string; @IsOptional() @IsString() @Length(15, 255) justification?: string; }
 class FileQuery { @IsIn(['danfe', 'xml']) kind: 'danfe' | 'xml'; }
@@ -226,6 +227,9 @@ export class FiscalController {
   @Get('outgoing') @RequirePermissions('fiscal.view')
   outgoingList(@CurrentAuth() ctx: AuthContext, @Query() q: StatusQuery) { return this.outgoing.list(ctx, q.status); }
 
+  @Get('outgoing/returnable') @RequirePermissions('fiscal.view')
+  returnable(@CurrentAuth() ctx: AuthContext) { return this.outgoing.returnable(ctx); }
+
   @Get('outgoing/:id') @RequirePermissions('fiscal.view')
   outgoingGet(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.outgoing.get(ctx, id); }
 
@@ -246,6 +250,9 @@ export class FiscalController {
 
   @Post('outgoing/:id/cancel') @HttpCode(200) @RequirePermissions('fiscal.emit')
   cancelDoc(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelDocDto) { return this.outgoing.cancel(ctx, id, dto.reason); }
+
+  @Post('outgoing/prepare-return') @HttpCode(200) @RequirePermissions('fiscal.emit')
+  prepareReturn(@CurrentAuth() ctx: AuthContext, @Body() dto: PrepareReturnDto) { return this.outgoing.prepareReturn(ctx, dto.returnId); }
 
   @Post('outgoing/:id/correction') @HttpCode(200) @RequirePermissions('fiscal.emit')
   correct(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CorrectionDto) { return this.outgoing.correct(ctx, id, dto.text); }

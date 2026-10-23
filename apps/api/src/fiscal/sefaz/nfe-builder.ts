@@ -44,6 +44,8 @@ export interface NfeInput {
   freight: number;
   payments: { tPag: string; vPag: number }[];
   additionalInfo?: string | null;
+  /** Devolução: finNFe 4, tpNF 0 (entrada própria) e chaves das notas referenciadas (NFref). */
+  returnOf?: string[];
   procVersion: string;
   /** NFC-e: QR Code (versão 2.00, online) e URL de consulta por chave. */
   qr?: { url: string; cscId: string; csc: string; consultaChaveUrl: string };
@@ -147,9 +149,9 @@ export function buildNfeXml(n: NfeInput): string {
   const total = `<total><ICMSTot><vBC>${dec(vBC)}</vBC><vICMS>${dec(vICMS)}</vICMS><vICMSDeson>0.00</vICMSDeson><vFCP>0.00</vFCP><vBCST>0.00</vBCST><vST>0.00</vST><vFCPST>0.00</vFCPST><vFCPSTRet>0.00</vFCPSTRet><vProd>${dec(vProd)}</vProd><vFrete>${dec(vFrete)}</vFrete><vSeg>0.00</vSeg><vDesc>0.00</vDesc><vII>0.00</vII><vIPI>0.00</vIPI><vIPIDevol>0.00</vIPIDevol><vPIS>${dec(vPIS)}</vPIS><vCOFINS>${dec(vCOFINS)}</vCOFINS><vOutro>0.00</vOutro><vNF>${dec(vNF)}</vNF></ICMSTot></total>`;
 
   const paid = n.payments.reduce((s, p) => s + Math.round(p.vPag * 100), 0);
-  if (paid < Math.round(vNF * 100)) throw new Error(`O total pago (${dec(paid / 100)}) é menor que o valor da nota (${dec(vNF)}).`);
+  if (paid < Math.round(vNF * 100) && !n.returnOf) throw new Error(`O total pago (${dec(paid / 100)}) é menor que o valor da nota (${dec(vNF)}).`);
 
-  const ide = `<ide>${tag('cUF', n.chave.slice(0, 2))}${tag('cNF', cNF)}${tag('natOp', txt(n.natOp, 60))}${tag('mod', n.model)}${tag('serie', serie)}${tag('nNF', nNF)}${tag('dhEmi', brt(n.issuedAt))}${is65 ? '' : tag('dhSaiEnt', brt(n.issuedAt))}${tag('tpNF', 1)}${tag('idDest', n.idDest)}${tag('cMunFG', n.cMunFG)}${tag('tpImp', is65 ? 4 : 1)}${tag('tpEmis', n.chave.slice(34, 35))}${tag('cDV', cDV)}${tag('tpAmb', tpAmb)}${tag('finNFe', 1)}${tag('indFinal', n.indFinal)}${tag('indPres', n.indPres)}${tag('procEmi', 0)}${tag('verProc', txt(n.procVersion, 20))}</ide>`;
+  const ide = `<ide>${tag('cUF', n.chave.slice(0, 2))}${tag('cNF', cNF)}${tag('natOp', txt(n.natOp, 60))}${tag('mod', n.model)}${tag('serie', serie)}${tag('nNF', nNF)}${tag('dhEmi', brt(n.issuedAt))}${is65 ? '' : tag('dhSaiEnt', brt(n.issuedAt))}${tag('tpNF', n.returnOf ? 0 : 1)}${tag('idDest', n.idDest)}${tag('cMunFG', n.cMunFG)}${tag('tpImp', is65 ? 4 : 1)}${tag('tpEmis', n.chave.slice(34, 35))}${tag('cDV', cDV)}${tag('tpAmb', tpAmb)}${tag('finNFe', n.returnOf ? 4 : 1)}${tag('indFinal', n.indFinal)}${tag('indPres', n.indPres)}${tag('procEmi', 0)}${tag('verProc', txt(n.procVersion, 20))}${(n.returnOf ?? []).map((k) => `<NFref><refNFe>${k}</refNFe></NFref>`).join('')}</ide>`;
 
   const infAdic = n.additionalInfo ? `<infAdic>${tag('infCpl', txt(n.additionalInfo, 2000))}</infAdic>` : '';
   const supl = is65 && n.qr ? `<infNFeSupl><qrCode>${esc(qrCodeV2(n.qr.url, n.chave, n.environment, n.qr.cscId, n.qr.csc))}</qrCode><urlChave>${esc(n.qr.consultaChaveUrl)}</urlChave></infNFeSupl>` : '';

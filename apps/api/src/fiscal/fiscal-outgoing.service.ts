@@ -5,6 +5,7 @@ import { AuthContext } from '../common/auth';
 import { isValidCnpj, isValidCpf, onlyDigits } from '../common/cnpj';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildChave } from './chave';
+import { returnCfop } from './return-cfop';
 import { renderDanfce, renderDanfe } from './danfe';
 import { ENGINE_VERSION, EngineOutput } from './engine';
 import { FISCAL_PROVIDER, FiscalEnvironment, FiscalModel, FiscalProvider, OutgoingDocument, ProviderCtx, RemoteDoc } from './fiscal-provider';
@@ -57,7 +58,7 @@ export class FiscalOutgoingService {
     return this.prisma.withContext(ctx, (tx) =>
       tx.fiscalDocument.findMany({
         where: { tenantId: ctx.tenantId!, direction: 'EXIT', ...(status ? { status } : {}) }, orderBy: { createdAt: 'desc' }, take: 100,
-        select: { id: true, model: true, status: true, splitIndex: true, splitTotal: true, number: true, series: true, accessKey: true, environment: true, totalInvoice: true, salesOrderId: true, issues: true, authProtocol: true, createdAt: true, salesOrder: { select: { number: true, customer: { select: { name: true } } } } },
+        select: { id: true, model: true, status: true, purpose: true, splitIndex: true, splitTotal: true, number: true, series: true, accessKey: true, environment: true, totalInvoice: true, salesOrderId: true, issues: true, authProtocol: true, createdAt: true, salesOrder: { select: { number: true, customer: { select: { name: true } } } } },
       }),
     );
   }
@@ -135,6 +136,70 @@ export class FiscalOutgoingService {
     });
   }
 
+  // ───────────── devolução de venda ─────────────
+
+  /** Devoluções registradas em Vendas que ainda não têm NF-e de devolução e cuja nota original está autorizada. */
+  async returnable(ctx: AuthContext) {
+    return this.prisma.withContext(ctx, async (tx) => {
+      const rets = await tx.returnRequest.findMany({ where: { tenantId: ctx.tenantId! }, orderBy: { createdAt: 'desc' }, take: 100, include: { items: { include: { orderItem: { include: { product: { select: { sku: true } } } } } }, order: { select: { id: true, number: true, customer: { select: { name: true } } } } } });
+      const out = [];
+      for (const r of rets) {
+        if (await tx.fiscalDocument.findFirst({ where: { tenantId: ctx.tenantId!, returnId: r.id, NOT: { status: 'CANCELLED' } }, select: { id: true } })) continue;
+        const originals = await tx.fiscalDocument.findMany({ where: { tenantId: ctx.tenantId!, salesOrderId: r.orderId, direction: 'EXIT', purpose: 'NORMAL', status: 'AUTHORIZED' }, select: { id: true, number: true, series: true, model: true } });
+        out.push({ returnId: r.id, orderNumber: r.order.number, customer: r.order.customer.name, createdAt: r.createdAt, reason: r.reason, items: r.items.map((i) => ({ sku: i.orderItem.product.sku, quantity: i.quantity })), original: originals.length === 1 ? originals[0] : null, blocked: originals.length === 0 ? 'A nota do pedido ainda não foi autorizada.' : originals.length > 1 ? 'O pedido foi dividido em vários cupons: emita a devolução manualmente.' : null });
+      }
+      return out;
+    });
+  }
+
+  /**
+   * Prepara a NF-e de DEVOLUÇÃO DE VENDA (entrada própria: tpNF 0, finNFe 4, CFOP 1.xxx/2.xxx, referenciando a nota autorizada do pedido) a partir de uma
+   * devolução registrada. Tributação: replica a da venda original (regras aprovadas); confira com o contador. Só na emissão direta.
+   */
+  async prepareReturn(ctx: AuthContext, returnId: string) {
+    await this.warmCities(ctx, {});
+    return this.prisma.withContext(ctx, async (tx) => {
+      const ret = await tx.returnRequest.findFirst({ where: { id: returnId, tenantId: ctx.tenantId! }, include: { items: { include: { orderItem: true } }, order: { include: { customer: true } } } });
+      if (!ret) throw new NotFoundException('Devolução não encontrada.');
+      if (await tx.fiscalDocument.findFirst({ where: { tenantId: ctx.tenantId!, returnId, NOT: { status: 'CANCELLED' } }, select: { id: true } })) throw new ConflictException('Esta devolução já tem uma NF-e de devolução.');
+      const originals = await tx.fiscalDocument.findMany({ where: { tenantId: ctx.tenantId!, salesOrderId: ret.orderId, direction: 'EXIT', purpose: 'NORMAL', status: 'AUTHORIZED' }, include: { items: true } });
+      if (!originals.length) throw new ConflictException('A nota fiscal do pedido original ainda não foi autorizada: não há o que referenciar.');
+      if (originals.length > 1) throw new ConflictException('O pedido original foi dividido em vários cupons: a devolução fiscal precisa ser feita manualmente.');
+      const orig = originals[0];
+      if (!orig.accessKey) throw new ConflictException('A nota original não tem chave de acesso.');
+      const est = await tx.establishment.findFirst({ where: { id: orig.establishmentId!, tenantId: ctx.tenantId!, active: true }, include: { company: true } });
+      if (!est) throw new BadRequestException('Estabelecimento emissor não encontrado.');
+      const cfg = await tx.fiscalConfiguration.upsert({ where: { tenantId_establishmentId: { tenantId: ctx.tenantId!, establishmentId: est.id } }, create: { tenantId: ctx.tenantId!, establishmentId: est.id }, update: {} });
+      const pc = await this.pctx.resolve(tx, ctx.tenantId!, est.id, '55', cfg.environment as FiscalEnvironment);
+      if (pc.providerName !== 'SEFAZ_DIRECT') throw new HttpException({ message: 'A NF-e de devolução só é emitida pela emissão direta na SEFAZ. Com provedor, emita pelo painel dele.', code: 'NOT_SUPPORTED' }, HttpStatus.FAILED_DEPENDENCY);
+      const lines: { src: (typeof orig.items)[number]; qty: number; cfop: string }[] = [];
+      const qtyBy = new Map<string, number>();
+      for (const i of ret.items) qtyBy.set(i.orderItem.productId, (qtyBy.get(i.orderItem.productId) ?? 0) + i.quantity);
+      for (const [productId, qty] of qtyBy) {
+        const src = orig.items.find((x) => x.productId === productId);
+        if (!src) throw new ConflictException('Um item devolvido não consta na nota original.');
+        const cfop = returnCfop(src.cfop ?? '');
+        if (!cfop) throw new ConflictException(`CFOP ${src.cfop ?? '(vazio)'} da nota original sem correspondente de devolução cadastrado: emita a devolução manualmente.`);
+        if (qty > Number(src.quantity)) throw new ConflictException('A quantidade devolvida passa da quantidade da nota original.');
+        lines.push({ src, qty, cfop });
+      }
+      const money = lines.map((l) => Math.round(Number(l.src.unitValue) * l.qty * 100));
+      const total = money.reduce((a, b) => a + b, 0) / 100;
+      const doc = await tx.fiscalDocument.create({
+        data: {
+          tenantId: ctx.tenantId!, direction: 'EXIT', model: '55', purpose: 'RETURN_SALE', refDocumentId: orig.id, returnId, status: 'DRAFT', providerState: { returnOfKey: orig.accessKey }, environment: cfg.environment, establishmentId: est.id, series: cfg.nfeSeries,
+          emitterDoc: est.cnpj ? onlyDigits(est.cnpj) : null, emitterName: est.company.legalName, emitterUf: est.state, recipientDoc: ret.order.customer.document, totalProducts: total.toFixed(2), totalInvoice: total.toFixed(2), totalFreight: '0.00', salesOrderId: ret.orderId, importedById: ctx.userId,
+        },
+      });
+      await tx.fiscalDocumentItem.createMany({
+        data: lines.map((l, idx) => ({ tenantId: ctx.tenantId!, documentId: doc.id, line: idx + 1, supplierCode: l.src.supplierCode, gtin: l.src.gtin, description: l.src.description, ncm: l.src.ncm, cfop: l.cfop, unit: l.src.unit, quantity: l.qty.toFixed(4), unitValue: Number(l.src.unitValue).toFixed(6), totalValue: (money[idx] / 100).toFixed(2), declaredTax: {}, productId: l.src.productId })),
+      });
+      const res = await this.evaluate(tx, ctx, doc.id);
+      await this.audit.record(tx, ctx, { action: 'fiscal.return_prepared', entity: 'fiscal_document', entityId: doc.id, metadata: { returnId, originalDocumentId: orig.id, total, status: res.status } });
+      return { id: doc.id, status: res.status, issues: res.issues };
+    });
+  }
+
   async revalidate(ctx: AuthContext, id: string) {
     await this.warmCities(ctx, { docId: id });
     return this.prisma.withContext(ctx, async (tx) => {
@@ -190,7 +255,7 @@ export class FiscalOutgoingService {
     for (const r of out.items) {
       const line = Number(r.key);
       const it = doc.items.find((x) => x.line === line)!;
-      await tx.fiscalDocumentItem.update({ where: { id: it.id }, data: { cfop: r.cfop, declaredTax: JSON.parse(JSON.stringify(r)) as Prisma.InputJsonValue } });
+      await tx.fiscalDocumentItem.update({ where: { id: it.id }, data: { ...(doc.purpose === 'RETURN_SALE' ? {} : { cfop: r.cfop }), declaredTax: JSON.parse(JSON.stringify(r)) as Prisma.InputJsonValue } });
     }
     // Pendências que só o provedor conhece (ex.: tributos que o conector ainda não envia).
     if (this.provider.isConfigured(pc) && this.provider.validate) {
@@ -289,7 +354,7 @@ export class FiscalOutgoingService {
     const channel = doc.salesOrder?.channel ?? 'DIRECT';
     const taxOf = (i: (typeof doc.items)[number], code: string) => (((i.declaredTax as { taxes?: Record<string, { cst?: string; csosn?: string; amount?: number; base?: number; ratePct?: number }> } | null)?.taxes ?? {})[code]);
     const det = (i: (typeof doc.items)[number], code: string) => ({ base: taxOf(i, code)?.base ?? 0, rate: taxOf(i, code)?.ratePct ?? 0, amount: taxOf(i, code)?.amount ?? 0 });
-    const state = (doc.providerState ?? {}) as { paymentMethod?: string };
+    const state = (doc.providerState ?? {}) as { paymentMethod?: string; returnOfKey?: string };
     const total = Number(doc.totalInvoice ?? 0);
     const regime = est.company.taxRegime === 'MEI' ? 4 : est.company.taxRegime === 'SIMPLES_NACIONAL' ? 1 : 3;
     const cDoc = (cust.document ?? '').replace(/\D/g, '');
@@ -312,7 +377,8 @@ export class FiscalOutgoingService {
       })),
       totals: { products: Number(doc.totalProducts ?? 0), freight: Number(doc.totalFreight ?? 0), total },
       payments: state.paymentMethod ? [{ method: state.paymentMethod, amount: total }] : [],
-      additionalInfo: doc.salesOrder ? `Pedido ${doc.salesOrder.number}` : null,
+      additionalInfo: state.returnOfKey ? `Devolucao de venda referente a NF-e ${state.returnOfKey}${doc.salesOrder ? ` (pedido ${doc.salesOrder.number})` : ''}` : doc.salesOrder ? `Pedido ${doc.salesOrder.number}` : null,
+      ...(state.returnOfKey ? { returnOf: [state.returnOfKey] } : {}),
     };
   }
 

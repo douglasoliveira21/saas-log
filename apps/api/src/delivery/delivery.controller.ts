@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Res, Delete } from '@nestjs/common';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateNested, IsBoolean, IsEmail } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateNested, IsBoolean, IsEmail, Matches } from 'class-validator';
 import type { Response } from 'express';
 import { AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
 import { DeliveryService } from './delivery.service';
@@ -12,12 +12,14 @@ class DriverDto {
   @IsOptional() @IsString() @MaxLength(30) phone?: string;
   @IsOptional() @IsString() @MaxLength(60) vehicle?: string;
   @IsOptional() @IsString() @MaxLength(10) plate?: string;
+  @IsOptional() @IsString() @Matches(/^\d{11}$|^\d{3}\.\d{3}\.\d{3}-\d{2}$/, { message: 'CPF inválido.' }) cpf?: string;
 }
 class DriverUpdateDto {
   @IsOptional() @IsString() @Length(2, 120) name?: string;
   @IsOptional() @IsString() @MaxLength(30) phone?: string;
   @IsOptional() @IsString() @MaxLength(60) vehicle?: string;
   @IsOptional() @IsString() @MaxLength(10) plate?: string;
+  @IsOptional() @IsString() @Matches(/^$|^\d{11}$|^\d{3}\.\d{3}\.\d{3}-\d{2}$/, { message: 'CPF inválido.' }) cpf?: string;
   @IsOptional() @IsBoolean() active?: boolean;
 }
 class RouteDto {

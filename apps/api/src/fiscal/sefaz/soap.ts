@@ -35,9 +35,14 @@ export const resetCaCache = () => { extraCa = undefined; };
 export interface SoapReply { status: number; text: string }
 
 /** Envia `bodyXml` (sem o envelope) à operação e devolve o texto da resposta. Erros de TLS/rede viram exceção com `sent` indicando se a requisição pode ter chegado. */
-export async function soapCall(url: string, op: { operation: string; method: string }, bodyXml: string, id: Mtls, timeoutMs = 30_000): Promise<SoapReply> {
-  const ns = `${NS}/wsdl/${op.operation}`;
-  const envelope = `<?xml version="1.0" encoding="utf-8"?><soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://www.w3.org/2003/05/soap-envelope"><soap12:Body><nfeDadosMsg xmlns="${ns}">${bodyXml}</nfeDadosMsg></soap12:Body></soap12:Envelope>`;
+/** Variante do SOAP: o MDF-e usa outro namespace e elemento (mdfeDadosMsg) e um cabeçalho com a UF e a versão. */
+export interface SoapFlavor { portal: string; element: string; header?: string }
+const NFE_FLAVOR: SoapFlavor = { portal: NS, element: 'nfeDadosMsg' };
+
+export async function soapCall(url: string, op: { operation: string; method: string }, bodyXml: string, id: Mtls, timeoutMs = 30_000, flavor: SoapFlavor = NFE_FLAVOR): Promise<SoapReply> {
+  const ns = `${flavor.portal}/wsdl/${op.operation}`;
+  const header = flavor.header ? `<soap12:Header>${flavor.header.replace('{NS}', ns)}</soap12:Header>` : '';
+  const envelope = `<?xml version="1.0" encoding="utf-8"?><soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">${header}<soap12:Body><${flavor.element} xmlns="${ns}">${bodyXml}</${flavor.element}></soap12:Body></soap12:Envelope>`;
   const u = new URL(target(url));
   const agent = new https.Agent({ key: id.keyPem, cert: id.certPem, ca: caList(), minVersion: 'TLSv1.2', rejectUnauthorized: true, keepAlive: false });
   return new Promise<SoapReply>((resolve, reject) => {

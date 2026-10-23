@@ -395,6 +395,57 @@ describe('Emissão direta na SEFAZ (MG) com servidor de teste: NF-e, NFC-e, canc
     });
   });
 
+  describe('NF-e de devolução de venda', () => {
+    const ship = async (o: string) => { for (const to of ['PICKING', 'PACKED', 'SHIPPED']) { await A.owner.post(`/api/sales/orders/${o}/advance`).set(H).send({ to }).expect(200); } };
+
+    it('prepara a devolução a partir da devolução registrada: entrada própria, finNFe 4, CFOP de devolução, nota original referenciada', async () => {
+      const o = await order(A, 'NFE');
+      const p = (await prepare(A, o).expect(200)).body;
+      await transmit(A, p.id).expect(200);
+      const original = await doc(A, p.id);
+      await ship(o);
+      const d = (await A.owner.get(`/api/sales/orders/${o}`).expect(200)).body;
+      await A.owner.post(`/api/sales/orders/${o}/returns`).set(H).send({ reason: 'produto errado', restock: true, items: [{ orderItemId: d.items[0].id, quantity: 2 }] }).expect(201);
+      const list = (await A.fiscal.get('/api/fiscal/outgoing/returnable').expect(200)).body;
+      const row = list.find((r: any) => r.orderNumber === d.number);
+      expect(row).toMatchObject({ blocked: null, items: [{ quantity: 2 }] });
+      expect(row.original.id).toBe(p.id);
+
+      const r = (await A.fiscal.post('/api/fiscal/outgoing/prepare-return').set(H).send({ returnId: row.returnId }).expect(200)).body;
+      const rd = await doc(A, r.id);
+      expect(rd).toMatchObject({ purpose: 'RETURN_SALE', refDocumentId: p.id, model: '55', returnId: row.returnId });
+      expect(Number(rd.totalInvoice)).toBeCloseTo(2 * Number(original.items[0].unitValue), 2);
+      expect(rd.items[0].cfop).toMatch(/^[12]\d{3}$/); // CFOP de entrada
+      // duas vezes não
+      await A.fiscal.post('/api/fiscal/outgoing/prepare-return').set(H).send({ returnId: row.returnId }).expect(409);
+      expect((await A.fiscal.get('/api/fiscal/outgoing/returnable').expect(200)).body.find((x: any) => x.returnId === row.returnId)).toBeUndefined();
+
+      expect([rd.status, codes(rd, 'BLOCKING')]).toEqual(['READY_TO_TRANSMIT', []]);
+      sefaz.calls.length = 0;
+      await transmit(A, r.id).expect(200);
+      const call = posts()[0];
+      expect(call.xmlValid).toBe(true);
+      expect(call.sigValid).toBe(true);
+      expect(call.body).toContain('<finNFe>4</finNFe>');
+      expect(call.body).toContain('<tpNF>0</tpNF>');
+      expect(call.body).toContain(`<NFref><refNFe>${original.accessKey}</refNFe></NFref>`);
+      expect(call.body).toContain('<natOp>DEVOLUCAO DE VENDA</natOp>');
+      expect(call.body).toContain('<tPag>90</tPag>');
+      expect(call.body).toMatch(/<CFOP>[12]\d{3}<\/CFOP>/);
+    });
+
+    it('sem nota original autorizada, devolução de pedido sem nota e CFOP desconhecido não geram a devolução fiscal', async () => {
+      const o = await order(A, 'NFE'); // pedido sem nota emitida
+      await ship(o);
+      const d = (await A.owner.get(`/api/sales/orders/${o}`).expect(200)).body;
+      const ret = (await A.owner.post(`/api/sales/orders/${o}/returns`).set(H).send({ reason: 'avaria', restock: false, items: [{ orderItemId: d.items[0].id, quantity: 1 }] }).expect(201)).body;
+      await A.fiscal.post('/api/fiscal/outgoing/prepare-return').set(H).send({ returnId: ret.id }).expect(409);
+      const row = (await A.fiscal.get('/api/fiscal/outgoing/returnable').expect(200)).body.find((x: any) => x.returnId === ret.id);
+      expect(row.blocked).toMatch(/ainda não foi autorizada/);
+      await A.fiscal.post('/api/fiscal/outgoing/prepare-return').set(H).send({ returnId: '00000000-0000-0000-0000-000000000000' }).expect(404);
+    });
+  });
+
   describe('NFC-e (modelo 65)', () => {
     it('exige CSC; com CSC gera o QR Code (versão 2.00), assina depois do infNFeSupl e autoriza', async () => {
       const T = await setup('sdN');

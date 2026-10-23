@@ -8,7 +8,7 @@ import { brl, dateBr } from '@/lib/format';
 import { useSession } from '@/lib/session';
 
 type Tab = 'veiculos' | 'custos' | 'resumo';
-interface Vehicle { id: string; plate: string; description: string; kind: string; capacityKg: number | null; active: boolean; routes: number; notes: string | null }
+interface Vehicle { id: string; plate: string; description: string; kind: string; capacityKg: number | null; tareKg: number | null; plateUf: string | null; renavam: string | null; bodyCode: string; active: boolean; routes: number; notes: string | null }
 interface Cost { id: string; plate: string; kind: string; kindLabel: string; amount: string; date: string; note: string | null; routeId: string | null }
 interface Summary {
   from: string; to: string; basis: string; kinds: Record<string, string>;
@@ -43,7 +43,7 @@ function Vehicles({ manage }: { manage: boolean }) {
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault(); const form = e.currentTarget; const f = new FormData(form); setError('');
     try {
-      await api('/fleet/vehicles', 'POST', { plate: String(f.get('plate')), description: String(f.get('description')), kind: String(f.get('kind')), capacityKg: f.get('capacity') ? Number(f.get('capacity')) : undefined });
+      await api('/fleet/vehicles', 'POST', { plate: String(f.get('plate')), description: String(f.get('description')), kind: String(f.get('kind')), capacityKg: f.get('capacity') ? Number(f.get('capacity')) : undefined, tareKg: f.get('tare') ? Number(f.get('tare')) : undefined, plateUf: String(f.get('plateUf') || '') || undefined, renavam: String(f.get('renavam') || '') || undefined, bodyCode: String(f.get('bodyCode') || '00') });
       form.reset(); ui.toast.ok('Veículo cadastrado.'); load();
     } catch (err) { setError((err as Error).message); }
   }
@@ -58,6 +58,10 @@ function Vehicles({ manage }: { manage: boolean }) {
             <div><label htmlFor="v-d">Descrição *</label><input id="v-d" name="description" required maxLength={100} placeholder="Ex.: Fiorino branca" /></div>
             <div><label htmlFor="v-k">Tipo</label><select id="v-k" name="kind" defaultValue="VAN">{Object.entries(VKIND).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
             <div><label htmlFor="v-c">Capacidade de carga (kg)</label><input id="v-c" name="capacity" inputMode="numeric" placeholder="Ex.: 650" /></div>
+            <div><label htmlFor="v-t">Tara (kg) — MDF-e</label><input id="v-t" name="tare" inputMode="numeric" placeholder="Peso do veículo vazio" /></div>
+            <div><label htmlFor="v-u">UF da placa — MDF-e</label><input id="v-u" name="plateUf" maxLength={2} placeholder="MG" style={{ textTransform: 'uppercase' }} /></div>
+            <div><label htmlFor="v-r">RENAVAM (opcional)</label><input id="v-r" name="renavam" inputMode="numeric" maxLength={11} /></div>
+            <div><label htmlFor="v-b">Carroceria — MDF-e</label><select id="v-b" name="bodyCode" defaultValue="00"><option value="00">Não aplicável</option><option value="01">Aberta</option><option value="02">Fechada / baú</option><option value="03">Graneleira</option><option value="04">Porta-contêiner</option><option value="05">Sider</option></select></div>
           </div>
           <div className="row" style={{ marginTop: 12 }}><button className="btn primary"><Plus aria-hidden />Cadastrar veículo</button></div>
         </form>
@@ -67,12 +71,12 @@ function Vehicles({ manage }: { manage: boolean }) {
         {rows && rows.length === 0 && <EmptyState icon={<Truck size={22} />} title="Nenhum veículo cadastrado">Cadastre os veículos para conferir o peso de cada viagem e lançar os custos.</EmptyState>}
         {rows && rows.length > 0 && (
           <div className="table-wrap"><table>
-            <thead><tr><th>Placa</th><th>Descrição</th><th>Tipo</th><th className="num">Capacidade</th><th className="num">Viagens</th><th>Situação</th><th /></tr></thead>
+            <thead><tr><th>Placa</th><th>Descrição</th><th>Tipo</th><th className="num">Capacidade</th><th>MDF-e</th><th className="num">Viagens</th><th>Situação</th><th /></tr></thead>
             <tbody>{rows.map((v) => (
               <tr key={v.id} style={v.active ? undefined : { opacity: 0.55 }}>
-                <td className="mono"><strong>{v.plate}</strong></td><td>{v.description}</td><td>{VKIND[v.kind] ?? v.kind}</td><td className="num">{v.capacityKg ? `${v.capacityKg} kg` : '—'}</td><td className="num">{v.routes}</td>
+                <td className="mono"><strong>{v.plate}</strong></td><td>{v.description}</td><td>{VKIND[v.kind] ?? v.kind}</td><td className="num">{v.capacityKg ? `${v.capacityKg} kg` : '—'}</td><td>{v.tareKg && v.plateUf ? <span className="badge ok">{v.tareKg} kg · {v.plateUf}</span> : <span className="badge warn">falta tara/UF</span>}</td><td className="num">{v.routes}</td>
                 <td><span className={`badge ${v.active ? 'ok' : ''}`}>{v.active ? 'Ativo' : 'Inativo'}</span></td>
-                <td>{manage && <button className="btn sm" onClick={async () => { try { await api(`/fleet/vehicles/${v.id}`, 'PUT', { active: !v.active }); load(); } catch (e) { ui.toast.error((e as Error).message); } }}>{v.active ? 'Desativar' : 'Ativar'}</button>}</td>
+                <td>{manage && <button className="btn sm" onClick={async () => { const x = await ui.form({ title: `Dados do MDF-e — ${v.plate}`, confirmLabel: 'Salvar', fields: [{ name: 'tare', label: 'Tara (kg)', defaultValue: v.tareKg ? String(v.tareKg) : '' }, { name: 'uf', label: 'UF da placa', defaultValue: v.plateUf ?? '' }, { name: 'renavam', label: 'RENAVAM (opcional)', defaultValue: v.renavam ?? '' }] }); if (!x) return; try { await api(`/fleet/vehicles/${v.id}`, 'PUT', { ...(x.tare ? { tareKg: Number(x.tare) } : {}), ...(x.uf ? { plateUf: String(x.uf) } : {}), ...(x.renavam ? { renavam: String(x.renavam) } : {}) }); ui.toast.ok('Dados salvos.'); load(); } catch (e) { ui.toast.error((e as Error).message); } }}>MDF-e</button>}{manage && <button className="btn sm" onClick={async () => { try { await api(`/fleet/vehicles/${v.id}`, 'PUT', { active: !v.active }); load(); } catch (e) { ui.toast.error((e as Error).message); } }}>{v.active ? 'Desativar' : 'Ativar'}</button>}</td>
               </tr>
             ))}</tbody>
           </table></div>

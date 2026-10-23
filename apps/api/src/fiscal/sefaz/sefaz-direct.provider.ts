@@ -31,7 +31,7 @@ export function toNfeInput(doc: OutgoingDocument, ctx: ProviderCtx): NfeInput {
   const is65 = doc.model === '65';
   const qr = is65 ? NFCE_QRCODE[ctx.uf as Uf]?.[ctx.environment] : undefined;
   return {
-    model: doc.model, environment: ctx.environment, chave: doc.accessKey, natOp: is65 ? 'VENDA AO CONSUMIDOR' : 'VENDA DE MERCADORIA', issuedAt: doc.issuedAt,
+    model: doc.model, environment: ctx.environment, chave: doc.accessKey, natOp: doc.returnOf?.length ? 'DEVOLUCAO DE VENDA' : is65 ? 'VENDA AO CONSUMIDOR' : 'VENDA DE MERCADORIA', issuedAt: doc.issuedAt,
     idDest: is65 ? 1 : doc.destination, indFinal: is65 || doc.finalConsumer ? 1 : 0, indPres: is65 ? (doc.presence === 'COUNTER' ? 1 : 4) : PRES[doc.presence], cMunFG: e.cMun,
     emitter: { cnpj: e.cnpj, name: e.name, tradeName: e.tradeName, ie: e.ie, crt: e.regime, cnae: e.cnae, street: e.street, number: e.number, district: e.district, cMun: e.cMun, city: e.city, uf: e.uf, zip: e.zip },
     recipient: r && (rdoc || !is65)
@@ -43,7 +43,7 @@ export function toNfeInput(doc: OutgoingDocument, ctx: ProviderCtx): NfeInput {
       pis: { cst: i.pisCst ?? '', base: i.tax?.pis.base, rate: i.tax?.pis.rate, amount: i.tax?.pis.amount },
       cofins: { cst: i.cofinsCst ?? '', base: i.tax?.cofins.base, rate: i.tax?.cofins.rate, amount: i.tax?.cofins.amount },
     })),
-    freight: doc.totals.freight, payments: doc.payments.map((p) => ({ tPag: PAYMENT_CODE[p.method] ?? '99', vPag: p.amount })), additionalInfo: doc.additionalInfo, procVersion: 'DistribuiHub 1.0',
+    freight: doc.totals.freight, payments: doc.returnOf?.length ? [{ tPag: '90', vPag: 0 }] : doc.payments.map((p) => ({ tPag: PAYMENT_CODE[p.method] ?? '99', vPag: p.amount })), returnOf: doc.returnOf, additionalInfo: doc.additionalInfo, procVersion: 'DistribuiHub 1.0',
     ...(qr && ctx.csc ? { qr: { url: qr.qrCodeUrl, cscId: ctx.csc.id, csc: ctx.csc.token, consultaChaveUrl: qr.consultaChaveUrl } } : {}),
   };
 }
@@ -72,7 +72,7 @@ export class SefazDirectProvider implements FiscalProvider {
       if (!NFCE_QRCODE[ctx.uf as Uf]) out.push({ code: 'SEFAZ_QRCODE', message: `Endereços do QR Code da NFC-e de ${ctx.uf} não verificados.` });
       if (!ctx.csc) out.push({ code: 'SEFAZ_CSC', message: 'CSC da NFC-e não configurado para este ambiente (código e identificador, obtidos no portal da SEFAZ).' });
     }
-    if (!doc.payments.length) out.push({ code: 'SEFAZ_PAYMENT', message: 'Informe a forma de pagamento.' });
+    if (!doc.payments.length && !doc.returnOf?.length) out.push({ code: 'SEFAZ_PAYMENT', message: 'Informe a forma de pagamento.' });
     if (out.length) return out;
     // Ensaio completo: monta, assina e valida no XSD com um número de teste (nada é enviado).
     try {

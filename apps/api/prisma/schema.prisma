@@ -1282,6 +1282,10 @@ model FiscalDocument {
   purchaseOrderId String?   @map("purchase_order_id") @db.Uuid
   receiptId       String?   @map("receipt_id") @db.Uuid
   salesOrderId    String?   @map("sales_order_id") @db.Uuid
+  /// NORMAL | RETURN_SALE (NF-e de devolução de venda: entrada própria, finNFe 4, referencia a nota original).
+  purpose         String    @default("NORMAL")
+  refDocumentId   String?   @map("ref_document_id") @db.Uuid
+  returnId        String?   @map("return_id") @db.Uuid
   /** NFC-e dividida pelo limite de valor do cupom: "cupom N de M" do mesmo pedido. */
   splitIndex      Int?      @map("split_index")
   splitTotal      Int?      @map("split_total")
@@ -1791,6 +1795,7 @@ model Driver {
   phone     String?
   vehicle   String?
   plate     String?
+  cpf       String?
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -2225,12 +2230,19 @@ model Vehicle {
   description String
   kind        String   @default("VAN") // MOTORCYCLE | VAN | TRUCK | OTHER
   capacityKg  Int?     @map("capacity_kg")
+  /// Dados exigidos pelo MDF-e rodoviário.
+  tareKg      Int?     @map("tare_kg")
+  plateUf     String?  @map("plate_uf") @db.Char(2)
+  renavam     String?
+  /// Tipo de carroceria (tpCar): 00 não aplicável, 01 aberta, 02 fechada/baú, 03 graneleira, 04 porta-contêiner, 05 sider.
+  bodyCode    String   @default("00") @map("body_code")
   active      Boolean  @default(true)
   notes       String?
   createdAt   DateTime @default(now()) @map("created_at")
 
   routes DeliveryRoute[]
   costs  FleetCost[]
+  mdfes  MdfeDocument[]
 
   @@unique([tenantId, plate])
   @@unique([tenantId, id])
@@ -2277,4 +2289,39 @@ model FiscalEvent {
 
   @@index([tenantId, documentId, tpEvento, seq])
   @@map("fiscal_events")
+}
+
+/// MDF-e (Manifesto Eletrônico de Documentos Fiscais, modal rodoviário) de uma viagem. O XML autorizado é a prova; o resto é cópia para consulta.
+model MdfeDocument {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  routeId         String    @map("route_id") @db.Uuid
+  vehicleId       String?   @map("vehicle_id") @db.Uuid
+  establishmentId String    @map("establishment_id") @db.Uuid
+  status          String    @default("DRAFT") // DRAFT | TRANSMITTING | PENDING_CONSULT | AUTHORIZED | REJECTED | CLOSED | CANCELLED
+  environment     String    @default("HOMOLOGACAO")
+  series          Int?
+  number          Int?
+  accessKey       String?   @map("access_key")
+  issuedAt        DateTime? @map("issued_at")
+  protocol        String?
+  closeProtocol   String?   @map("close_protocol")
+  cancelProtocol  String?   @map("cancel_protocol")
+  statusCode      String?   @map("status_code")
+  statusMessage   String?   @map("status_message")
+  payload         Json      @default("{}")
+  issues          Json      @default("[]")
+  signedXml       String?   @map("signed_xml")
+  authorizedXml   String?   @map("authorized_xml")
+  createdById     String?   @map("created_by_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  vehicle Vehicle? @relation(fields: [tenantId, vehicleId], references: [tenantId, id])
+
+  @@unique([tenantId, accessKey])
+  @@unique([tenantId, id])
+  @@index([tenantId, routeId])
+  @@index([tenantId, status])
+  @@map("mdfe_documents")
 }

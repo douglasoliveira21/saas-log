@@ -34,6 +34,7 @@ import { OrderImportService } from './integrations/order-import.service';
 import { ChannelCatalogService } from './integrations/channel-catalog.service';
 import { FiscalConfigService } from './fiscal/fiscal-config.service';
 import { FiscalController } from './fiscal/fiscal.controller';
+import { MdfeController, MdfeService } from './fiscal/mdfe/mdfe.service';
 import { FiscalInboundService } from './fiscal/fiscal-inbound.service';
 import { FiscalOutgoingService } from './fiscal/fiscal-outgoing.service';
 import { FISCAL_PROVIDER } from './fiscal/fiscal-provider';
@@ -90,7 +91,7 @@ class HealthController {
       skipIf: () => process.env.NODE_ENV === 'test',
     }),
   ],
-  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, SmartPurchasingController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, FinanceController, ReportsController, DeliveryController, DelinquencyController, NegotiationsController, ManagementController, CreditController, QuotesController, WarehouseController, FleetController, OrdersDashboardController, LogisticsController, BillingController, PlatformController, ObservabilityController, LookupController, BrandingController, ProductImagesController, MediaController, ProductQualityController, ChannelProductsController],
+  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, SmartPurchasingController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, MdfeController, FinanceController, ReportsController, DeliveryController, DelinquencyController, NegotiationsController, ManagementController, CreditController, QuotesController, WarehouseController, FleetController, OrdersDashboardController, LogisticsController, BillingController, PlatformController, ObservabilityController, LookupController, BrandingController, ProductImagesController, MediaController, ProductQualityController, ChannelProductsController],
   providers: [
     AuthService,
     StructureService,
@@ -114,6 +115,7 @@ class HealthController {
     FiscalConfigService,
     FiscalInboundService,
     FiscalOutgoingService,
+    MdfeService,
     TaxRulesService,
     FinanceService,
     BankService,

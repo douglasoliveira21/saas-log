@@ -48,3 +48,13 @@ Fontes oficiais consultadas em 22/10/2026: SPED MG — `portalsped.fazenda.mg.go
 
 ## Variáveis
 `FISCAL_SEFAZ_CA_FILE` (cadeia ICP-Brasil, PEM), `FISCAL_SCHEMAS_DIR` (pacote de schemas alternativo), `FISCAL_SEFAZ_POLL_ATTEMPTS`/`FISCAL_SEFAZ_POLL_DELAY_MS` (acompanhamento do recibo), `IBGE_API_BASE`. `FISCAL_SEFAZ_URL_OVERRIDE` existe **só para testes** e é ignorada em produção.
+
+## NF-e de devolução e MDF-e
+
+**NF-e de devolução de venda** (aba Notas de saída → “Devoluções de venda sem NF-e”): a partir da devolução registrada em Vendas, gera NF-e de entrada própria (finNFe 4, tpNF 0, `NFref/refNFe`, CFOP de devolução 1201/1202/1411/2201/…, `tPag 90`). Só na emissão direta e só com a nota original autorizada. A tributação replica a da venda: o contador deve conferir. Validada no XSD e na assinatura contra o servidor de teste; nunca contra a SEFAZ real.
+
+**MDF-e rodoviário (carga própria)** (aba Fiscal → MDF-e; código em `apps/api/src/fiscal/mdfe/`): prepara a partir da viagem (veículo, motorista, NF-e autorizadas dos pedidos), transmite pelo serviço síncrono da SVRS com o certificado A1, consulta, encerra (110112) e cancela (110111). Exige no cadastro: tara e UF da placa do veículo, CPF do motorista, peso dos produtos.
+- Só `tpEmit 2` (prestador de serviço de transporte e CT-e **não** estão cobertos); só NF-e (modelo 55), não NFC-e; sem seguro/CIOT/vale-pedágio.
+- **Nunca foi testado contra a SVRS real.** Os XSD vêm do projeto de código aberto `sped-mdfe` (não do pacote oficial: troque o conteúdo de `mdfe/schemas/` pelo oficial). URLs conferidas na página de serviços do portal; nomes de operação/método e o cabeçalho SOAP `mdfeCabecMsg` foram cruzados apenas com o `sped-mdfe` e podem exigir ajuste na homologação.
+- Se a resposta se perder depois do envio, o MDF-e fica em “Consultar”: nunca reenvia sem consultar (mesma regra da NF-e).
+- Se a sua operação exige MDF-e (e quando encerrar/cancelar) é decisão do contador.

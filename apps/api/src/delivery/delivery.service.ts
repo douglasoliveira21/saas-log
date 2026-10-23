@@ -3,12 +3,13 @@ import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
 import { AuthContext } from '../common/auth';
-import { onlyDigits } from '../common/cnpj';
+import { isValidCpf, onlyDigits } from '../common/cnpj';
 import { readImageInfo } from '../catalog/image';
 import { PrismaService } from '../prisma/prisma.service';
 import { SalesService } from '../sales/sales.service';
 import { SettingsService } from '../settings/settings.service';
 import { UsersService } from '../users/users.service';
+/** CPF só com dígitos; vazio limpa o campo; inválido é recusado. */function cpfOf(v?: string): string | null {  const d = onlyDigits(v ?? '');  if (!d) return null;  if (!isValidCpf(d)) throw new BadRequestException('CPF inválido.');  return d;}
 
 type Tx = Prisma.TransactionClient;
 
@@ -78,20 +79,20 @@ export class DeliveryService {
   }
 
   /** Cria o acesso (membro com o papel "Motorista") e o cadastro do motorista de uma vez. */
-  async createDriver(ctx: AuthContext, dto: { name: string; email: string; password: string; phone?: string; vehicle?: string; plate?: string }) {
+  async createDriver(ctx: AuthContext, dto: { name: string; email: string; password: string; phone?: string; vehicle?: string; plate?: string; cpf?: string }) {
     const role = await this.prisma.withContext(ctx, (tx) => tx.role.findFirst({ where: { tenantId: ctx.tenantId!, key: 'driver' }, select: { id: true } }));
     if (!role) throw new ConflictException('O papel "Motorista" ainda não existe nesta empresa. Peça ao administrador para sincronizar os papéis do sistema.');
     const member = await this.users.createMember(ctx, { name: dto.name, email: dto.email, password: dto.password, roleId: role.id });
     return this.prisma.withContext(ctx, async (tx) => {
       const d = await tx.driver.create({
-        data: { tenantId: ctx.tenantId!, userId: member.userId, name: dto.name.trim(), phone: dto.phone?.trim() || null, vehicle: dto.vehicle?.trim() || null, plate: dto.plate?.trim().toUpperCase() || null },
+        data: { tenantId: ctx.tenantId!, userId: member.userId, name: dto.name.trim(), phone: dto.phone?.trim() || null, vehicle: dto.vehicle?.trim() || null, plate: dto.plate?.trim().toUpperCase() || null, cpf: cpfOf(dto.cpf) },
       });
       await this.audit.record(tx, ctx, { action: 'delivery.driver_created', entity: 'driver', entityId: d.id, metadata: { name: d.name, plate: d.plate } });
       return d;
     });
   }
 
-  updateDriver(ctx: AuthContext, id: string, dto: { name?: string; phone?: string; vehicle?: string; plate?: string; active?: boolean }) {
+  updateDriver(ctx: AuthContext, id: string, dto: { name?: string; phone?: string; vehicle?: string; plate?: string; cpf?: string; active?: boolean }) {
     return this.prisma.withContext(ctx, async (tx) => {
       const d = await tx.driver.findFirst({ where: { id, tenantId: ctx.tenantId! } });
       if (!d) throw new NotFoundException('Motorista não encontrado.');
@@ -101,7 +102,7 @@ export class DeliveryService {
       }
       const row = await tx.driver.update({
         where: { id },
-        data: { name: dto.name?.trim(), phone: dto.phone?.trim() || (dto.phone === '' ? null : undefined), vehicle: dto.vehicle?.trim() || (dto.vehicle === '' ? null : undefined), plate: dto.plate?.trim().toUpperCase() || (dto.plate === '' ? null : undefined), active: dto.active },
+        data: { name: dto.name?.trim(), phone: dto.phone?.trim() || (dto.phone === '' ? null : undefined), vehicle: dto.vehicle?.trim() || (dto.vehicle === '' ? null : undefined), plate: dto.plate?.trim().toUpperCase() || (dto.plate === '' ? null : undefined), cpf: dto.cpf === undefined ? undefined : cpfOf(dto.cpf), active: dto.active },
       });
       await this.audit.record(tx, ctx, { action: 'delivery.driver_updated', entity: 'driver', entityId: id, metadata: { fields: Object.keys(dto) } });
       return row;

@@ -9,7 +9,7 @@ import { routeMapUrl } from '@/lib/maps';
 import { useSession } from '@/lib/session';
 import { RouteFleetCard } from './fleet-card';
 
-interface Driver { id: string; name: string; phone: string | null; vehicle: string | null; plate: string | null; active: boolean; openRoutes: number }
+interface Driver { id: string; name: string; phone: string | null; vehicle: string | null; plate: string | null; cpf: string | null; active: boolean; openRoutes: number }
 interface Eligible { id: string; number: number; status: string; total: string; customerName: string; customerPhone: string | null; address: string; zipCode: string | null; city: string | null; state: string | null; addressComplete: boolean; dispatchDate: string | null }
 interface Stop {
   id: string; sequence: number; status: 'PENDING' | 'DELIVERED' | 'FAILED' | 'CANCELLED'; salesOrderId: string; customerName: string; customerPhone: string | null; address: string;
@@ -126,6 +126,7 @@ export default function RotasPage() {
                 <div><label htmlFor="dt">Telefone</label><input id="dt" name="phone" inputMode="tel" /></div>
                 <div><label htmlFor="dv">Veículo</label><input id="dv" name="vehicle" placeholder="Ex.: Fiorino" /></div>
                 <div><label htmlFor="dl">Placa</label><input id="dl" name="plate" maxLength={10} /></div>
+                <div><label htmlFor="dc">CPF (exigido no MDF-e)</label><input id="dc" name="cpf" inputMode="numeric" maxLength={14} placeholder="000.000.000-00" /></div>
               </div>
               <div className="row" style={{ marginTop: 12 }}><button className="btn primary" disabled={busy}>Cadastrar</button><button type="button" className="btn" onClick={() => setPanel(null)}>Cancelar</button></div>
             </form>
@@ -133,12 +134,12 @@ export default function RotasPage() {
           <section className="card">
             {drivers.length === 0 ? <EmptyState title="Nenhum motorista cadastrado">Cadastre os motoristas para montar rotas.</EmptyState> : (
               <div className="table-wrap"><table>
-                <thead><tr><th>Motorista</th><th>Telefone</th><th>Veículo</th><th>Rotas em aberto</th><th>Situação</th><th /></tr></thead>
+                <thead><tr><th>Motorista</th><th>Telefone</th><th>Veículo</th><th>CPF</th><th>Rotas em aberto</th><th>Situação</th><th /></tr></thead>
                 <tbody>{drivers.map((d) => (
                   <tr key={d.id} style={d.active ? undefined : { opacity: 0.55 }}>
-                    <td>{d.name}</td><td>{d.phone ? formatPhone(d.phone) : '—'}</td><td>{[d.vehicle, d.plate].filter(Boolean).join(' · ') || '—'}</td><td className="num">{d.openRoutes}</td>
+                    <td>{d.name}</td><td>{d.phone ? formatPhone(d.phone) : '—'}</td><td>{[d.vehicle, d.plate].filter(Boolean).join(' · ') || '—'}</td><td>{d.cpf ? `***.${d.cpf.slice(3, 6)}.${d.cpf.slice(6, 9)}-**` : <span className="badge warn">falta</span>}</td><td className="num">{d.openRoutes}</td>
                     <td><span className={`badge ${d.active ? 'ok' : ''}`}>{d.active ? 'Ativo' : 'Inativo'}</span></td>
-                    <td className="actions">{manage && <button className="btn sm" disabled={busy} onClick={() => act(() => api(`/delivery/drivers/${d.id}`, 'PUT', { active: !d.active }), d.active ? 'Motorista inativado.' : 'Motorista reativado.')}>{d.active ? 'Inativar' : 'Reativar'}</button>}</td>
+                    <td className="actions">{manage && <button className="btn sm" disabled={busy} onClick={async () => { const c = await ui.prompt({ title: `CPF de ${d.name}`, label: 'CPF (11 dígitos)', defaultValue: d.cpf ?? '', confirmLabel: 'Salvar' }); if (c !== null) void act(() => api(`/delivery/drivers/${d.id}`, 'PUT', { cpf: c }), 'CPF salvo.'); }}>CPF</button>}{manage && <button className="btn sm" disabled={busy} onClick={() => act(() => api(`/delivery/drivers/${d.id}`, 'PUT', { active: !d.active }), d.active ? 'Motorista inativado.' : 'Motorista reativado.')}>{d.active ? 'Inativar' : 'Reativar'}</button>}</td>
                   </tr>
                 ))}</tbody>
               </table></div>
