@@ -576,3 +576,45 @@ th[aria-sort] .sort { opacity: 1; color: var(--brand); }
 :root[data-theme='dark'] .tile.t-blue { --tile: #2d6fd1; } :root[data-theme='dark'] .tile.t-orange { --tile: #cf6414; } :root[data-theme='dark'] .tile.t-teal { --tile: #148a80; } :root[data-theme='dark'] .tile.t-green { --tile: #1b9a4a; } :root[data-theme='dark'] .tile.t-violet { --tile: #7c3aed; } :root[data-theme='dark'] .tile.t-slate { --tile: #5b6779; }
 @media (max-width: 860px) { .tiles { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; } .back-home span.hide-sm { display: none; } }
 @media (prefers-reduced-motion: reduce) { .tile { transition: none; } .tile:hover { transform: none; } }
+
+/* ─────────── cartões de indicador (Magic UI) ─────────── */
+.kpi-card { border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); transition: transform .15s, box-shadow .15s; }
+.kpi-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.stat.kpi { padding: 16px 18px; }
+@media (prefers-reduced-motion: reduce) { .kpi-card, .kpi-card:hover { transition: none; transform: none; } }
+
+/* ─────────── faixa de abertura do dashboard (Magic UI) ─────────── */
+.hero { --hero-a: #3050d8; --hero-b: #1b2a86; position: relative; overflow: hidden; border-radius: var(--radius-lg); padding: 24px 26px 22px; margin-bottom: 18px; color: #fff; background: radial-gradient(120% 140% at 0% 0%, var(--hero-a) 0%, var(--hero-b) 70%); box-shadow: var(--shadow); }
+:root[data-theme='dark'] .hero { --hero-a: #2a3d9c; --hero-b: #0f1740; }
+.hero .hero-dots { position: absolute; inset: 0; width: 100%; height: 100%; color: rgba(255,255,255,.22); -webkit-mask-image: radial-gradient(420px circle at 100% 0%, #000, transparent 75%); mask-image: radial-gradient(420px circle at 100% 0%, #000, transparent 75%); pointer-events: none; }
+.hero-body { position: relative; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.hero-kicker { margin: 0 0 4px; font-size: .78rem; text-transform: uppercase; letter-spacing: .09em; opacity: .8; }
+.hero h1 { color: #fff; font-size: 1.75rem; margin: 0; }
+.hero-sub { margin: 4px 0 0; opacity: .85; font-size: .94rem; }
+.hero-cta { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.35); color: #fff; padding: 8px 14px; border-radius: 99px; font-weight: 600; font-size: .88rem; text-decoration: none; backdrop-filter: blur(4px); }
+.hero-cta:hover { background: rgba(255,255,255,.26); text-decoration: none; color: #fff; }
+.hero-cta svg { width: 16px; height: 16px; }
+.hero-kpis { position: relative; display: grid; grid-template-columns: 1.6fr repeat(4, 1fr); gap: 12px; margin-top: 20px; }
+.hero-kpi { background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2); border-radius: 12px; padding: 12px 14px; backdrop-filter: blur(6px); min-width: 0; }
+.hero-kpi > span { display: block; font-size: .76rem; opacity: .85; margin-bottom: 2px; }
+.hero-kpi strong { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hero-kpi.big strong { font-size: 1.9rem; }
+.hero-kpi.alert { background: rgba(255, 120, 100, .22); border-color: rgba(255, 180, 160, .55); }
+.hero-ticker { color: inherit; }
+.check-ring { display: flex; align-items: center; gap: 16px; margin: 4px 0 10px; }
+@media (max-width: 960px) { .hero-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hero-kpi.big { grid-column: 1 / -1; } }
+@media (max-width: 480px) { .hero { padding: 18px 16px; } .hero h1 { font-size: 1.4rem; } .hero-kpi strong { font-size: 1.1rem; } .hero-kpi.big strong { font-size: 1.5rem; } }
+
+.chart-card { border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+.chart-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.chart-in { padding: 16px 18px; }
+.chart-in h3 { margin-bottom: 10px; }
+.kpi-card { position: relative; }
+.kpi-card::after { content: ''; position: absolute; left: 14px; right: 14px; top: 0; height: 3px; border-radius: 0 0 4px 4px; background: linear-gradient(90deg, var(--brand), var(--info)); opacity: .85; z-index: 50; pointer-events: none; }
+.kpi-card:has(.stat.warn)::after { background: linear-gradient(90deg, var(--warn), var(--danger)); }
+.kpi-card:has(.stat.danger)::after { background: linear-gradient(90deg, var(--danger), var(--warn)); }
+.kpi-card:has(.stat.ok)::after { background: linear-gradient(90deg, var(--ok), var(--info)); }
+.stat .stat-ico { background: linear-gradient(135deg, var(--brand-soft), color-mix(in srgb, var(--brand) 22%, var(--surface))); }
+.stat.warn .stat-ico { background: linear-gradient(135deg, var(--warn-soft), color-mix(in srgb, var(--warn) 25%, var(--surface))); }
+.stat.danger .stat-ico { background: linear-gradient(135deg, var(--danger-soft), color-mix(in srgb, var(--danger) 25%, var(--surface))); }
+.stat.ok .stat-ico { background: linear-gradient(135deg, var(--ok-soft), color-mix(in srgb, var(--ok) 25%, var(--surface))); }

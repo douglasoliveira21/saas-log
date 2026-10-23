@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { BRAND } from '@/lib/brand';
 import { UiProvider } from '@/components/ui';
+import './tailwind.css';
 import './globals.css';
 
 export const metadata: Metadata = { title: BRAND.name, description: 'ERP SaaS para distribuidoras' };

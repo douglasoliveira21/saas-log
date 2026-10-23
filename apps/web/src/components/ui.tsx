@@ -1,5 +1,6 @@
 'use client';
 
+import { KpiCard } from '@/components/kpi-card';
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, Info, Inbox, X, XCircle } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 
@@ -166,14 +167,8 @@ export function Skeleton({ rows = 4 }: { rows?: number }) {
   return <div aria-busy="true" aria-label="Carregando">{Array.from({ length: rows }, (_, i) => <span key={i} className="skeleton row-h" />)}</div>;
 }
 
-export function StatCard({ label, value, icon, hint, tone }: { label: string; value: ReactNode; icon?: ReactNode; hint?: ReactNode; tone?: 'ok' | 'warn' | 'danger' }) {
-  return (
-    <div className={`card stat ${tone ?? ''}`}>
-      <div className="label"><span>{label}</span>{icon && <span className="stat-ico" aria-hidden>{icon}</span>}</div>
-      <div className="n">{value}</div>
-      {hint && <div className="hint">{hint}</div>}
-    </div>
-  );
+export function StatCard(props: { label: string; value: ReactNode; icon?: ReactNode; hint?: ReactNode; tone?: 'ok' | 'warn' | 'danger' }) {
+  return <KpiCard {...props} />;
 }
 
 export function Alert({ kind, children }: { kind: 'error' | 'ok' | 'warn' | 'info'; children: ReactNode }) {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { MagicCard } from '@/components/magicui/magic-card';
 import { Alert } from '@/components/ui';
 import { api } from '@/lib/api';
 import { brl } from '@/lib/format';
@@ -88,6 +89,14 @@ function PieChart({ data, label }: { data: Bar[]; label: string }) {
   );
 }
 
+function ChartCard({ title, children, wide = false }: { title: string; children: React.ReactNode; wide?: boolean }) {
+  return (
+    <MagicCard className="chart-card" gradientColor="var(--brand-soft)" gradientFrom="var(--brand)" gradientTo="var(--info)" gradientOpacity={0.55} gradientSize={260}>
+      <div className="chart-in" style={wide ? undefined : undefined}><h3>{title}</h3>{children}</div>
+    </MagicCard>
+  );
+}
+
 /** Painel de gráficos de venda do dashboard: clientes que mais compraram, produtos mais vendidos e ranking de vendedores. */
 export function SalesCharts() {
   const [days, setDays] = useState<number>(30);
@@ -107,10 +116,10 @@ export function SalesCharts() {
       {data && data.orders > 0 && (
         <>
           <p className="muted" style={{ margin: '0 0 8px' }}>{brl(data.totalSold)} em {data.orders} pedido(s). {data.basis}</p>
-          <div className="grid cols-2" style={{ alignItems: 'start' }}>
-            <div className="card"><h3>Clientes com maior valor em vendas</h3><BarChart data={data.topCustomers} label="Clientes com maior valor em vendas" unit="Posição no ranking (passe o mouse na barra para ver o cliente) · valores em R$" /></div>
-            <div className="card"><h3>Produtos com maior venda</h3><PieChart data={data.topProducts} label="Produtos com maior venda, em pizza" /></div>
-            <div className="card" style={{ gridColumn: '1 / -1' }}><h3>Ranking de vendas por vendedor</h3><BarChart data={data.bySalesperson} label="Ranking de vendas por vendedor" wide unit="Posição no ranking (passe o mouse na barra para ver o vendedor) · valores em R$" /></div>
+          <div className="grid cols-2 charts-grid" style={{ alignItems: 'start' }}>
+            <ChartCard title="Clientes com maior valor em vendas"><BarChart data={data.topCustomers} label="Clientes com maior valor em vendas" unit="Posição no ranking (passe o mouse na barra para ver o cliente) · valores em R$" /></ChartCard>
+            <ChartCard title="Produtos com maior venda"><PieChart data={data.topProducts} label="Produtos com maior venda, em pizza" /></ChartCard>
+            <ChartCard title="Ranking de vendas por vendedor" wide><BarChart data={data.bySalesperson} label="Ranking de vendas por vendedor" wide unit="Posição no ranking (passe o mouse na barra para ver o vendedor) · valores em R$" /></ChartCard>
           </div>
           <details style={{ marginTop: 8 }}><summary className="muted">Ver como tabela</summary>
             <div className="table-wrap"><table><thead><tr><th>Cliente</th><th className="num">Vendido</th><th>Vendedor</th><th className="num">Vendido</th></tr></thead>

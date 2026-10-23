@@ -8,11 +8,18 @@
     "start": "next start -p 3000"
   },
   "dependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "lucide-react": "^1.60.0",
+    "motion": "^14.6.0",
     "next": "^16.4.2",
+    "postcss": "^8.5.23",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "simple-icons": "^16.35.0"
+    "simple-icons": "^16.35.0",
+    "tailwind-merge": "^3.7.0",
+    "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

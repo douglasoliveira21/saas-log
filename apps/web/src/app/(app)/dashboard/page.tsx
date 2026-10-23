@@ -4,7 +4,10 @@ import { AlertTriangle, ArrowRight, Boxes, Building2, Check, PackageX, Users, Wa
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Alert, PageHeader, Skeleton, StatCard } from '@/components/ui';
+import { BlurFade } from '@/components/magicui/blur-fade';
+import { AnimatedCircularProgressBar } from '@/components/magicui/animated-circular-progress-bar';
+import { Alert, Skeleton, StatCard } from '@/components/ui';
+import { DashboardHero } from './hero';
 import { api } from '@/lib/api';
 import { brl } from '@/lib/format';
 import { useSession } from '@/lib/session';
@@ -41,25 +44,25 @@ export default function DashboardPage() {
 
   return (
     <>
-      <PageHeader title={`Olá, ${me.user.name.split(' ')[0]}`} description={`Visão geral de ${me.tenant!.name}. Os números vêm do banco de dados em tempo real.`} />
+      <DashboardHero />
       {error && <Alert kind="error">{error}</Alert>}
       {!data && !error && (
         <div className="grid cols-4">{[0, 1, 2, 3].map((i) => <div className="card" key={i}><span className="skeleton" style={{ height: 14, width: '55%', marginBottom: 12 }} /><span className="skeleton" style={{ height: 30, width: '40%' }} /></div>)}</div>
       )}
       {data && (
         <div className="stack">
-          <section aria-label="Estrutura da empresa" className="grid cols-4">
+          <BlurFade delay={0.05}><section aria-label="Estrutura da empresa" className="grid cols-4">
             <StatCard label="Empresas" value={data.counts.companies} icon={<Building2 />} />
             <StatCard label="Estabelecimentos" value={data.counts.establishments} icon={<Warehouse />} />
             <StatCard label="Depósitos" value={data.counts.warehouses} icon={<Boxes />} />
             <StatCard label="Usuários ativos" value={data.counts.users} icon={<Users />} />
-          </section>
+          </section></BlurFade>
 
-          {can('sales.view') && <OrdersPanel />}
-          {can('sales.view') && <SalesCharts />}
+          {can('sales.view') && <BlurFade delay={0.1} inView><OrdersPanel /></BlurFade>}
+          {can('sales.view') && <BlurFade delay={0.1} inView><SalesCharts /></BlurFade>}
 
           {m && (
-            <section aria-label="Estoque">
+            <BlurFade inView><section aria-label="Estoque">
               <div className="card-head"><h2>Estoque</h2><Link href="/estoque" className="btn sm ghost">Ver estoque <ArrowRight /></Link></div>
               <div className="grid cols-4">
                 <StatCard label="Produtos ativos" value={m.products} icon={<Boxes />} />
@@ -68,11 +71,11 @@ export default function DashboardPage() {
                 <StatCard label="Valor em estoque (custo)" value={brl(m.stockValue)} icon={<Wallet />} />
                 {m.fiscalPending > 0 && <StatCard label="Sem NCM (pendência fiscal)" value={m.fiscalPending} tone="warn" icon={<AlertTriangle />} hint="Cadastre o NCM para emitir notas." />}
               </div>
-            </section>
+            </section></BlurFade>
           )}
 
           {fin && (
-            <section aria-label="Financeiro">
+            <BlurFade inView><section aria-label="Financeiro">
               <div className="card-head"><h2>Contas a pagar e a receber</h2><Link href="/financeiro" className="btn sm ghost">Abrir financeiro <ArrowRight /></Link></div>
               <div className="grid cols-4">
                 <StatCard label="A pagar vencido" value={brl(fin.PAYABLE.overdue)} tone={Number(fin.PAYABLE.overdue) > 0 ? 'danger' : undefined} icon={<Wallet />} />
@@ -80,7 +83,7 @@ export default function DashboardPage() {
                 <StatCard label="A receber vencido" value={brl(fin.RECEIVABLE.overdue)} tone={Number(fin.RECEIVABLE.overdue) > 0 ? 'warn' : undefined} icon={<Wallet />} />
                 <StatCard label="A receber em 7 dias" value={brl(fin.RECEIVABLE.next7)} tone="ok" icon={<Wallet />} />
               </div>
-            </section>
+            </section></BlurFade>
           )}
 
           {done < total && (
@@ -89,6 +92,7 @@ export default function DashboardPage() {
                 <h2>Checklist de implantação</h2>
                 <span className="badge brand">{done} de {total}</span>
               </div>
+              <div className="check-ring"><AnimatedCircularProgressBar value={pct} gaugePrimaryColor="var(--brand)" gaugeSecondaryColor="var(--surface-3)" className="size-28 text-xl" /><span className="muted">Falta pouco para a empresa estar pronta para vender.</span></div>
               <div className="progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Progresso da implantação" style={{ marginBottom: 8 }}><span style={{ width: `${pct}%` }} /></div>
               <ul className="checklist">
                 {data.checklist.map((c) => (

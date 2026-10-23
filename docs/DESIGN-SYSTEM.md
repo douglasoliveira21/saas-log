@@ -44,3 +44,12 @@ Telas conferidas no navegador (claro, escuro e 375 px): login, painel, produtos 
 ## Tela "Empresa e estrutura" e logotipo do tenant
 - **Didática:** passo a passo em 3 etapas (empresa → estabelecimento → depósito) que mostra o que já foi feito e o que falta, com a explicação de para que serve cada nível; depois a hierarquia em cartões (empresa > estabelecimentos > depósitos), com os botões de adicionar no nível certo. Formulários abrem em janela (`Dialog`) com seções (Identificação, Dados fiscais, Endereço) e uma frase dizendo por que cada bloco existe.
 - **Logotipo do tenant:** enviado em Empresa e estrutura (PNG/JPG/WebP, até 1 MB; o navegador reduz para no máximo 600 px). Fica em `tenant_branding` (1 por tenant, RLS), é servido por `GET /api/branding/logo` (qualquer membro; só quem gerencia a empresa envia/remove) e aparece no topo do menu lateral **no lugar do nome e do ícone do sistema**. Sem logotipo, o menu mostra a marca do sistema. **SVG é recusado** (pode carregar script); o servidor confere os bytes reais do arquivo, o limite de tamanho e as dimensões. Entrega com CSP restritiva e `nosniff`; envio e remoção são auditados. A versão do logotipo vai no perfil (`tenant.logoVersion`) para o cache atualizar após trocar. Outros usos (login, documentos, relatórios) serão definidos depois.
+
+## Magic UI (animações e cartões de destaque)
+
+Instalado como no guia oficial (shadcn): `apps/web/components.json` com o registro `@magicui`. Componentes em `apps/web/src/components/magicui/` (NumberTicker, MagicCard, BorderBeam, BlurFade, DotPattern, AnimatedCircularProgressBar, ShineBorder, AnimatedGridPattern). Para adicionar mais: `cd apps/web && npx shadcn@latest add @magicui/<nome>`.
+
+- **Tailwind v4 só para eles**, em `src/app/tailwind.css`: sem "preflight" (não reseta o CSS do sistema) e em camadas CSS, então o `globals.css` do sistema sempre vence. As cores do shadcn apontam para as variáveis do sistema (claro/escuro).
+- Ajustes feitos nos arquivos copiados: números em `pt-BR`, sem cor fixa preta/branca no `NumberTicker`, e `MagicCard` usa `@/lib/use-theme` (tema do próprio sistema) em vez do `next-themes`.
+- Uso no sistema: `StatCard` (todas as telas) virou `KpiCard` (brilho que segue o mouse, número que conta, barra de cor por tom); o dashboard ganhou a faixa `DashboardHero` (`BorderBeam` + `DotPattern`), entrada suave (`BlurFade`), gráficos em cartões com brilho e o progresso circular do checklist.
+- Animações respeitam "reduzir movimento" nos nossos estilos; os componentes do Magic UI usam a biblioteca `motion`.
