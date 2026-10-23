@@ -175,6 +175,23 @@ describe('Venda: tabela varejo/atacado, vendedor automático, carteira de client
     await other.patch(`/api/customers/${c.id}`).set(H).send({ city: 'Z' }).expect(404);
   });
 
+  it('impressão do orçamento: dados da empresa, vendedor e logotipo no escopo do usuário', async () => {
+    const c = await customer(ana, 'Cliente Orçamento', { email: 'cliente@x.com', phone: '11988887777' });
+    const q = (await ana.post('/api/quotes').set(H).send({ customerId: c.id, warehouseId: wh, validDays: 10, paymentMethod: 'PIX', notes: 'Entrega em 5 dias', items: [{ productId: P.a, quantity: 4 }] }).expect(201)).body.id as string;
+    const r = (await ana.get(`/api/quotes/${q}/print`).expect(200)).body;
+    expect(r.company).toMatchObject({ name: 'SX Distribuidora', legalName: 'SX LTDA' });
+    expect(r.company.address).toContain('Belo Horizonte');
+    expect(r.salesperson.name).toBe('Ana');
+    expect(r.quote).toMatchObject({ number: expect.any(Number), paymentMethod: 'PIX', notes: 'Entrega em 5 dias' });
+    expect(r.quote.items[0]).toMatchObject({ quantity: 4 });
+    expect(r.quote.customer).toMatchObject({ email: 'cliente@x.com', phone: '11988887777' });
+    expect(r.logo).toMatch(/^data:image\/png;base64,/); // logotipo cadastrado no teste anterior
+    await beto.get(`/api/quotes/${q}/print`).expect(404); // orçamento de outro vendedor
+    await accountant.get(`/api/quotes/${q}/print`).expect(403); // contador não tem acesso a vendas
+    await owner.get(`/api/quotes/${q}/print`).expect(200); // quem enxerga tudo
+    await agent().get(`/api/quotes/${q}/print`).expect(401);
+  });
+
   it('impostos federais: grava por empresa, valida UF/CST/alíquotas, só quem tem permissão altera e outra empresa não vê', async () => {
     const ok = { regime: 'LUCRO_REAL', pisRate: 1.65, cofinsRate: 7.6, scArticle: 'Art. 1º', showTotalTaxes: true, presumedCredit: false, exceededSublimit: false, icmsByUf: [{ uf: 'MG', cst: '00', ratePct: 18 }, { uf: 'SP', cst: '102' }], ibsCbsByUf: [{ uf: 'MG', cst: '000', classification: '000001' }] };
     const before = (await owner.get('/api/fiscal/federal-taxes').expect(200)).body;

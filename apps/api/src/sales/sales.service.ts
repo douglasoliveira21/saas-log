@@ -100,11 +100,18 @@ export class SalesService {
   /** Dados da empresa emitente para o cabeçalho da impressão (estabelecimento do depósito do pedido). */
   printCompany(ctx: AuthContext, id: string) {
     return this.prisma.withContext(ctx, async (tx) => {
-      const o = await tx.salesOrder.findFirst({ where: { id, tenantId: ctx.tenantId!, AND: [await this.scope(tx, ctx)] }, select: { warehouse: { select: { establishment: { select: { name: true, cnpj: true, stateRegistration: true, street: true, number: true, district: true, city: true, state: true, zipCode: true, company: { select: { legalName: true, tradeName: true, cnpj: true, contactPhone: true, contactEmail: true } } } } } } } });
+      const o = await tx.salesOrder.findFirst({ where: { id, tenantId: ctx.tenantId!, AND: [await this.scope(tx, ctx)] }, select: { warehouseId: true } });
       if (!o) throw new NotFoundException('Pedido não encontrado.');
-      const e = o.warehouse.establishment;
-      return { name: e.company.tradeName ?? e.company.legalName, legalName: e.company.legalName, cnpj: e.cnpj ?? e.company.cnpj, stateRegistration: e.stateRegistration, address: [e.street && `${e.street}${e.number ? `, ${e.number}` : ''}`, e.district, e.city && `${e.city}${e.state ? `/${e.state}` : ''}`, e.zipCode].filter(Boolean).join(' · '), phone: e.company.contactPhone, email: e.company.contactEmail };
+      return this.companyOfWarehouse(tx, ctx.tenantId!, o.warehouseId);
     });
+  }
+
+  /** Cabeçalho de documento impresso (venda, orçamento): empresa e endereço do estabelecimento a que o depósito pertence. */
+  async companyOfWarehouse(tx: Tx, tenantId: string, warehouseId: string) {
+    const w = await tx.warehouse.findFirst({ where: { id: warehouseId, tenantId }, select: { establishment: { select: { name: true, cnpj: true, stateRegistration: true, street: true, number: true, district: true, city: true, state: true, zipCode: true, company: { select: { legalName: true, tradeName: true, cnpj: true, contactPhone: true, contactEmail: true } } } } } });
+    if (!w) throw new NotFoundException('Depósito não encontrado.');
+    const e = w.establishment;
+    return { name: e.company.tradeName ?? e.company.legalName, legalName: e.company.legalName, cnpj: e.cnpj ?? e.company.cnpj, stateRegistration: e.stateRegistration, address: [e.street && `${e.street}${e.number ? `, ${e.number}` : ''}`, e.district, e.city && `${e.city}${e.state ? `/${e.state}` : ''}`, e.zipCode].filter(Boolean).join(' · '), phone: e.company.contactPhone, email: e.company.contactEmail };
   }
 
   async assertDocumentOfOrder(ctx: AuthContext, orderId: string, docId: string) {

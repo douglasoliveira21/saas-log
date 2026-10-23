@@ -16,19 +16,14 @@ interface PrintData {
   logo: string | null;
 }
 
-const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+export const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const STATUS: Record<string, string> = { DRAFT: 'Rascunho', PENDING_APPROVAL: 'Aguardando aprovação', CONFIRMED: 'Confirmado', PICKING: 'Em separação', PACKED: 'Embalado', SHIPPED: 'Enviado', DELIVERED: 'Entregue', CLOSED: 'Concluído', CANCELLED: 'Cancelado' };
 const INSTALLMENT: Record<string, string> = { OPEN: 'Em aberto', PARTIAL: 'Parcial', PAID: 'Paga', CANCELLED: 'Cancelada' };
-const cnpjFmt = (v: string | null) => { const d = (v ?? '').replace(/\D/g, ''); return d.length === 14 ? d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') : v ?? ''; };
-const docFmt = (v: string | null) => { const d = (v ?? '').replace(/\D/g, ''); return d.length === 11 ? d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4') : cnpjFmt(v); };
+export const cnpjFmt = (v: string | null) => { const d = (v ?? '').replace(/\D/g, ''); return d.length === 14 ? d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') : v ?? ''; };
+export const docFmt = (v: string | null) => { const d = (v ?? '').replace(/\D/g, ''); return d.length === 11 ? d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4') : cnpjFmt(v); };
 
-export function printHtml(d: PrintData): string {
-  const o = d.order;
-  const disc = Number(o.discountTotal) > 0;
-  const rows = o.items.map((i, k) => `<tr><td class="c">${k + 1}</td><td><b>${esc(i.product.name)}</b><div class="sku">${esc(i.product.sku)}</div></td><td class="r">${i.quantity}</td><td class="r">${esc(brl(i.unitPrice))}</td><td class="r">${Number(i.discountPct) ? `${Number(i.discountPct)}%` : '—'}</td><td class="r"><b>${esc(brl(i.total))}</b></td></tr>`).join('');
-  const inst = o.installments.length ? `<section><h3>Parcelas a receber</h3><table><thead><tr><th>Parcela</th><th>Vencimento</th><th class="r">Valor</th><th>Situação</th></tr></thead><tbody>${o.installments.map((t) => `<tr><td>${t.installmentNo}/${t.installmentTotal}</td><td>${esc(dateBr(t.dueDate))}</td><td class="r">${esc(brl(t.amount))}</td><td>${esc(INSTALLMENT[t.status] ?? t.status)}</td></tr>`).join('')}</tbody></table></section>` : '';
-  const notes = o.fiscalDocuments?.length ? `<section><h3>Documentos fiscais</h3><table><thead><tr><th>Documento</th><th>Número/série</th><th>Situação</th><th>Chave de acesso</th></tr></thead><tbody>${o.fiscalDocuments.map((n) => `<tr><td>${n.model === '65' ? 'NFC-e' : 'NF-e'}</td><td>${n.number ?? '—'}/${n.series ?? '—'}</td><td>${n.status === 'AUTHORIZED' ? 'Autorizada' : esc(n.status)}</td><td class="key">${esc(n.accessKey ?? '—')}</td></tr>`).join('')}</tbody></table></section>` : '';
-  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Venda ${o.number} — ${esc(d.company.name)}</title><style>
+/** Estilo comum dos documentos impressos (venda, orçamento). */
+export const PRINT_CSS = `
 @page{size:A4;margin:14mm}
 *{box-sizing:border-box}
 body{margin:0;font:12px/1.45 'Segoe UI',system-ui,-apple-system,Arial,sans-serif;color:#1b2430;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -60,7 +55,15 @@ tbody tr:nth-child(even) td{background:#f8fafd}
 .note{margin-top:12px;padding:9px 12px;border-left:3px solid #1d4ed8;background:#f4f7fc;color:#445063}
 .foot{margin-top:22px;padding-top:8px;border-top:1px solid #dfe6f2;color:#8591a1;font-size:10px;display:flex;justify-content:space-between}
 .sign{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:34px}.sign div{border-top:1px solid #8591a1;padding-top:4px;text-align:center;color:#6a7686;font-size:10px}
-</style></head><body>
+`;
+
+export function printHtml(d: PrintData): string {
+  const o = d.order;
+  const disc = Number(o.discountTotal) > 0;
+  const rows = o.items.map((i, k) => `<tr><td class="c">${k + 1}</td><td><b>${esc(i.product.name)}</b><div class="sku">${esc(i.product.sku)}</div></td><td class="r">${i.quantity}</td><td class="r">${esc(brl(i.unitPrice))}</td><td class="r">${Number(i.discountPct) ? `${Number(i.discountPct)}%` : '—'}</td><td class="r"><b>${esc(brl(i.total))}</b></td></tr>`).join('');
+  const inst = o.installments.length ? `<section><h3>Parcelas a receber</h3><table><thead><tr><th>Parcela</th><th>Vencimento</th><th class="r">Valor</th><th>Situação</th></tr></thead><tbody>${o.installments.map((t) => `<tr><td>${t.installmentNo}/${t.installmentTotal}</td><td>${esc(dateBr(t.dueDate))}</td><td class="r">${esc(brl(t.amount))}</td><td>${esc(INSTALLMENT[t.status] ?? t.status)}</td></tr>`).join('')}</tbody></table></section>` : '';
+  const notes = o.fiscalDocuments?.length ? `<section><h3>Documentos fiscais</h3><table><thead><tr><th>Documento</th><th>Número/série</th><th>Situação</th><th>Chave de acesso</th></tr></thead><tbody>${o.fiscalDocuments.map((n) => `<tr><td>${n.model === '65' ? 'NFC-e' : 'NF-e'}</td><td>${n.number ?? '—'}/${n.series ?? '—'}</td><td>${n.status === 'AUTHORIZED' ? 'Autorizada' : esc(n.status)}</td><td class="key">${esc(n.accessKey ?? '—')}</td></tr>`).join('')}</tbody></table></section>` : '';
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Venda ${o.number} — ${esc(d.company.name)}</title><style>${PRINT_CSS}</style></head><body>
 <div class="top"><div class="brand">${d.logo ? `<img class="logo" src="${esc(d.logo)}" alt="">` : ''}<div><h1>${esc(d.company.name)}</h1><p>${esc(d.company.legalName !== d.company.name ? d.company.legalName : '')}${d.company.cnpj ? ` · CNPJ ${esc(cnpjFmt(d.company.cnpj))}` : ''}${d.company.stateRegistration ? ` · IE ${esc(d.company.stateRegistration)}` : ''}</p><p>${esc(d.company.address)}</p><p>${esc([d.company.phone, d.company.email].filter(Boolean).join(' · '))}</p></div></div>
 <div class="num"><span class="tag">Pedido de venda</span><div class="n">#${o.number}</div><div class="d">${esc(dateBr(o.createdAt))} · ${esc(STATUS[o.status] ?? o.status)}</div></div></div>
 <div class="cards">

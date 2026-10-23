@@ -4,6 +4,7 @@ import { Type } from 'class-transformer';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsEnum, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { AuditService } from '../audit/audit.service';
 import { AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
+import { BrandingService } from '../branding/branding.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { localToday } from './cutoff';
@@ -95,6 +96,17 @@ export class QuotesService {
     });
   }
 
+  /** Tudo que a impressão do orçamento precisa: o orçamento, a empresa, o vendedor e o logotipo (no escopo do usuário). */
+  async printData(ctx: AuthContext, id: string, logo: () => Promise<string | null>) {
+    const quote = await this.get(ctx, id);
+    const extra = await this.prisma.withContext(ctx, async (tx) => {
+      const q = await tx.quote.findFirstOrThrow({ where: { id, tenantId: ctx.tenantId! }, select: { warehouseId: true, salespersonId: true, createdById: true } });
+      const sp = q.salespersonId ? await tx.salesperson.findFirst({ where: { id: q.salespersonId, tenantId: ctx.tenantId! }, select: { name: true, phone: true, email: true } }) : null;
+      return { company: await this.sales.companyOfWarehouse(tx, ctx.tenantId!, q.warehouseId), salesperson: sp };
+    });
+    return { quote, ...extra, logo: await logo() };
+  }
+
   create(ctx: AuthContext, dto: QuoteDto) {
     return this.prisma.withContext(ctx, async (tx) => {
       const validUntil = this.validUntil(dto);
@@ -164,10 +176,15 @@ export class QuotesService {
 
 @Controller('quotes')
 export class QuotesController {
-  constructor(private readonly svc: QuotesService) {}
+  constructor(private readonly svc: QuotesService, private readonly branding: BrandingService) {}
 
   @Get() @RequirePermissions('sales.view')
   list(@CurrentAuth() ctx: AuthContext, @Query() q: ListQuery) { return this.svc.list(ctx, q); }
+
+  @Get(':id/print') @RequirePermissions('sales.view')
+  print(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.printData(ctx, id, async () => { try { const l = await this.branding.get(ctx); return `data:${l.contentType};base64,${l.content.toString('base64')}`; } catch { return null; } });
+  }
 
   @Get(':id') @RequirePermissions('sales.view')
   get(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.svc.get(ctx, id); }

@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { brl, dateBr } from '@/lib/format';
 import { PAYMENT_LABEL } from '@/lib/order-flow';
 import { useSession } from '@/lib/session';
+import { printQuote } from './print';
 
 interface QuoteRow { id: string; number: number; displayStatus: string; validUntil: string; total: string; createdAt: string; customer: { name: string } }
 interface QuoteDetail extends QuoteRow {
@@ -52,17 +53,8 @@ export default function OrcamentosPage() {
     if (!reason) return;
     try { await api(`/quotes/${d.id}/lost`, 'POST', { reason }); ui.toast.ok('Orçamento marcado como perdido.'); load(); await open(d.id); } catch (e) { setError((e as Error).message); }
   }
-  function print(d: QuoteDetail) {
-    const w = window.open('', '_blank', 'width=900,height=1000');
-    if (!w) { ui.toast.error('Libere pop-ups para imprimir.'); return; }
-    w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Orçamento ${d.number}</title><style>body{font:14px system-ui,sans-serif;margin:32px;color:#111}h1{margin:0 0 4px}table{width:100%;border-collapse:collapse;margin:16px 0}th,td{border-bottom:1px solid #ddd;padding:6px 8px;text-align:left}td.n,th.n{text-align:right}.muted{color:#666}.tot{text-align:right;font-size:16px}</style></head><body>
-<h1>Orçamento nº ${d.number}</h1><div class="muted">Emitido em ${dateBr(d.createdAt)} · válido até ${dateBr(d.validUntil)}</div>
-<p><strong>Cliente:</strong> ${esc(d.customer.name)}${d.customer.document ? ` · ${esc(d.customer.document)}` : ''}</p>
-<table><thead><tr><th>Produto</th><th class="n">Qtd.</th><th class="n">Preço</th><th class="n">Desc.</th><th class="n">Total</th></tr></thead><tbody>${d.items.map((i) => `<tr><td>${esc(i.product.sku)} — ${esc(i.product.name)}</td><td class="n">${i.quantity}</td><td class="n">${brl(i.unitPrice)}</td><td class="n">${Number(i.discountPct)}%</td><td class="n">${brl(i.total)}</td></tr>`).join('')}</tbody></table>
-<div class="tot">Produtos ${brl(d.subtotal)} · Descontos −${brl(d.discountTotal)} · Frete ${brl(d.shipping)}<br><strong>Total ${brl(d.total)}</strong></div>
-${d.paymentMethod ? `<p><strong>Pagamento previsto:</strong> ${esc(PAYMENT_LABEL[d.paymentMethod] ?? d.paymentMethod)}</p>` : ''}${d.notes ? `<p><strong>Observações:</strong> ${esc(d.notes)}</p>` : ''}
-<p class="muted">Preços e condições válidos até ${dateBr(d.validUntil)}, sujeitos à disponibilidade de estoque. Este documento não é nota fiscal.</p><script>window.onload=()=>window.print()</script></body></html>`);
-    w.document.close();
+  async function print(d: QuoteDetail) {
+    try { if (!(await printQuote(d.id))) ui.toast.error('Libere pop-ups para imprimir.'); } catch (e) { ui.toast.error((e as Error).message); }
   }
 
   return (
