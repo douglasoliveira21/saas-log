@@ -3,7 +3,7 @@
 import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
-import { PageHeader, Alert, Skeleton } from '@/components/ui';
+import { PageHeader, Alert, Dialog, Skeleton } from '@/components/ui';
 import { CepField, DocumentField, MaskedInput, UfSelect } from '@/components/fields';
 import { docOrDash, formatPhone } from '@/lib/format';
 import { useSession } from '@/lib/session';
@@ -63,11 +63,13 @@ export default function ClientesPage() {
       <PageHeader title="Clientes" description={<>Pessoas físicas e jurídicas. Dados pessoais ficam restritos às permissões do módulo.</>} actions={<>
           {manage && <button className="btn primary" onClick={() => { setEditing(null); setAdding(true); }}><Plus aria-hidden />Cliente</button>}
         </>} />
-      {error && <Alert kind="error">{error}</Alert>}
+      {error && !(adding || editing) && <Alert kind="error">{error}</Alert>}
       {ok && <Alert kind="ok">{ok}</Alert>}
       {(adding || editing) && (
-        <form key={editing?.id ?? 'novo'} className="card" style={{ marginBottom: 16 }} onSubmit={save}>
-          <h2>{editing ? `Editar cliente — ${editing.name}` : 'Novo cliente'}</h2>
+        <Dialog title={editing ? `Editar cliente — ${editing.name}` : 'Novo cliente'} description={editing ? 'Altere os dados e salve. O tipo (pessoa física ou jurídica) não muda.' : undefined} onClose={() => { setAdding(false); setEditing(null); }} xl>
+        <form key={editing?.id ?? 'novo'} onSubmit={save}>
+          <div className="modal-body">
+          {error && <Alert kind="error">{error}</Alert>}
           <div className="form-grid">
             <div><label htmlFor="kind">Tipo *</label><select id="kind" name="kind" defaultValue={editing?.kind ?? 'PJ'} disabled={!!editing} title={editing ? 'O tipo não pode ser alterado' : undefined}><option value="PJ">Pessoa jurídica</option><option value="PF">Pessoa física</option></select></div>
             <div><label htmlFor="name">Nome / razão social *</label><input id="name" name="name" required defaultValue={editing?.name} /></div>
@@ -84,8 +86,10 @@ export default function ClientesPage() {
             <div><label htmlFor="priceTable">Tabela de preço padrão</label><select id="priceTable" name="priceTable" defaultValue={editing?.priceTable ?? 'RETAIL'}><option value="RETAIL">Varejo</option><option value="WHOLESALE">Atacado</option></select></div>
             {!editing && sellers.length > 0 && <div><label htmlFor="salespersonId">Vendedor da carteira</label><select id="salespersonId" name="salespersonId" defaultValue=""><option value="">Sem carteira (ou a minha)</option>{sellers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>}
           </div>
-          <div className="row" style={{ marginTop: 12 }}><button className="btn primary">{editing ? 'Salvar alterações' : 'Salvar'}</button><button type="button" className="btn" onClick={() => { setAdding(false); setEditing(null); }}>Cancelar</button></div>
+          </div>
+          <div className="modal-foot"><button type="button" className="btn" onClick={() => { setAdding(false); setEditing(null); }}>Cancelar</button><button className="btn primary">{editing ? 'Salvar alterações' : 'Salvar'}</button></div>
         </form>
+        </Dialog>
       )}
       <section className="card">
         <input aria-label="Buscar clientes" placeholder="Buscar por nome ou documento" value={search} onChange={(e) => setSearch(e.target.value)} style={{ maxWidth: 340, marginBottom: 12 }} />
