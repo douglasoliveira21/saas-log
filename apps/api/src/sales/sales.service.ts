@@ -11,6 +11,7 @@ import { FiscalDocChoice, OrderStatus, Prisma, SalesChannel } from '@prisma/clie
 import { AuditService } from '../audit/audit.service';
 import { AuthContext } from '../common/auth';
 import { CommissionsService, fromCents, toCents } from '../commissions/commissions.service';
+import { NotificationsService } from '../notify/notifications';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { StockService } from '../stock/stock.service';
@@ -46,6 +47,7 @@ export class SalesService {
     private readonly commissions: CommissionsService,
     private readonly settings: SettingsService,
     private readonly delinquency: DelinquencyService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ───────────── consulta ─────────────
@@ -242,6 +244,7 @@ export class SalesService {
       if (to === 'SHIPPED') await this.commissions.onOrderEvent(tx, ctx, id, 'SHIPPED');
       if (to === 'DELIVERED') await this.commissions.onOrderEvent(tx, ctx, id, 'DELIVERED');
       await this.audit.record(tx, ctx, { action: `sales.${to.toLowerCase()}`, entity: 'sales_order', entityId: id });
+      await this.notifications.onOrderStatus(tx, ctx.tenantId!, id, to);
       return { id, status: to };
     }
   }
@@ -262,6 +265,7 @@ export class SalesService {
       if (titles.length) await tx.financialTitle.updateMany({ where: { tenantId: ctx.tenantId!, id: { in: titles.map((t) => t.id) } }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: `Pedido ${order.number} cancelado: ${reason}` } });
       await this.commissions.reverseAll(tx, ctx, id, `Cancelamento: ${reason}`);
       await tx.salesOrder.update({ where: { id }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: reason } });
+      await this.notifications.onOrderStatus(tx, ctx.tenantId!, id, 'CANCELLED');
       await this.audit.record(tx, ctx, { action: 'sales.cancelled', entity: 'sales_order', entityId: id, metadata: { reason, from: order.status } });
       return { id, status: 'CANCELLED' as const };
     }
@@ -381,6 +385,7 @@ export class SalesService {
       order.items.map((i) => ({ id: i.id, productId: i.productId, quantity: i.quantity, total: i.total, categoryId: i.product.categoryId })),
     );
     await this.audit.record(tx, ctx, { action: 'sales.confirmed', entity: 'sales_order', entityId: order.id, metadata: { number: order.number, commissionEntries: n } });
+    await this.notifications.onOrderStatus(tx, ctx.tenantId!, order.id, 'CONFIRMED');
   }
 
   /**

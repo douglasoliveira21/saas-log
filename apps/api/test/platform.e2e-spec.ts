@@ -288,7 +288,7 @@ describe('Fase 8 — planos, plataforma, observabilidade, backup e revisão estr
         }
       }
       const norm = (p: string): string => p.replace(/\/+/g, '/').replace(/^\/|\/$/g, '');
-      expect(pub.map(norm).sort()).toEqual(['auth/login', 'auth/logout', 'auth/refresh', 'auth/register', 'health', 'health/ready', 'integrations/callback', 'media/:id', 'metrics', 'webhooks/:tenantId/:connectionId', 'webhooks/providers/:provider/:token']);
+      expect(pub.map(norm).sort()).toEqual(['auth/forgot-password', 'auth/invite/accept', 'auth/invite/preview', 'auth/login', 'auth/logout', 'auth/mfa/verify', 'auth/refresh', 'auth/register', 'auth/reset-password', 'health', 'health/ready', 'integrations/callback', 'media/:id', 'metrics', 'webhooks/:tenantId/:connectionId', 'webhooks/providers/:provider/:token']);
       for (const p of pub) expect(p).not.toMatch(/finance|reports|platform|billing|fiscal|users/);
       expect(noTenant.sort()).toEqual(expect.arrayContaining(['platform/tenants', 'platform/audit']));
       for (const p of noTenant) expect(p).toMatch(/^(auth|platform)\//);

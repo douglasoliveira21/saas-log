@@ -35,6 +35,12 @@ import { ChannelCatalogService } from './integrations/channel-catalog.service';
 import { FiscalConfigService } from './fiscal/fiscal-config.service';
 import { FiscalController } from './fiscal/fiscal.controller';
 import { MdfeController, MdfeService } from './fiscal/mdfe/mdfe.service';
+import { Mailer } from './notify/mailer';
+import { GoalBonusController, GoalBonusService } from './commissions/goal-bonus';
+import { NotificationsController, NotificationsService, NotificationWorker } from './notify/notifications';
+import { WhatsappService } from './notify/whatsapp';
+import { RecoveryService } from './auth/recovery.service';
+import { InvitesController, InvitesService } from './users/invites';
 import { FiscalInboundService } from './fiscal/fiscal-inbound.service';
 import { FiscalOutgoingService } from './fiscal/fiscal-outgoing.service';
 import { FISCAL_PROVIDER } from './fiscal/fiscal-provider';
@@ -91,7 +97,7 @@ class HealthController {
       skipIf: () => process.env.NODE_ENV === 'test',
     }),
   ],
-  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, SmartPurchasingController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, MdfeController, FinanceController, ReportsController, DeliveryController, DelinquencyController, NegotiationsController, ManagementController, CreditController, QuotesController, WarehouseController, FleetController, OrdersDashboardController, LogisticsController, BillingController, PlatformController, ObservabilityController, LookupController, BrandingController, ProductImagesController, MediaController, ProductQualityController, ChannelProductsController],
+  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, SmartPurchasingController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, MdfeController, InvitesController, NotificationsController, GoalBonusController, FinanceController, ReportsController, DeliveryController, DelinquencyController, NegotiationsController, ManagementController, CreditController, QuotesController, WarehouseController, FleetController, OrdersDashboardController, LogisticsController, BillingController, PlatformController, ObservabilityController, LookupController, BrandingController, ProductImagesController, MediaController, ProductQualityController, ChannelProductsController],
   providers: [
     AuthService,
     StructureService,
@@ -116,6 +122,13 @@ class HealthController {
     FiscalInboundService,
     FiscalOutgoingService,
     MdfeService,
+    Mailer,
+    GoalBonusService,
+    WhatsappService,
+    NotificationsService,
+    NotificationWorker,
+    RecoveryService,
+    InvitesService,
     TaxRulesService,
     FinanceService,
     BankService,

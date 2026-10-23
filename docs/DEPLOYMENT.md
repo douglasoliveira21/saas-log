@@ -26,6 +26,8 @@ O navegador só fala com a origem do web; `/api/*` é encaminhado ao backend (co
 | `METRICS_TOKEN` | opcional | Liga `/api/metrics`. |
 | `BACKUP_KEY` | recomendado | Cifra os backups; guarde separado do armazenamento deles. |
 | `ML_*` | só com Mercado Livre | Ver MARKETPLACE-INTEGRATIONS.md. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | para e-mail | Recuperação de senha, convite de usuário e avisos ao cliente. Sem `SMTP_HOST` nada é enviado (a tela avisa). Porta 587 com `SMTP_SECURE=false` (STARTTLS) ou 465 com `true`. |
+| `EVOLUTION_API_URL`, `EVOLUTION_API_KEY` | para WhatsApp | Servidor da Evolution API v2 e a chave global. Cada empresa conecta o próprio número por QR code em **Avisos ao cliente**. |
 
 Web: `API_URL` (destino do proxy), `NEXT_PUBLIC_APP_NAME`.
 

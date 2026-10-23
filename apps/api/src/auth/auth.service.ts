@@ -9,15 +9,19 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { randomUUID } from 'node:crypto';
+import { Prisma } from '@prisma/client';
+import { randomBytes, randomUUID } from 'node:crypto';
+import * as QRCode from 'qrcode';
 import type { Response } from 'express';
 import { SYSTEM_ROLES } from '../access/permissions';
 import { AuditService } from '../audit/audit.service';
 import { AuthContext, COOKIE_ACCESS, COOKIE_REFRESH } from '../common/auth';
 import { DUMMY_HASH, hashPassword, newOpaqueToken, sha256, validatePasswordPolicy, verifyPassword } from '../common/password';
 import { getConfig } from '../config/app.config';
+import { CryptoService } from '../integrations/crypto.service';
+import { newTotpSecret, otpauthUrl, verifyTotp } from '../notify/totp';
 import { PrismaService } from '../prisma/prisma.service';
-import type { LoginDto, RegisterDto } from './auth.dto';
+import type { LoginDto, MfaVerifyDto, RegisterDto } from './auth.dto';
 
 const MAX_FAILED = 5;
 const LOCK_MINUTES = 15;
@@ -42,6 +46,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly audit: AuditService,
+    private readonly crypto: CryptoService,
   ) {}
 
   async register(dto: RegisterDto, res: Response, meta: RequestMeta) {
@@ -118,14 +123,99 @@ export class AuthService {
       data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date() },
     });
 
-    const tenants = await this.listTenants(user.id);
+    // Segundo fator: a senha sozinha não abre a sessão. O token abaixo só serve para /auth/mfa/verify (outra chave, 5 minutos).
+    if (user.totpEnabledAt) {
+      const mfaToken = await this.jwt.signAsync({ sub: user.id, purpose: 'mfa' }, { secret: this.mfaSecret(), expiresIn: 300 });
+      return { mfaRequired: true as const, mfaToken };
+    }
+    return this.completeLogin(user.id, res, meta);
+  }
+
+  private mfaSecret() { return `${getConfig().jwtSecret}:mfa`; }
+
+  private async completeLogin(userId: string, res: Response, meta: RequestMeta) {
+    const tenants = await this.listTenants(userId);
     if (tenants.length === 1) {
-      await this.startSession(res, user.id, tenants[0].id, meta);
-      await this.auditLogin(user.id, tenants[0].id, meta);
+      await this.startSession(res, userId, tenants[0].id, meta);
+      await this.auditLogin(userId, tenants[0].id, meta);
       return { tenants, selectedTenantId: tenants[0].id };
     }
-    await this.startSession(res, user.id, null, meta);
+    await this.startSession(res, userId, null, meta);
     return { tenants, selectedTenantId: null };
+  }
+
+  /** Segunda etapa do login: código do aplicativo (6 dígitos) ou um código de recuperação. Erros contam para o bloqueio. */
+  async verifyMfa(dto: MfaVerifyDto, res: Response, meta: RequestMeta) {
+    let sub: string;
+    try { sub = (await this.jwt.verifyAsync<{ sub: string; purpose?: string }>(dto.mfaToken, { secret: this.mfaSecret() })).sub; } catch { throw new UnauthorizedException('Verificação expirada. Entre novamente com a senha.'); }
+    const user = await this.prisma.user.findUnique({ where: { id: sub } });
+    if (!user || user.status !== 'ACTIVE' || !user.totpEnabledAt || !user.totpSecret) throw new UnauthorizedException('Verificação inválida.');
+    if (user.lockedUntil && user.lockedUntil > new Date()) throw new HttpException('Muitas tentativas. Tente novamente em alguns minutos.', HttpStatus.TOO_MANY_REQUESTS);
+    const secret = this.crypto.decrypt<{ secret: string; lastStep?: number }>(user.id, 'totp', user.totpSecret);
+    const code = dto.code.trim().replace(/\s|-/g, '');
+    let ok = false; let usedRecovery = false; let step: number | null = null;
+    if (/^\d{6}$/.test(code)) {
+      step = verifyTotp(secret.secret, code);
+      ok = step !== null && step > (secret.lastStep ?? 0); // o mesmo código não vale duas vezes
+    } else {
+      const hashes = (user.recoveryCodes as string[] | null) ?? [];
+      const h = sha256(dto.code.trim().toLowerCase());
+      if (hashes.includes(h)) { ok = true; usedRecovery = true; await this.prisma.user.update({ where: { id: user.id }, data: { recoveryCodes: hashes.filter((x) => x !== h) } }); }
+    }
+    if (!ok) {
+      const failed = user.failedLoginCount + 1;
+      await this.prisma.user.update({ where: { id: user.id }, data: { failedLoginCount: failed >= MAX_FAILED ? 0 : failed, lockedUntil: failed >= MAX_FAILED ? new Date(Date.now() + LOCK_MINUTES * 60_000) : null } });
+      throw new UnauthorizedException('Código inválido.');
+    }
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date(), ...(step !== null ? { totpSecret: this.crypto.encrypt(user.id, 'totp', { secret: secret.secret, lastStep: step }) } : {}) },
+    });
+    if (usedRecovery) this.log.warn(`código de recuperação usado userId=${user.id}`);
+    return this.completeLogin(user.id, res, meta);
+  }
+
+  // ───────────── gerenciamento do 2FA (usuário logado) ─────────────
+
+  async mfaStatus(ctx: AuthContext) {
+    const u = await this.prisma.user.findUniqueOrThrow({ where: { id: ctx.userId }, select: { totpEnabledAt: true, recoveryCodes: true } });
+    return { enabled: !!u.totpEnabledAt, enabledAt: u.totpEnabledAt, recoveryCodesLeft: ((u.recoveryCodes as string[] | null) ?? []).length };
+  }
+
+  /** Gera um segredo novo (ainda inativo) e o QR code para o aplicativo autenticador. */
+  async mfaSetup(ctx: AuthContext) {
+    const u = await this.prisma.user.findUniqueOrThrow({ where: { id: ctx.userId } });
+    if (u.totpEnabledAt) throw new ConflictException('O segundo fator já está ativo. Desative-o antes de configurar de novo.');
+    const secret = newTotpSecret();
+    await this.prisma.user.update({ where: { id: u.id }, data: { totpSecret: this.crypto.encrypt(u.id, 'totp', { secret }) } });
+    const url = otpauthUrl(secret, u.email, getConfig().appName);
+    return { secret, otpauthUrl: url, qrDataUrl: await QRCode.toDataURL(url, { margin: 1, width: 220 }) };
+  }
+
+  /** Confere o primeiro código, ativa e devolve 8 códigos de recuperação (mostrados uma única vez). */
+  async mfaEnable(ctx: AuthContext, code: string) {
+    const u = await this.prisma.user.findUniqueOrThrow({ where: { id: ctx.userId } });
+    if (u.totpEnabledAt) throw new ConflictException('O segundo fator já está ativo.');
+    if (!u.totpSecret) throw new BadRequestException('Gere o QR code antes de ativar.');
+    const secret = this.crypto.decrypt<{ secret: string }>(u.id, 'totp', u.totpSecret);
+    const step = verifyTotp(secret.secret, code.trim());
+    if (step === null) throw new BadRequestException('Código inválido. Confira o horário do celular e tente de novo.');
+    const codes = Array.from({ length: 8 }, () => { const h = randomBytes(5).toString('hex'); return `${h.slice(0, 5)}-${h.slice(5)}`; });
+    await this.prisma.user.update({ where: { id: u.id }, data: { totpEnabledAt: new Date(), recoveryCodes: codes.map((c) => sha256(c)), totpSecret: this.crypto.encrypt(u.id, 'totp', { secret: secret.secret, lastStep: step }) } });
+    return { recoveryCodes: codes };
+  }
+
+  async mfaDisable(ctx: AuthContext, password: string, code: string) {
+    const u = await this.prisma.user.findUniqueOrThrow({ where: { id: ctx.userId } });
+    if (!u.totpEnabledAt || !u.totpSecret) throw new ConflictException('O segundo fator não está ativo.');
+    if (!(await verifyPassword(password, u.passwordHash))) throw new UnauthorizedException('Senha incorreta.');
+    const secret = this.crypto.decrypt<{ secret: string }>(u.id, 'totp', u.totpSecret);
+    const c = code.trim().replace(/\s|-/g, '');
+    const okTotp = /^\d{6}$/.test(c) && verifyTotp(secret.secret, c) !== null;
+    const okRecovery = ((u.recoveryCodes as string[] | null) ?? []).includes(sha256(code.trim().toLowerCase()));
+    if (!okTotp && !okRecovery) throw new UnauthorizedException('Código inválido.');
+    await this.prisma.user.update({ where: { id: u.id }, data: { totpEnabledAt: null, totpSecret: null, recoveryCodes: Prisma.JsonNull } });
+    return { ok: true };
   }
 
   async selectTenant(ctx: AuthContext, tenantId: string, res: Response, meta: RequestMeta) {
@@ -172,7 +262,7 @@ export class AuthService {
   async me(ctx: AuthContext) {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: ctx.userId },
-      select: { id: true, name: true, email: true },
+      select: { id: true, name: true, email: true, totpEnabledAt: true },
     });
     const tenants = await this.listTenants(ctx.userId);
     let tenant: { id: string; name: string; slug: string; status: string; plan: string | null; trialEndsAt: Date | null; logoVersion: number | null } | null = null;
@@ -185,7 +275,7 @@ export class AuthService {
       role = tenants.find((x) => x.id === ctx.tenantId)?.role ?? null;
     }
     const [{ is_admin: platformAdmin }] = await this.prisma.withContext({ tenantId: null, userId: ctx.userId }, (tx) => tx.$queryRaw<{ is_admin: boolean }[]>`SELECT platform_is_admin() AS is_admin`);
-    return { user, tenant, role, permissions: [...ctx.permissions].sort(), tenants, platformAdmin, appName: getConfig().appName };
+    return { user: { id: user.id, name: user.name, email: user.email, mfaEnabled: !!user.totpEnabledAt }, tenant, role, permissions: [...ctx.permissions].sort(), tenants, platformAdmin, appName: getConfig().appName };
   }
 
   private async listTenants(userId: string): Promise<TenantSummary[]> {

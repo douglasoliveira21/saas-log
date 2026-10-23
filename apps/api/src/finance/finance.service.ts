@@ -202,7 +202,7 @@ export class FinanceService {
       if (t.status === 'CANCELLED') throw new ConflictException('O título já está cancelado.');
       if (toCents(t.paidPrincipal) !== 0) throw new ConflictException('O título possui baixas: estorne-as antes de cancelar.');
       await tx.financialTitle.update({ where: { id }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: reason } });
-      if (t.origin === 'COMMISSION') await tx.salesCommission.updateMany({ where: { tenantId: ctx.tenantId!, payoutTitleId: id }, data: { payoutTitleId: null } }); // libera as comissões
+      if (t.origin === 'COMMISSION') { await tx.salesCommission.updateMany({ where: { tenantId: ctx.tenantId!, payoutTitleId: id }, data: { payoutTitleId: null } }); await tx.goalBonus.updateMany({ where: { tenantId: ctx.tenantId!, payoutTitleId: id }, data: { payoutTitleId: null } }); } // libera as comissões
       await this.audit.record(tx, ctx, { action: 'finance.title_cancelled', entity: 'financial_title', entityId: id, metadata: { reason, origin: t.origin } });
       return { id, status: 'CANCELLED' as const };
     });
@@ -241,6 +241,7 @@ export class FinanceService {
       const status = paid === toCents(t.amount) ? 'PAID' : 'PARTIAL';
       await tx.financialTitle.update({ where: { id }, data: { paidPrincipal: fromCents(paid), status } });
       if (status === 'PAID' && t.origin === 'COMMISSION') await tx.salesCommission.updateMany({ where: { tenantId: ctx.tenantId!, payoutTitleId: id, status: 'EARNED' }, data: { status: 'PAID', paidAt } });
+      if (status === 'PAID' && t.origin === 'COMMISSION') await tx.goalBonus.updateMany({ where: { tenantId: ctx.tenantId!, payoutTitleId: id, status: 'EARNED' }, data: { status: 'PAID', paidAt } });
       await this.audit.record(tx, ctx, { action: t.direction === 'PAYABLE' ? 'finance.payment_made' : 'finance.receipt_received', entity: 'financial_title', entityId: id, metadata: { settlementId: s.id, amount: fromCents(amount), principal: fromCents(principal), interest: fromCents(interest), fine: fromCents(fine), discount: fromCents(discount), accountId: dto.accountId } });
       return { settlementId: s.id, status, outstanding: fromCents(toCents(t.amount) - paid) };
     });
@@ -265,6 +266,7 @@ export class FinanceService {
       const paid = toCents(t.paidPrincipal) - toCents(s.principal);
       await tx.financialTitle.update({ where: { id: s.titleId }, data: { paidPrincipal: fromCents(paid), status: t.status === 'CANCELLED' ? 'CANCELLED' : paid === 0 ? 'OPEN' : 'PARTIAL' } });
       if (t.origin === 'COMMISSION') await tx.salesCommission.updateMany({ where: { tenantId: ctx.tenantId!, payoutTitleId: s.titleId, status: 'PAID' }, data: { status: 'EARNED', paidAt: null } });
+      if (t.origin === 'COMMISSION') await tx.goalBonus.updateMany({ where: { tenantId: ctx.tenantId!, payoutTitleId: s.titleId, status: 'PAID' }, data: { status: 'EARNED', paidAt: null } });
       await this.audit.record(tx, ctx, { action: 'finance.settlement_reversed', entity: 'financial_settlement', entityId: settlementId, metadata: { reversalId: rev.id, reason, amount: s.amount.toString(), titleId: s.titleId } });
       return { reversalId: rev.id, titleStatus: paid === 0 ? 'OPEN' : 'PARTIAL' };
     });
@@ -346,8 +348,9 @@ export class FinanceService {
       await this.validateRefs(tx, ctx, { categoryId: dto.categoryId, costCenterId: dto.costCenterId });
       const rows = await tx.$queryRaw<{ id: string; amount: string }[]>`
         SELECT id, amount FROM sales_commissions WHERE tenant_id = ${ctx.tenantId}::uuid AND salesperson_id = ${dto.salespersonId}::uuid AND status = 'EARNED' AND payout_title_id IS NULL FOR UPDATE`;
-      const total = rows.reduce((s, r) => s + toCents(r.amount), 0);
-      if (!rows.length) throw new ConflictException('Não há comissões aprovadas pendentes de repasse.');
+      const bonuses = await tx.goalBonus.findMany({ where: { tenantId: ctx.tenantId!, salespersonId: dto.salespersonId, status: 'EARNED', payoutTitleId: null } });
+      const total = rows.reduce((s, r) => s + toCents(r.amount), 0) + bonuses.reduce((s, b) => s + toCents(b.amount), 0);
+      if (!rows.length && !bonuses.length) throw new ConflictException('Não há comissões aprovadas pendentes de repasse.');
       if (total <= 0) throw new ConflictException('O saldo aprovado é negativo ou zero (estornos): será descontado em repasses futuros.');
       const title = await tx.financialTitle.create({
         data: {
@@ -356,6 +359,7 @@ export class FinanceService {
         },
       });
       await tx.salesCommission.updateMany({ where: { id: { in: rows.map((r) => r.id) }, tenantId: ctx.tenantId! }, data: { payoutTitleId: title.id } });
+      if (bonuses.length) await tx.goalBonus.updateMany({ where: { id: { in: bonuses.map((b) => b.id) }, tenantId: ctx.tenantId! }, data: { payoutTitleId: title.id } });
       await this.audit.record(tx, ctx, { action: 'finance.commission_payout_created', entity: 'financial_title', entityId: title.id, metadata: { salespersonId: sp.id, entries: rows.length, total: fromCents(total) } });
       return { titleId: title.id, entries: rows.length, total: fromCents(total) };
     });

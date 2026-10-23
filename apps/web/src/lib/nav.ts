@@ -1,5 +1,5 @@
 import {
-  BarChart3, Building2, ClipboardList, Container, FileText, Gauge, CreditCard, Handshake, LayoutDashboard, type LucideIcon, Package, PackageSearch,
+  BarChart3, Bell, Building2, ClipboardList, Container, FileText, Gauge, CreditCard, Handshake, LayoutDashboard, type LucideIcon, Package, PackageSearch,
   Navigation, Percent, Plug, ReceiptText, Route, ScrollText, Settings2, ShieldCheck, ShoppingCart, Store, Truck, Users, Wallet, Warehouse,
 } from 'lucide-react';
 
@@ -45,6 +45,7 @@ export const NAV: NavItem[] = [
 
   { href: '/empresa', label: 'Empresa e estrutura', icon: Building2, group: 'Administração', permission: 'company.view', implemented: true },
   { href: '/usuarios', label: 'Usuários e papéis', icon: ShieldCheck, group: 'Administração', permission: 'users.view', implemented: true },
+  { href: '/avisos', label: 'Avisos ao cliente', icon: Bell, group: 'Administração', permission: 'notifications.manage', implemented: true },
   { href: '/configuracoes', label: 'Políticas comerciais', icon: Settings2, group: 'Administração', permission: 'tenant.manage', implemented: true },
   { href: '/plano', label: 'Plano e uso', icon: CreditCard, group: 'Administração', permission: 'tenant.manage', implemented: true },
   { href: '/auditoria', label: 'Auditoria', icon: ScrollText, group: 'Administração', permission: 'audit.view', implemented: true },

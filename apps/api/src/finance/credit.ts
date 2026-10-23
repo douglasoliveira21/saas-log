@@ -11,11 +11,11 @@ const DAY = 86_400_000;
 /** Formas de pagamento que dependem de o cliente pagar depois (consomem o limite de crédito). Sem forma informada, por prudência, conta. */
 export const CREDIT_METHODS = ['BOLETO', 'CHECK', 'OTHER'];
 
-export interface CreditInfo { minShelfLifeDays: number | null; limit: string | null; exposure: string; available: string | null; overdue: string; openTitles: number }
+export interface CreditInfo { notifyOptOut: boolean; minShelfLifeDays: number | null; limit: string | null; exposure: string; available: string | null; overdue: string; openTitles: number }
 
 /** Exposição = contas a receber em aberto do cliente (vencidas ou a vencer, menos o que já foi pago). */
 export async function creditInfo(tx: Tx, tenantId: string, customerId: string): Promise<CreditInfo> {
-  const c = await tx.customer.findFirst({ where: { id: customerId, tenantId }, select: { creditLimit: true, minShelfLifeDays: true } });
+  const c = await tx.customer.findFirst({ where: { id: customerId, tenantId }, select: { creditLimit: true, minShelfLifeDays: true, notifyOptOut: true } });
   if (!c) throw new NotFoundException('Cliente não encontrado.');
   const g = await tx.financialTitle.aggregate({ where: { tenantId, customerId, direction: 'RECEIVABLE', status: { in: ['OPEN', 'PARTIAL'] } }, _sum: { amount: true, paidPrincipal: true }, _count: { _all: true } });
   const today = new Date(Math.floor((Date.now() - 3 * 3_600_000) / DAY) * DAY);
@@ -23,7 +23,7 @@ export async function creditInfo(tx: Tx, tenantId: string, customerId: string): 
   const exposure = toCents(g._sum.amount ?? 0) - toCents(g._sum.paidPrincipal ?? 0);
   const overdue = toCents(od._sum.amount ?? 0) - toCents(od._sum.paidPrincipal ?? 0);
   const limit = c.creditLimit === null ? null : toCents(c.creditLimit);
-  return { minShelfLifeDays: c.minShelfLifeDays, limit: limit === null ? null : fromCents(limit), exposure: fromCents(exposure), available: limit === null ? null : fromCents(limit - exposure), overdue: fromCents(overdue), openTitles: g._count._all };
+  return { notifyOptOut: c.notifyOptOut, minShelfLifeDays: c.minShelfLifeDays, limit: limit === null ? null : fromCents(limit), exposure: fromCents(exposure), available: limit === null ? null : fromCents(limit - exposure), overdue: fromCents(overdue), openTitles: g._count._all };
 }
 
 /**

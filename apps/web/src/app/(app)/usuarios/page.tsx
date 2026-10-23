@@ -7,6 +7,7 @@ import { PageHeader, Alert, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 interface Member { id: string; status: string; role: { id: string; key: string; name: string }; user: { name: string; email: string; lastLoginAt: string | null } }
+interface Invite { id: string; name: string; email: string; role: string; expiresAt: string; expired: boolean }
 interface Role { id: string; key: string; name: string; isSystem: boolean; permissions: string[] }
 
 export default function UsuariosPage() {
@@ -17,11 +18,14 @@ export default function UsuariosPage() {
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [adding, setAdding] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  const [invites, setInvites] = useState<Invite[]>([]);
 
   const load = useCallback(() => {
     Promise.all([api<Member[]>('/users'), api<Role[]>('/roles')])
       .then(([m, r]) => { setMembers(m); setRoles(r); })
       .catch((e) => setError(e.message));
+    api<Invite[]>('/users/invites').then(setInvites).catch(() => setInvites([]));
   }, []);
   useEffect(load, [load]);
 
@@ -37,6 +41,18 @@ export default function UsuariosPage() {
     } catch (err) { setError((err as Error).message); }
   }
 
+  async function invite(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(''); setOk('');
+    const f = new FormData(e.currentTarget);
+    try {
+      const r = await api<{ emailSent: boolean; reason?: string; link?: string }>('/users/invites', 'POST', { name: f.get('name'), email: f.get('email'), roleId: f.get('roleId') });
+      setOk(r.emailSent ? 'Convite enviado por e-mail. O link vale por 7 dias.' : `O e-mail não pôde ser enviado (${r.reason}). Repasse este link por outro meio: ${r.link}`);
+      setInviting(false);
+      load();
+    } catch (err) { setError((err as Error).message); }
+  }
+
   async function patch(id: string, body: object) {
     setError(''); setOk('');
     try { await api(`/users/${id}`, 'PATCH', body); load(); } catch (err) { setError((err as Error).message); }
@@ -45,10 +61,24 @@ export default function UsuariosPage() {
   return (
     <>
       <PageHeader title="Usuários e papéis" description={<>Permissões são verificadas no servidor a cada requisição.</>} actions={<>
-          {manage && <button className="btn primary" onClick={() => setAdding(true)}><Plus aria-hidden />Adicionar usuário</button>}
+          {manage && <button className="btn primary" onClick={() => { setInviting(true); setAdding(false); }}><Plus aria-hidden />Convidar por e-mail</button>}
+          {manage && <button className="btn" onClick={() => { setAdding(true); setInviting(false); }}>Adicionar com senha provisória</button>}
         </>} />
       {error && <Alert kind="error">{error}</Alert>}
       {ok && <Alert kind="ok">{ok}</Alert>}
+
+      {inviting && (
+        <form className="card" style={{ marginBottom: 16 }} onSubmit={invite}>
+          <h2>Convidar por e-mail</h2>
+          <div className="form-grid">
+            <div><label htmlFor="in">Nome *</label><input id="in" name="name" required minLength={2} /></div>
+            <div><label htmlFor="ie">E-mail *</label><input id="ie" name="email" type="email" required /></div>
+            <div><label htmlFor="ir">Papel *</label><select id="ir" name="roleId" required>{roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></div>
+          </div>
+          <p className="muted">A pessoa recebe um link (vale 7 dias, uso único) e escolhe a própria senha. Se o e-mail já tiver conta, ela só confirma a senha atual.</p>
+          <div className="row"><button className="btn primary">Enviar convite</button><button type="button" className="btn" onClick={() => setInviting(false)}>Cancelar</button></div>
+        </form>
+      )}
 
       {adding && (
         <form className="card" style={{ marginBottom: 16 }} onSubmit={add}>
@@ -59,7 +89,7 @@ export default function UsuariosPage() {
             <div><label htmlFor="p">Senha provisória *</label><input id="p" name="password" type="password" minLength={10} required autoComplete="new-password" /></div>
             <div><label htmlFor="r">Papel *</label><select id="r" name="roleId" required>{roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></div>
           </div>
-          <p className="muted">Se o e-mail já tiver conta, ela apenas será vinculada a esta empresa (a senha existente é mantida). Convite por e-mail: Fase 8.</p>
+          <p className="muted">Se o e-mail já tiver conta, ela apenas será vinculada a esta empresa (a senha existente é mantida).</p>
           <div className="row"><button className="btn primary">Adicionar</button><button type="button" className="btn" onClick={() => setAdding(false)}>Cancelar</button></div>
         </form>
       )}
@@ -88,6 +118,20 @@ export default function UsuariosPage() {
           </table>
         </div>
       </section>
+
+      {manage && invites.length > 0 && (
+        <section className="card" style={{ marginBottom: 16 }}>
+          <h2>Convites pendentes</h2>
+          <div className="table-wrap"><table>
+            <thead><tr><th>Nome</th><th>E-mail</th><th>Papel</th><th>Validade</th><th /></tr></thead>
+            <tbody>{invites.map((i) => (
+              <tr key={i.id}><td>{i.name}</td><td>{i.email}</td><td>{i.role}</td>
+                <td><span className={`badge ${i.expired ? 'warn' : ''}`}>{i.expired ? 'Expirado' : `até ${new Date(i.expiresAt).toLocaleDateString('pt-BR')}`}</span></td>
+                <td><button className="btn sm" onClick={async () => { try { await api(`/users/invites/${i.id}`, 'DELETE'); load(); } catch (err) { setError((err as Error).message); } }}>Cancelar convite</button></td></tr>
+            ))}</tbody>
+          </table></div>
+        </section>
+      )}
 
       <section className="card">
         <h2>Papéis</h2>

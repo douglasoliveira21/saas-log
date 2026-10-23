@@ -57,6 +57,7 @@ export const PERMISSIONS = {
   'routes.manage': 'Cadastrar motoristas, montar, iniciar e cancelar rotas de entrega',
   'delivery.perform': 'Motorista: ver as próprias rotas e confirmar entregas com a foto do canhoto',
   'integrations.manage': 'Conectar, configurar, ativar, pausar e desconectar canais; reprocessar jobs',
+  'notifications.manage': 'Configurar os avisos por e-mail e WhatsApp, conectar o WhatsApp e ver o histórico de envios',
 } as const;
 
 export type PermissionCode = keyof typeof PERMISSIONS;
@@ -87,7 +88,7 @@ export const SYSTEM_ROLES: SystemRoleDef[] = [
     key: 'commercial_manager',
     name: 'Gerente comercial',
     permissions: [
-      ...operational, 'management.view', 'management.manage', 'credit.manage', 'products.manage', ...salesRead, 'customers.manage', 'sales.create', 'sales.approve', 'sales.return', 'commissions.view', 'commissions.manage', 'integrations.view', 'pricing.view', 'pricing.manage', 'reports.view',
+      ...operational, 'management.view', 'management.manage', 'credit.manage', 'products.manage', ...salesRead, 'customers.manage', 'sales.create', 'sales.approve', 'sales.return', 'commissions.view', 'commissions.manage', 'notifications.manage', 'integrations.view', 'pricing.view', 'pricing.manage', 'reports.view',
     ],
   },
   { key: 'buyer', name: 'Comprador', permissions: [...operational, 'suppliers.view', 'suppliers.manage', 'purchases.view', 'purchases.create', 'fiscal.view', 'fiscal.import'] },
@@ -95,7 +96,7 @@ export const SYSTEM_ROLES: SystemRoleDef[] = [
   { key: 'stock_operator', name: 'Operador de estoque', permissions: [...operational, 'stock.move', 'sales.view', 'sales.view_all', 'sales.fulfill', 'purchases.view', 'purchases.receive', 'logistics.view'] },
   { key: 'shipper', name: 'Expedidor', permissions: [...operational, 'stock.move', 'sales.view', 'sales.view_all', 'sales.fulfill', 'logistics.view', 'logistics.manage', 'routes.view', 'routes.manage'] },
   { key: 'driver', name: 'Motorista', permissions: ['delivery.perform'] },
-  { key: 'finance', name: 'Financeiro', permissions: ['company.view', 'products.view', 'suppliers.view', ...salesRead, 'purchases.view', 'commissions.view', 'pricing.view', 'finance.view', 'finance.manage', 'finance.reconcile', 'management.view', 'management.manage', 'credit.manage', 'reports.view', 'reports.export'] },
+  { key: 'finance', name: 'Financeiro', permissions: ['company.view', 'products.view', 'suppliers.view', ...salesRead, 'purchases.view', 'commissions.view', 'pricing.view', 'finance.view', 'finance.manage', 'notifications.manage', 'finance.reconcile', 'management.view', 'management.manage', 'credit.manage', 'reports.view', 'reports.export'] },
   { key: 'fiscal', name: 'Fiscal', permissions: ['company.view', 'products.view', 'products.manage', ...salesRead, 'purchases.view', 'fiscal.view', 'fiscal.manage', 'fiscal.import', 'fiscal.rules', 'fiscal.emit'] },
   { key: 'accountant', name: 'Contador (acesso limitado)', permissions: ['company.view', 'products.view', 'fiscal.view', 'fiscal.rules', 'fiscal.approve', 'finance.view', 'reports.view', 'reports.export'] },
   {

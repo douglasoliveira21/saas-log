@@ -28,6 +28,23 @@ export function monthRange(period: string): { start: Date; end: Date; days: numb
   const end = new Date(Date.UTC(y, m, 1) + BRT);
   return { start, end, days: Math.round((end.getTime() - start.getTime()) / DAY) };
 }
+/** Vendido no mês por vendedor (data da confirmação), em centavos, e o devolvido. É a base das metas e do bônus por meta. */
+export async function soldByPerson(tx: Prisma.TransactionClient, tenantId: string, period: string) {
+  const { start, end } = monthRange(period);
+  const [sold, returned] = await Promise.all([
+    tx.$queryRaw<{ salesperson_id: string; amount: string; orders: number }[]>`
+      SELECT salesperson_id, sum(total) AS amount, count(*)::int AS orders FROM sales_orders
+      WHERE tenant_id = ${tenantId}::uuid AND salesperson_id IS NOT NULL AND status NOT IN ('DRAFT','PENDING_APPROVAL','CANCELLED') AND confirmed_at >= ${start} AND confirmed_at < ${end}
+      GROUP BY salesperson_id`,
+    tx.$queryRaw<{ salesperson_id: string; value: string }[]>`
+      SELECT o.salesperson_id, sum(ri.quantity * i.total / i.quantity) AS value FROM return_items ri
+      JOIN sales_order_items i ON i.id = ri.order_item_id JOIN sales_orders o ON o.id = i.order_id
+      WHERE o.tenant_id = ${tenantId}::uuid AND o.salesperson_id IS NOT NULL AND o.status NOT IN ('DRAFT','PENDING_APPROVAL','CANCELLED') AND o.confirmed_at >= ${start} AND o.confirmed_at < ${end}
+      GROUP BY o.salesperson_id`,
+  ]);
+  return { sold, returned };
+}
+
 const localDate = (d = new Date()) => new Date(d.getTime() - BRT).toISOString().slice(0, 10);
 const currentPeriod = () => localDate().slice(0, 7);
 
@@ -64,20 +81,12 @@ export class ManagementService {
 
   goals(ctx: AuthContext, periodIn?: string) {
     const period = periodIn ?? currentPeriod();
-    const { start, end, days } = monthRange(period);
+    const { days } = monthRange(period);
     return this.prisma.withContext(ctx, async (tx) => {
-      const [people, goals, sold, returned] = await Promise.all([
+      const [people, goals, { sold, returned }] = await Promise.all([
         tx.salesperson.findMany({ where: { tenantId: ctx.tenantId!, active: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
         tx.salesGoal.findMany({ where: { tenantId: ctx.tenantId!, period } }),
-        tx.$queryRaw<{ salesperson_id: string; amount: string; orders: number }[]>`
-          SELECT salesperson_id, sum(total) AS amount, count(*)::int AS orders FROM sales_orders
-          WHERE tenant_id = ${ctx.tenantId}::uuid AND salesperson_id IS NOT NULL AND status NOT IN ('DRAFT','PENDING_APPROVAL','CANCELLED') AND confirmed_at >= ${start} AND confirmed_at < ${end}
-          GROUP BY salesperson_id`,
-        tx.$queryRaw<{ salesperson_id: string; value: string }[]>`
-          SELECT o.salesperson_id, sum(ri.quantity * i.total / i.quantity) AS value FROM return_items ri
-          JOIN sales_order_items i ON i.id = ri.order_item_id JOIN sales_orders o ON o.id = i.order_id
-          WHERE o.tenant_id = ${ctx.tenantId}::uuid AND o.salesperson_id IS NOT NULL AND o.status NOT IN ('DRAFT','PENDING_APPROVAL','CANCELLED') AND o.confirmed_at >= ${start} AND o.confirmed_at < ${end}
-          GROUP BY o.salesperson_id`,
+        soldByPerson(tx, ctx.tenantId!, period),
       ]);
       const today = localDate();
       const elapsed = period < today.slice(0, 7) ? days : period > today.slice(0, 7) ? 0 : Number(today.slice(8, 10));

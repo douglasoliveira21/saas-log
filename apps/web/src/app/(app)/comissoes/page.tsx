@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { brl } from '@/lib/format';
 import { useUi, PageHeader, Alert } from '@/components/ui';
 import { useSession } from '@/lib/session';
+import { GoalBonusCard } from './bonus-card';
 
 interface Salesperson { id: string; name: string; email: string | null; active: boolean; userId: string | null }
 interface Rule { id: string; name: string; kind: 'PERCENT' | 'FIXED_PER_UNIT'; percent: string | null; fixedAmount: string | null; priority: number; salespersonId: string | null; categoryId: string | null; productId: string | null; customerId: string | null; channel: string | null; active: boolean }
@@ -65,6 +66,7 @@ export default function ComissoesPage() {
         </>} />
       {error && <Alert kind="error">{error}</Alert>}
       {ok && <Alert kind="ok">{ok}</Alert>}
+      <GoalBonusCard manage={manage} onChange={load} fail={setError} done={setOk} />
 
       {panel === 'person' && (
         <form className="card" style={{ marginBottom: 16 }} onSubmit={createPerson}>

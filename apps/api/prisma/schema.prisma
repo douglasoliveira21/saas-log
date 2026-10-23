@@ -77,6 +77,10 @@ model User {
   failedLoginCount Int        @default(0) @map("failed_login_count")
   lockedUntil      DateTime?  @map("locked_until")
   lastLoginAt      DateTime?  @map("last_login_at")
+  /// Segundo fator (TOTP): segredo cifrado; só vale depois de totpEnabledAt. recoveryCodes = hashes (sha256) dos códigos de uso único.
+  totpSecret       String?    @map("totp_secret")
+  totpEnabledAt    DateTime?  @map("totp_enabled_at")
+  recoveryCodes    Json?      @map("recovery_codes")
   createdAt        DateTime   @default(now()) @map("created_at")
 
   memberships Membership[]
@@ -673,6 +677,8 @@ model Customer {
   stateRegistration String?      @map("state_registration")
   email             String?
   phone             String?
+  /// Cliente que pediu para não receber avisos automáticos (e-mail/WhatsApp).
+  notifyOptOut      Boolean      @default(false) @map("notify_opt_out")
   zipCode           String?      @map("zip_code")
   street            String?
   number            String?
@@ -2324,4 +2330,130 @@ model MdfeDocument {
   @@index([tenantId, routeId])
   @@index([tenantId, status])
   @@map("mdfe_documents")
+}
+
+/// Redefinição de senha: só o hash do token é guardado; vale 1 hora e uma única vez.
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+/// Convite de usuário por e-mail. O token é "<tenantId>.<aleatório>"; só o hash fica no banco.
+model UserInvite {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  email       String
+  name        String
+  roleId      String    @map("role_id") @db.Uuid
+  tokenHash   String    @unique @map("token_hash")
+  expiresAt   DateTime  @map("expires_at")
+  acceptedAt  DateTime? @map("accepted_at")
+  revokedAt   DateTime? @map("revoked_at")
+  invitedById String?   @map("invited_by_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([tenantId, email])
+  @@map("user_invites")
+}
+
+/// Conexão do WhatsApp da empresa pela Evolution API (uma instância por empresa, pareada por QR code).
+model WhatsappConnection {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @unique @map("tenant_id") @db.Uuid
+  instanceName String    @unique @map("instance_name")
+  status       String    @default("DISCONNECTED") // DISCONNECTED | CONNECTING | CONNECTED
+  phone        String?
+  lastError    String?   @map("last_error")
+  connectedAt  DateTime? @map("connected_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("whatsapp_connections")
+}
+
+/// Avisos automáticos por tipo (INVOICE_DUE, ORDER_STATUS, COLLECTION). Tudo começa desligado.
+model NotificationRule {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  type            String
+  emailEnabled    Boolean  @default(false) @map("email_enabled")
+  whatsappEnabled Boolean  @default(false) @map("whatsapp_enabled")
+  daysBefore      Int      @default(2) @map("days_before")
+  minOverdueDays  Int      @default(1) @map("min_overdue_days")
+  repeatEveryDays Int      @default(7) @map("repeat_every_days")
+  orderStatuses   Json     @default("[\"CONFIRMED\",\"SHIPPED\",\"DELIVERED\"]") @map("order_statuses")
+  subject         String?
+  body            String?
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, type])
+  @@map("notification_rules")
+}
+
+/// Fila e histórico dos avisos. dedupeKey impede enviar o mesmo aviso duas vezes pelo mesmo canal.
+model NotificationLog {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  type       String
+  channel    String // EMAIL | WHATSAPP
+  recipient  String
+  subject    String?
+  body       String
+  status     String    @default("QUEUED") // QUEUED | SENT | FAILED | SKIPPED
+  error      String?
+  attempts   Int       @default(0)
+  customerId String?   @map("customer_id") @db.Uuid
+  refType    String?   @map("ref_type")
+  refId      String?   @map("ref_id")
+  dedupeKey  String    @map("dedupe_key")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  sentAt     DateTime? @map("sent_at")
+
+  @@unique([tenantId, dedupeKey, channel])
+  @@index([tenantId, status, createdAt])
+  @@map("notification_logs")
+}
+
+/// Faixa de bônus por atingimento da meta mensal (maior faixa atingida vale; não soma).
+model GoalBonusTier {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String
+  minPct      Decimal  @map("min_pct") @db.Decimal(7, 2)
+  kind        String // PERCENT (sobre o vendido no mês) | FIXED
+  percent     Decimal? @db.Decimal(7, 4)
+  fixedAmount Decimal? @map("fixed_amount") @db.Decimal(14, 2)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, active])
+  @@map("goal_bonus_tiers")
+}
+
+/// Bônus apurado do vendedor no mês fechado (congelado: devoluções posteriores não o alteram).
+model GoalBonus {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  salespersonId  String    @map("salesperson_id") @db.Uuid
+  period         String
+  goalAmount     Decimal   @map("goal_amount") @db.Decimal(14, 2)
+  achieved       Decimal   @db.Decimal(14, 2)
+  attainmentPct  Decimal   @map("attainment_pct") @db.Decimal(9, 2)
+  tierId         String?   @map("tier_id") @db.Uuid
+  tierName       String?   @map("tier_name")
+  amount         Decimal   @db.Decimal(14, 2)
+  status         String    @default("EARNED") // EARNED | PAID
+  payoutTitleId  String?   @map("payout_title_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  paidAt         DateTime? @map("paid_at")
+
+  @@unique([tenantId, salespersonId, period])
+  @@map("goal_bonuses")
 }

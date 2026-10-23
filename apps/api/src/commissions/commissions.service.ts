@@ -223,12 +223,14 @@ export class CommissionsService {
       if (!(await tx.salesperson.findFirst({ where: { id: salespersonId, tenantId: ctx.tenantId! } }))) throw new NotFoundException('Vendedor não encontrado.');
       const rows = await tx.$queryRaw<{ id: string; amount: string }[]>`
         SELECT id, amount FROM sales_commissions WHERE tenant_id = ${ctx.tenantId}::uuid AND salesperson_id = ${salespersonId}::uuid AND status = 'EARNED' AND payout_title_id IS NULL FOR UPDATE`;
-      const total = rows.reduce((s, r) => s + toCents(r.amount), 0);
-      if (!rows.length) throw new ConflictException('Não há comissões aprovadas a pagar.');
+      const bonuses = await tx.goalBonus.findMany({ where: { tenantId: ctx.tenantId!, salespersonId, status: 'EARNED', payoutTitleId: null } });
+      const total = rows.reduce((s, r) => s + toCents(r.amount), 0) + bonuses.reduce((s, b) => s + toCents(b.amount), 0);
+      if (!rows.length && !bonuses.length) throw new ConflictException('Não há comissões aprovadas a pagar.');
       if (total < 0) throw new ConflictException('O saldo aprovado é negativo (estornos); será descontado em pagamentos futuros.');
       await tx.salesCommission.updateMany({ where: { id: { in: rows.map((r) => r.id) }, tenantId: ctx.tenantId! }, data: { status: 'PAID', paidAt: new Date() } });
+      if (bonuses.length) await tx.goalBonus.updateMany({ where: { id: { in: bonuses.map((b) => b.id) }, tenantId: ctx.tenantId! }, data: { status: 'PAID', paidAt: new Date() } });
       await this.audit.record(tx, ctx, { action: 'commission.paid', entity: 'salesperson', entityId: salespersonId, metadata: { entries: rows.length, total: fromCents(total) } });
-      return { paid: fromCents(total), entries: rows.length };
+      return { paid: fromCents(total), entries: rows.length + bonuses.length };
     });
   }
 }

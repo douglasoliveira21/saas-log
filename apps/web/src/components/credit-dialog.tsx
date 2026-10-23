@@ -5,7 +5,7 @@ import { Alert, Dialog, Skeleton, useUi } from '@/components/ui';
 import { api } from '@/lib/api';
 import { brl } from '@/lib/format';
 
-export interface CreditInfo { minShelfLifeDays?: number | null; limit: string | null; exposure: string; available: string | null; overdue: string; openTitles: number }
+export interface CreditInfo { notifyOptOut?: boolean; minShelfLifeDays?: number | null; limit: string | null; exposure: string; available: string | null; overdue: string; openTitles: number }
 
 /** Limite de crédito do cliente e quanto já está em uso (contas a receber em aberto). */
 export function CreditDialog({ customerId, customerName, canManage, canEditCustomer = false, onClose }: { customerId: string; customerName: string; canManage: boolean; canEditCustomer?: boolean; onClose: () => void }) {
@@ -49,6 +49,11 @@ export function CreditDialog({ customerId, customerName, canManage, canEditCusto
             <div className="row"><input id="cr-s" inputMode="numeric" style={{ maxWidth: 140 }} value={shelf} onChange={(e) => setShelf(e.target.value.replace(/\D/g, ''))} /><button className="btn" onClick={saveShelf}>Salvar validade</button></div>
             <p className="muted" style={{ fontSize: '0.82rem' }}>Para produtos com controle de lote: o pedido deste cliente não usa lote que vence antes disso, e não confirma se não houver lote que atenda.</p>
           </> : <p className="muted">{info.minShelfLifeDays ? `${info.minShelfLifeDays} dia(s)` : 'sem exigência'}</p>}
+          <h3 style={{ margin: '16px 0 4px', fontSize: '0.98rem' }}>Avisos por e-mail e WhatsApp</h3>
+          <label className="row" style={{ gap: 6 }}>
+            <input type="checkbox" checked={!info.notifyOptOut} disabled={!canEditCustomer} onChange={async (e) => { try { await api(`/notifications/customers/${customerId}/opt-out`, 'PUT', { optOut: !e.target.checked }); setInfo({ ...info, notifyOptOut: !e.target.checked }); ui.toast.ok(e.target.checked ? 'Este cliente voltou a receber avisos.' : 'Este cliente não receberá mais avisos automáticos.'); } catch (err) { ui.toast.error((err as Error).message); } }} />
+            Receber avisos automáticos (vencimento, pedido, cobrança)
+          </label>
         </>}
       </div>
       {canManage && info && <div className="modal-foot"><button className="btn" onClick={onClose}>Fechar</button><button className="btn primary" onClick={save}>Salvar limite</button></div>}

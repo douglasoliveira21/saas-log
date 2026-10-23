@@ -1,6 +1,6 @@
 'use client';
 
-import { Bell, ChevronDown, ChevronsLeft, ChevronsRight, LogOut, Menu, Moon, Repeat, Sun } from 'lucide-react';
+import { Bell, ChevronDown, ChevronsLeft, ChevronsRight, LogOut, Menu, Moon, Repeat, ShieldCheck, Sun } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -146,6 +146,7 @@ function Shell({ children }: { children: ReactNode }) {
                   <div className="muted" style={{ fontSize: '0.8rem', overflowWrap: 'anywhere' }}>{me.user.email}</div>
                   <div style={{ marginTop: 6 }}><span className="badge">{me.role?.name}</span> {me.tenant!.plan && <span className="badge brand">{me.tenant!.plan}</span>}</div>
                 </div>
+                <button role="menuitem" onClick={() => router.push('/seguranca')}><ShieldCheck />Segurança da conta</button>
                 {me.tenants.length > 1 && <button role="menuitem" onClick={() => router.push('/select-tenant')}><Repeat />Trocar empresa</button>}
                 <button role="menuitem" onClick={logout}><LogOut />Sair</button>
               </div>

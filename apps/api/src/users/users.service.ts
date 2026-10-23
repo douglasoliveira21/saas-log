@@ -185,7 +185,7 @@ export class UsersService {
     }
   }
 
-  private async assignableRole(tx: Parameters<Parameters<PrismaService['withContext']>[1]>[0], ctx: AuthContext, roleId: string) {
+  async assignableRole(tx: Parameters<Parameters<PrismaService['withContext']>[1]>[0], ctx: AuthContext, roleId: string) {
     const role = await tx.role.findFirst({
       where: { id: roleId, tenantId: ctx.tenantId! },
       include: { permissions: true },
@@ -197,11 +197,15 @@ export class UsersService {
     return role;
   }
 
-  private async enforceUserLimit(tx: Parameters<Parameters<PrismaService['withContext']>[1]>[0], ctx: AuthContext) {
-    const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId! }, include: { plan: true } });
+  async enforceUserLimit(tx: Parameters<Parameters<PrismaService['withContext']>[1]>[0], ctx: AuthContext) {
+    return this.enforceUserLimitFor(tx, ctx.tenantId!);
+  }
+
+  async enforceUserLimitFor(tx: Parameters<Parameters<PrismaService['withContext']>[1]>[0], tenantId: string) {
+    const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: tenantId }, include: { plan: true } });
     const limit = (tenant.plan?.limits as { users?: number } | undefined)?.users;
     if (limit !== undefined) {
-      const n = await tx.membership.count({ where: { tenantId: ctx.tenantId!, status: 'ACTIVE' } });
+      const n = await tx.membership.count({ where: { tenantId, status: 'ACTIVE' } });
       if (n >= limit) throw new HttpException(`Limite do plano atingido (${limit} usuários).`, HttpStatus.PAYMENT_REQUIRED);
     }
   }
