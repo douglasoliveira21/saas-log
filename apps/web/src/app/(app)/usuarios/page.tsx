@@ -4,9 +4,10 @@ import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { PageHeader, Alert, Skeleton } from '@/components/ui';
+import { Avatar } from '@/components/avatar';
 import { useSession } from '@/lib/session';
 
-interface Member { id: string; status: string; role: { id: string; key: string; name: string }; user: { name: string; email: string; lastLoginAt: string | null } }
+interface Member { id: string; status: string; role: { id: string; key: string; name: string }; user: { id: string; name: string; email: string; lastLoginAt: string | null } }
 interface Invite { id: string; name: string; email: string; role: string; expiresAt: string; expired: boolean }
 interface Role { id: string; key: string; name: string; isSystem: boolean; permissions: string[] }
 
@@ -102,7 +103,7 @@ export default function UsuariosPage() {
               {!members && <tr><td colSpan={5}><Skeleton rows={3} /></td></tr>}
               {members?.map((m) => (
                 <tr key={m.id}>
-                  <td>{m.user.name}</td><td>{m.user.email}</td>
+                  <td><span className="row" style={{ gap: 8 }}><Avatar name={m.user.name} userId={m.user.id} size={26} />{m.user.name}</span></td><td>{m.user.email}</td>
                   <td>
                     {manage ? (
                       <select aria-label={`Papel de ${m.user.name}`} value={m.role.id} onChange={(e) => patch(m.id, { roleId: e.target.value })}>

@@ -35,7 +35,7 @@ export default function RegisterPage() {
 
   return (
     <AuthShell>
-      <form className="card auth-card" onSubmit={submit}>
+      <form method="post" className="card auth-card" onSubmit={submit}>
         <h1>Criar conta no {BRAND.name}</h1>
         <p className="muted">14 dias de avaliação. Você será o proprietário da empresa.</p>
         {error && <Alert kind="error">{error}</Alert>}

@@ -192,4 +192,70 @@ describe('Conta e segurança: recuperação de senha, convite por e-mail e segun
       await a.post('/api/auth/mfa/verify').set(H).send({ mfaToken, code: totpAt(setup.secret, Date.now() + 30_000) }).expect(429);
     });
   });
+
+  describe('perfil, troca de senha e foto', () => {
+    const fakePng = (size = 400, w = 200, h = 200) => { const b = Buffer.alloc(size, 7); Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b, 0); b.writeUInt32BE(13, 8); b.write('IHDR', 12, 'latin1'); b.writeUInt32BE(w, 16); b.writeUInt32BE(h, 20); return b; };
+
+    it('edita nome e telefone, valida e reflete em /me; o e-mail não muda por aqui', async () => {
+      const u = await register('prof');
+      await u.a.patch('/api/auth/profile').set(H).send({ name: 'Maria Souza', phone: '(11) 98888-7777' }).expect(200);
+      const me = (await u.a.get('/api/auth/me').expect(200)).body.user;
+      expect(me).toMatchObject({ name: 'Maria Souza', phone: '11988887777', email: u.email });
+      await u.a.patch('/api/auth/profile').set(H).send({ name: 'A' }).expect(400);
+      await u.a.patch('/api/auth/profile').set(H).send({ phone: '123' }).expect(400);
+      await u.a.patch('/api/auth/profile').set(H).send({}).expect(400);
+      await u.a.patch('/api/auth/profile').set(H).send({ email: 'outro@x.com' }).expect(400); // campo desconhecido é recusado
+      await u.a.patch('/api/auth/profile').set(H).send({ phone: '' }).expect(200);
+      expect((await u.a.get('/api/auth/me').expect(200)).body.user.phone).toBeNull();
+    });
+
+    it('troca a senha exigindo a atual, encerra as outras sessões e mantém a de agora', async () => {
+      const u = await register('pwd');
+      const other = agent(); await other.post('/api/auth/login').set(H).send({ email: u.email, password: PASSWORD }).expect(200);
+      await u.a.post('/api/auth/change-password').set(H).send({ currentPassword: 'errada', newPassword: NEW_PASSWORD }).expect(401);
+      await u.a.post('/api/auth/change-password').set(H).send({ currentPassword: PASSWORD, newPassword: '123' }).expect(400);
+      await u.a.post('/api/auth/change-password').set(H).send({ currentPassword: PASSWORD, newPassword: PASSWORD }).expect(400);
+      await u.a.post('/api/auth/change-password').set(H).send({ currentPassword: PASSWORD, newPassword: NEW_PASSWORD }).expect(200);
+      await u.a.post('/api/auth/refresh').set(H).expect(200); // esta sessão continua
+      await other.post('/api/auth/refresh').set(H).expect(401); // a outra caiu
+      await agent().post('/api/auth/login').set(H).send({ email: u.email, password: PASSWORD }).expect(401);
+      await agent().post('/api/auth/login').set(H).send({ email: u.email, password: NEW_PASSWORD }).expect(200);
+    });
+
+    it('erros repetidos na senha atual bloqueiam por alguns minutos', async () => {
+      const u = await register('pwd2');
+      for (let i = 0; i < 5; i++) await u.a.post('/api/auth/change-password').set(H).send({ currentPassword: 'errada', newPassword: NEW_PASSWORD }).expect(401);
+      await u.a.post('/api/auth/change-password').set(H).send({ currentPassword: PASSWORD, newPassword: NEW_PASSWORD }).expect(429);
+    });
+
+    it('foto de perfil: valida tipo/tamanho, aparece em /me, colegas da empresa veem e estranhos não; remover apaga', async () => {
+      const u = await register('foto');
+      const b64 = (b: Buffer) => b.toString('base64');
+      await u.a.get('/api/auth/avatar').expect(404);
+      await u.a.put('/api/auth/avatar').set(H).send({ contentType: 'image/png', contentBase64: b64(fakePng()) }).expect(200);
+      await u.a.put('/api/auth/avatar').set(H).send({ contentType: 'image/jpeg', contentBase64: b64(fakePng()) }).expect(400); // é PNG
+      await u.a.put('/api/auth/avatar').set(H).send({ contentType: 'image/png', contentBase64: b64(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'.padEnd(200, ' '))) }).expect(400);
+      await u.a.put('/api/auth/avatar').set(H).send({ contentType: 'image/png', contentBase64: b64(fakePng(600 * 1024)) }).expect(400); // grande demais
+      await u.a.put('/api/auth/avatar').set(H).send({ contentType: 'image/png', contentBase64: b64(fakePng(400, 3000, 3000)) }).expect(400);
+      await u.a.put('/api/auth/avatar').set(H).send({ contentType: 'image/png', contentBase64: '***' }).expect(400);
+      const me = (await u.a.get('/api/auth/me').expect(200)).body.user;
+      expect(me.avatarVersion).toEqual(expect.any(Number));
+      const res = await u.a.get('/api/auth/avatar').expect(200);
+      expect(res.headers['content-type']).toBe('image/png');
+      expect(res.headers['content-security-policy']).toContain("default-src 'none'");
+      expect((res.body as Buffer).equals(fakePng())).toBe(true);
+      // colega da mesma empresa
+      const roles = Object.fromEntries((await u.a.get('/api/roles').expect(200)).body.map((r: any) => [r.key, r.id]));
+      const email = `colega-${run}@teste.local`;
+      await u.a.post('/api/users').set(H).send({ name: 'Colega', email, password: PASSWORD, roleId: roles.admin }).expect(201);
+      const colega = agent(); await colega.post('/api/auth/login').set(H).send({ email, password: PASSWORD }).expect(200);
+      await colega.get(`/api/auth/avatar/${me.id}`).expect(200);
+      const stranger = await register('estranho');
+      await stranger.a.get(`/api/auth/avatar/${me.id}`).expect(404);
+      await u.a.delete('/api/auth/avatar').set(H).expect(200);
+      await u.a.get('/api/auth/avatar').expect(404);
+      await u.a.delete('/api/auth/avatar').set(H).expect(404);
+      expect((await u.a.get('/api/auth/me').expect(200)).body.user.avatarVersion).toBeNull();
+    });
+  });
 });

@@ -1,8 +1,8 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Req, Res } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
-import { AllowNoTenant, AuthContext, AuthedRequest, COOKIE_REFRESH, CurrentAuth, Public } from '../common/auth';
-import { ForgotDto, LoginDto, MfaCodeDto, MfaDisableDto, MfaVerifyDto, RegisterDto, ResetDto, SelectTenantDto } from './auth.dto';
+import { AllowNoTenant, AuthContext, AuthedRequest, COOKIE_REFRESH, CurrentAuth, Public, RequirePermissions } from '../common/auth';
+import { AvatarDto, ForgotDto, LoginDto, PasswordDto, ProfileDto, MfaCodeDto, MfaDisableDto, MfaVerifyDto, RegisterDto, ResetDto, SelectTenantDto } from './auth.dto';
 import { RecoveryService } from './recovery.service';
 import { AuthService, RequestMeta } from './auth.service';
 
@@ -33,6 +33,41 @@ export class AuthController {
   @Post('mfa/verify')
   mfaVerify(@Body() dto: MfaVerifyDto, @Req() req: AuthedRequest, @Res({ passthrough: true }) res: Response) {
     return this.auth.verifyMfa(dto, res, meta(req));
+  }
+
+  @AllowNoTenant()
+  @Patch('profile')
+  profile(@CurrentAuth() ctx: AuthContext, @Body() dto: ProfileDto) { return this.auth.updateProfile(ctx, dto); }
+
+  @AllowNoTenant()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @HttpCode(200)
+  @Post('change-password')
+  changePassword(@CurrentAuth() ctx: AuthContext, @Body() dto: PasswordDto, @Req() req: AuthedRequest) { return this.auth.changePassword(ctx, dto, req.cookies?.[COOKIE_REFRESH] as string | undefined); }
+
+  @AllowNoTenant()
+  @Put('avatar')
+  setAvatar(@CurrentAuth() ctx: AuthContext, @Body() dto: AvatarDto) { return this.auth.setAvatar(ctx, dto); }
+
+  @AllowNoTenant()
+  @Delete('avatar')
+  removeAvatar(@CurrentAuth() ctx: AuthContext) { return this.auth.removeAvatar(ctx); }
+
+  @AllowNoTenant()
+  @Get('avatar')
+  async avatar(@CurrentAuth() ctx: AuthContext, @Res() res: Response) { return this.sendAvatar(res, await this.auth.getAvatar(ctx)); }
+
+  @RequirePermissions('users.view')
+  @Get('avatar/:userId')
+  async avatarOf(@CurrentAuth() ctx: AuthContext, @Param('userId', ParseUUIDPipe) userId: string, @Res() res: Response) { return this.sendAvatar(res, await this.auth.getAvatar(ctx, userId)); }
+
+  private sendAvatar(res: Response, a: { content: Buffer; contentType: string; version: number }) {
+    res.setHeader('Content-Type', a.contentType);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.setHeader('ETag', `"${a.version}"`);
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(a.content);
   }
 
   @AllowNoTenant()

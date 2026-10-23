@@ -7,6 +7,7 @@ import {
   Logger,
   UnauthorizedException,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
@@ -20,8 +21,10 @@ import { DUMMY_HASH, hashPassword, newOpaqueToken, sha256, validatePasswordPolic
 import { getConfig } from '../config/app.config';
 import { CryptoService } from '../integrations/crypto.service';
 import { newTotpSecret, otpauthUrl, verifyTotp } from '../notify/totp';
+import { sniffImage } from '../branding/branding.service';
+import { normalizePhone } from '../lookup/lookup';
 import { PrismaService } from '../prisma/prisma.service';
-import type { LoginDto, MfaVerifyDto, RegisterDto } from './auth.dto';
+import type { AvatarDto, LoginDto, MfaVerifyDto, PasswordDto, ProfileDto, RegisterDto } from './auth.dto';
 
 const MAX_FAILED = 5;
 const LOCK_MINUTES = 15;
@@ -175,6 +178,76 @@ export class AuthService {
     return this.completeLogin(user.id, res, meta);
   }
 
+  // ───────────── perfil, senha e foto (o próprio usuário) ─────────────
+
+  /** Nome e telefone. O e-mail é o login e não muda aqui (troca de e-mail exige confirmação e ainda não existe). */
+  async updateProfile(ctx: AuthContext, dto: ProfileDto) {
+    const data: Prisma.UserUpdateInput = {};
+    if (dto.name !== undefined) { const n = dto.name.trim(); if (n.length < 2) throw new BadRequestException('Informe o seu nome.'); data.name = n; }
+    if (dto.phone !== undefined) {
+      if (dto.phone.trim() === '') data.phone = null;
+      else { const p = normalizePhone(dto.phone); if (!p) throw new BadRequestException('Telefone inválido: informe DDD + número.'); data.phone = p; }
+    }
+    if (!Object.keys(data).length) throw new BadRequestException('Nada para alterar.');
+    const u = await this.prisma.user.update({ where: { id: ctx.userId }, data, select: { name: true, phone: true } });
+    if (ctx.tenantId) await this.prisma.withContext(ctx, (tx) => this.audit.record(tx, ctx, { action: 'user.profile_updated', entity: 'user', entityId: ctx.userId, metadata: { fields: Object.keys(dto) } }));
+    return u;
+  }
+
+  /** Troca a senha exigindo a atual. Encerra as OUTRAS sessões (a de agora continua) e conta tentativas erradas como no login. */
+  async changePassword(ctx: AuthContext, dto: PasswordDto, currentRefresh: string | undefined) {
+    const u = await this.prisma.user.findUniqueOrThrow({ where: { id: ctx.userId } });
+    if (u.lockedUntil && u.lockedUntil > new Date()) throw new HttpException('Muitas tentativas. Tente novamente em alguns minutos.', HttpStatus.TOO_MANY_REQUESTS);
+    if (!(await verifyPassword(dto.currentPassword, u.passwordHash))) {
+      const failed = u.failedLoginCount + 1;
+      await this.prisma.user.update({ where: { id: u.id }, data: { failedLoginCount: failed >= MAX_FAILED ? 0 : failed, lockedUntil: failed >= MAX_FAILED ? new Date(Date.now() + LOCK_MINUTES * 60_000) : null } });
+      throw new UnauthorizedException('Senha atual incorreta.');
+    }
+    const policy = validatePasswordPolicy(dto.newPassword);
+    if (policy) throw new BadRequestException(policy);
+    if (dto.newPassword === dto.currentPassword) throw new BadRequestException('A nova senha precisa ser diferente da atual.');
+    const passwordHash = await hashPassword(dto.newPassword);
+    const keep = currentRefresh ? sha256(currentRefresh) : null;
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: u.id }, data: { passwordHash, failedLoginCount: 0, lockedUntil: null } }),
+      this.prisma.refreshSession.updateMany({ where: { userId: u.id, revokedAt: null, ...(keep ? { NOT: { tokenHash: keep } } : {}) }, data: { revokedAt: new Date() } }),
+      this.prisma.passwordResetToken.updateMany({ where: { userId: u.id, usedAt: null }, data: { usedAt: new Date() } }),
+    ]);
+    if (ctx.tenantId) await this.prisma.withContext(ctx, (tx) => this.audit.record(tx, ctx, { action: 'user.password_changed', entity: 'user', entityId: ctx.userId }));
+    return { ok: true };
+  }
+
+  async setAvatar(ctx: AuthContext, dto: AvatarDto) {
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(dto.contentBase64)) throw new BadRequestException('Arquivo inválido.');
+    const buf = Buffer.from(dto.contentBase64, 'base64');
+    if (buf.length < 100) throw new BadRequestException('Arquivo muito pequeno para ser uma imagem.');
+    if (buf.length > 512 * 1024) throw new BadRequestException('A foto excede 512 KB. Escolha uma menor.');
+    const real = sniffImage(buf);
+    if (!real) throw new BadRequestException('Formato não reconhecido. Use PNG, JPG ou WebP.');
+    if (real.type !== dto.contentType) throw new BadRequestException('O conteúdo do arquivo não corresponde ao tipo informado.');
+    if (real.width && real.height && (real.width > 2000 || real.height > 2000)) throw new BadRequestException('Dimensões acima de 2000 px. Reduza a imagem.');
+    const row = await this.prisma.userAvatar.upsert({ where: { userId: ctx.userId }, create: { userId: ctx.userId, content: new Uint8Array(buf), contentType: real.type }, update: { content: new Uint8Array(buf), contentType: real.type } });
+    return { version: row.updatedAt.getTime() };
+  }
+
+  async removeAvatar(ctx: AuthContext) {
+    const r = await this.prisma.userAvatar.deleteMany({ where: { userId: ctx.userId } });
+    if (!r.count) throw new NotFoundException('Você não tem foto de perfil.');
+    return { removed: true };
+  }
+
+  /** Foto do próprio usuário ou de um colega da mesma empresa (nunca de quem não divide empresa com você). */
+  async getAvatar(ctx: AuthContext, userId?: string) {
+    const target = userId ?? ctx.userId;
+    if (target !== ctx.userId) {
+      const same = ctx.tenantId ? await this.prisma.withContext(ctx, (tx) => tx.membership.findFirst({ where: { tenantId: ctx.tenantId!, userId: target, status: 'ACTIVE' }, select: { id: true } })) : null;
+      if (!same) throw new NotFoundException('Foto não encontrada.');
+    }
+    const a = await this.prisma.userAvatar.findUnique({ where: { userId: target } });
+    if (!a) throw new NotFoundException('Foto não encontrada.');
+    return { content: Buffer.from(a.content), contentType: a.contentType, version: a.updatedAt.getTime() };
+  }
+
   // ───────────── gerenciamento do 2FA (usuário logado) ─────────────
 
   async mfaStatus(ctx: AuthContext) {
@@ -262,7 +335,7 @@ export class AuthService {
   async me(ctx: AuthContext) {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: ctx.userId },
-      select: { id: true, name: true, email: true, totpEnabledAt: true },
+      select: { id: true, name: true, email: true, phone: true, totpEnabledAt: true, avatar: { select: { updatedAt: true } } },
     });
     const tenants = await this.listTenants(ctx.userId);
     let tenant: { id: string; name: string; slug: string; status: string; plan: string | null; trialEndsAt: Date | null; logoVersion: number | null } | null = null;
@@ -275,7 +348,7 @@ export class AuthService {
       role = tenants.find((x) => x.id === ctx.tenantId)?.role ?? null;
     }
     const [{ is_admin: platformAdmin }] = await this.prisma.withContext({ tenantId: null, userId: ctx.userId }, (tx) => tx.$queryRaw<{ is_admin: boolean }[]>`SELECT platform_is_admin() AS is_admin`);
-    return { user: { id: user.id, name: user.name, email: user.email, mfaEnabled: !!user.totpEnabledAt }, tenant, role, permissions: [...ctx.permissions].sort(), tenants, platformAdmin, appName: getConfig().appName };
+    return { user: { id: user.id, name: user.name, email: user.email, phone: user.phone, mfaEnabled: !!user.totpEnabledAt, avatarVersion: user.avatar?.updatedAt.getTime() ?? null }, tenant, role, permissions: [...ctx.permissions].sort(), tenants, platformAdmin, appName: getConfig().appName };
   }
 
   private async listTenants(userId: string): Promise<TenantSummary[]> {

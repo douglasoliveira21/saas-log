@@ -33,7 +33,7 @@ export async function api<T>(path: string, method = 'GET', body?: unknown): Prom
 }
 
 export interface Me {
-  user: { id: string; name: string; email: string };
+  user: { id: string; name: string; email: string; phone?: string | null; mfaEnabled?: boolean; avatarVersion?: number | null };
   tenant: { id: string; name: string; slug: string; status: string; plan: string | null; trialEndsAt?: string | null; logoVersion?: number | null } | null;
   role: { key: string; name: string } | null;
   permissions: string[];

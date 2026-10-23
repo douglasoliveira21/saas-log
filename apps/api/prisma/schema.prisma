@@ -72,6 +72,7 @@ model User {
   id               String     @id @default(uuid()) @db.Uuid
   email            String     @unique // sempre minúsculo (normalizado na aplicação)
   name             String
+  phone            String?
   passwordHash     String     @map("password_hash")
   status           UserStatus @default(ACTIVE)
   failedLoginCount Int        @default(0) @map("failed_login_count")
@@ -85,6 +86,7 @@ model User {
 
   memberships Membership[]
   sessions    RefreshSession[]
+  avatar      UserAvatar?
 
   @@map("users")
 }
@@ -2497,4 +2499,16 @@ model FederalTaxConfig {
 
   @@unique([tenantId, companyId])
   @@map("federal_tax_configs")
+}
+
+/// Foto de perfil do usuário (a mesma em todas as empresas dele). Imagem já reduzida pela tela; limite de 512 KB.
+model UserAvatar {
+  userId      String   @id @map("user_id") @db.Uuid
+  content     Bytes
+  contentType String   @map("content_type")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_avatars")
 }

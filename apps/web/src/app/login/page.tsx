@@ -38,7 +38,7 @@ export default function LoginPage() {
 
   return (
     <AuthShell>
-      <form className="card auth-card" onSubmit={submit}>
+      <form method="post" className="card auth-card" onSubmit={submit}>
         <h1>{mfaToken ? 'Verificação em duas etapas' : 'Entrar'}</h1>
         <p className="muted" style={{ marginBottom: 20 }}>
           {mfaToken ? 'Digite o código de 6 dígitos do aplicativo autenticador. Sem o celular, use um código de recuperação.' : `Acesse sua conta no ${BRAND.name}.`}

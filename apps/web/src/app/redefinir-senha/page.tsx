@@ -24,7 +24,7 @@ export default function ResetPage() {
 
   return (
     <AuthShell>
-      <form className="card auth-card" onSubmit={submit}>
+      <form method="post" className="card auth-card" onSubmit={submit}>
         <h1>Nova senha</h1>
         {error && <Alert kind="error">{error}</Alert>}
         {done ? (

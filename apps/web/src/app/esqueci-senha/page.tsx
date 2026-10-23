@@ -23,7 +23,7 @@ export default function ForgotPage() {
 
   return (
     <AuthShell>
-      <form className="card auth-card" onSubmit={submit}>
+      <form method="post" className="card auth-card" onSubmit={submit}>
         <h1>Esqueci a senha</h1>
         <p className="muted" style={{ marginBottom: 20 }}>Informe o e-mail da sua conta. Enviaremos um link para criar uma nova senha (vale 1 hora).</p>
         {error && <Alert kind="error">{error}</Alert>}

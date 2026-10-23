@@ -1,14 +1,14 @@
 'use client';
 
-import { Bell, ChevronDown, ChevronsLeft, ChevronsRight, LogOut, Menu, Moon, Repeat, ShieldCheck, Sun } from 'lucide-react';
+import { Bell, ChevronDown, ChevronsLeft, ChevronsRight, LogOut, Menu, Moon, Repeat, ShieldCheck, Sun, User } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Avatar } from '@/components/avatar';
 import { BRAND } from '@/lib/brand';
 import { NAV, NAV_GROUP_ICONS, NAV_GROUPS } from '@/lib/nav';
 import { SessionProvider, useSession } from '@/lib/session';
 
-const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join('');
 
 function safeStorage(op: 'get' | 'set', key: string, value?: string): string | null {
   try { if (op === 'set') { localStorage.setItem(key, value!); return value!; } return localStorage.getItem(key); } catch { return null; }
@@ -153,17 +153,18 @@ function Shell({ children }: { children: ReactNode }) {
           <button className="btn ghost icon" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Usar tema claro' : 'Usar tema escuro'} title="Alternar tema">{theme === 'dark' ? <Sun /> : <Moon />}</button>
           <div className="menu-wrap" ref={menuRef}>
             <button className="btn ghost user-chip" onClick={() => setMenu(!menu)} aria-haspopup="menu" aria-expanded={menu}>
-              <span className="avatar" aria-hidden>{initials(me.user.name)}</span>
+              <Avatar name={me.user.name} self version={me.user.avatarVersion} />
               <span className="who hide-sm">{me.user.name.split(' ')[0]}</span>
               <ChevronDown size={14} aria-hidden />
             </button>
             {menu && (
               <div className="menu" role="menu">
                 <div className="menu-head">
-                  <strong>{me.user.name}</strong>
+                  <div className="row" style={{ gap: 10, alignItems: 'center' }}><Avatar name={me.user.name} self version={me.user.avatarVersion} size={40} /><strong>{me.user.name}</strong></div>
                   <div className="muted" style={{ fontSize: '0.8rem', overflowWrap: 'anywhere' }}>{me.user.email}</div>
                   <div style={{ marginTop: 6 }}><span className="badge">{me.role?.name}</span> {me.tenant!.plan && <span className="badge brand">{me.tenant!.plan}</span>}</div>
                 </div>
+                <button role="menuitem" onClick={() => router.push('/perfil')}><User />Meu perfil</button>
                 <button role="menuitem" onClick={() => router.push('/seguranca')}><ShieldCheck />Segurança da conta</button>
                 {me.tenants.length > 1 && <button role="menuitem" onClick={() => router.push('/select-tenant')}><Repeat />Trocar empresa</button>}
                 <button role="menuitem" onClick={logout}><LogOut />Sair</button>
