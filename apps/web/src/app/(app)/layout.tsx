@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { BRAND } from '@/lib/brand';
-import { NAV, NAV_GROUPS } from '@/lib/nav';
+import { NAV, NAV_GROUP_ICONS, NAV_GROUPS } from '@/lib/nav';
 import { SessionProvider, useSession } from '@/lib/session';
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join('');
@@ -25,6 +25,9 @@ function Shell({ children }: { children: ReactNode }) {
   const [logoFailed, setLogoFailed] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [bell, setBell] = useState(false);
+  // menus abertos: lembrados neste navegador; o menu da página atual sempre abre
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  useEffect(() => { try { setOpenGroups(JSON.parse(safeStorage('get', 'dh-nav-open') ?? '{}')); } catch { setOpenGroups({}); } }, []);
   const bellRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!bell) return;
@@ -58,6 +61,7 @@ function Shell({ children }: { children: ReactNode }) {
 
   // Só mostra o que o usuário pode acessar (o servidor reforça a mesma regra).
   const visible = NAV.filter((n) => can(n.permission));
+  const toggleGroup = (g: string, now: boolean) => { const next = { ...openGroups, [g]: !now }; setOpenGroups(next); safeStorage('set', 'dh-nav-open', JSON.stringify(next)); };
   const current = [...visible].sort((a, b) => b.href.length - a.href.length).find((n) => pathname === n.href || pathname.startsWith(n.href + '/'));
   const trialLeft = me.tenant?.status === 'TRIAL' && me.tenant.trialEndsAt ? Math.ceil((new Date(me.tenant.trialEndsAt).getTime() - Date.now()) / 86_400_000) : null;
 
@@ -84,9 +88,22 @@ function Shell({ children }: { children: ReactNode }) {
             {NAV_GROUPS.map((g) => {
               const items = visible.filter((n) => n.group === g);
               if (!items.length) return null;
+              const single = items.length === 1; // menu com um só módulo vira link direto
+              const hasCurrent = items.some((n) => n.href === current?.href);
+              const isOpen = single || collapsed || hasCurrent || openGroups[g] === true;
+              const GIcon = NAV_GROUP_ICONS[g];
               return (
-                <div className="nav-group" key={g}>
-                  <div className="nav-title">{g}</div>
+                <div className={`nav-group ${isOpen ? 'is-open' : ''}`} key={g}>
+                  {!single && (
+                    <button type="button" className={`nav-head ${hasCurrent ? 'has-current' : ''}`} aria-expanded={isOpen} aria-controls={`nav-${g}`} title={collapsed ? g : undefined}
+                      onClick={() => { if (collapsed) { toggleCollapsed(); return; } if (!hasCurrent) toggleGroup(g, isOpen); }}>
+                      <GIcon className="ico" aria-hidden />
+                      <span className="lbl">{g}</span>
+                      <span className="count">{items.length}</span>
+                      <ChevronDown className="chev" aria-hidden />
+                    </button>
+                  )}
+                  <div id={`nav-${g}`} className={single ? '' : 'nav-sub'} hidden={!isOpen}>
                   {items.map((n) => {
                     const Icon = n.icon;
                     const active = current?.href === n.href;
@@ -98,6 +115,7 @@ function Shell({ children }: { children: ReactNode }) {
                       </Link>
                     );
                   })}
+                  </div>
                 </div>
               );
             })}

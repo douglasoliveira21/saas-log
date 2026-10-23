@@ -1,5 +1,5 @@
 import {
-  BarChart3, Bell, Briefcase, Building2, ClipboardList, Container, FileText, Gauge, CreditCard, Landmark, Handshake, LayoutDashboard, type LucideIcon, Package, PackageSearch,
+  BarChart3, Bell, Boxes, Briefcase, ShoppingBag, Building2, ClipboardList, Container, FileText, Gauge, CreditCard, Landmark, Handshake, LayoutDashboard, type LucideIcon, Package, PackageSearch,
   Navigation, Percent, Plug, ReceiptText, Route, ScrollText, Settings2, ShieldCheck, ShoppingCart, Store, Truck, Users, Wallet, Warehouse,
 } from 'lucide-react';
 
@@ -15,8 +15,13 @@ export interface NavItem {
   description?: string;
 }
 
-/** Ordem dos grupos no menu. */
+/** Ordem dos menus. Cada grupo é um menu que abre e fecha, com os módulos dele como submenus. */
 export const NAV_GROUPS = ['Geral', 'Comercial', 'Suprimentos', 'Canais e logística', 'Financeiro e fiscal', 'Administração'] as const;
+
+/** Ícone de cada menu (o de "Geral" não aparece: ele tem um só item e vira link direto). */
+export const NAV_GROUP_ICONS: Record<(typeof NAV_GROUPS)[number], LucideIcon> = {
+  Geral: LayoutDashboard, Comercial: ShoppingBag, Suprimentos: Boxes, 'Canais e logística': Truck, 'Financeiro e fiscal': Wallet, Administração: Settings2,
+};
 
 export const NAV: NavItem[] = [
   { href: '/dashboard', label: 'Visão geral', icon: LayoutDashboard, group: 'Geral', implemented: true },
