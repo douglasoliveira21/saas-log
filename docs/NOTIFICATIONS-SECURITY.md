@@ -14,6 +14,13 @@
 
 **Comissão por meta**: faixas de bônus (a partir de X% da meta: % sobre o vendido no mês ou valor fixo; vale a maior faixa atingida). A meta é a de Gestão → Metas e o "vendido" é o mesmo da tela de metas (confirmado no mês, líquido de devoluções). O mês corrente é só projeção; o mês **encerrado** é apurado em Vendedores e comissões → Comissão por meta → Apurar mês. A apuração é congelada e entra no pagamento de comissões e no repasse ao Financeiro (título a pagar).
 
+## WhatsApp: QR code e sessão que não cai
+
+- **QR code:** a tela mostra o tempo restante (45 s) com barra de progresso e gera outro sozinho ao zerar, até 8 vezes (cerca de 6 minutos); depois espera um clique. Quando o celular lê, a tela detecta e fecha o QR.
+- **Vigia da sessão:** a cada 2 minutos (com `WORKER_ENABLED=true`) o sistema confere a instância na Evolution; se estiver fora do ar, manda reiniciar (`PUT /instance/restart/{instância}`, sem QR code). Reconectou: segue. Não reconectou em 5 tentativas seguidas: marca a sessão como encerrada e **avisa os proprietários por e-mail** (uma vez). Se o servidor da Evolution é que está fora do ar, nenhuma tentativa é gasta. Desconectar de propósito desliga o vigia.
+- **Limite honesto:** nenhum sistema consegue impedir que o WhatsApp encerre a sessão (aparelho removido em “Aparelhos conectados”, número banido ou celular sem uso por semanas). Nesses casos só um QR code novo resolve, por isso o aviso por e-mail.
+- **Para a sessão sobreviver a reinício/atualização da Evolution, ela precisa guardar os dados:** na Evolution ligue `DATABASE_ENABLED=true` (com `DATABASE_PROVIDER=postgresql` e `DATABASE_CONNECTION_URI`) e `DATABASE_SAVE_DATA_INSTANCE=true`, e monte um **volume persistente** em `/evolution/instances`. Sem isso, cada reinício do container derruba todas as sessões e exige novo QR code. Opcional e recomendado: `CACHE_REDIS_ENABLED=true` com um Redis.
+
 ## Verificado e não verificado
 
 - Tudo acima passou em testes automáticos de ponta a ponta (`account-security`, `notifications`, `goal-bonus`) contra o banco real, com **servidor de e-mail e Evolution API simulados**.

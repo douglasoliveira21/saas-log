@@ -13,6 +13,8 @@ export class MockEvolution {
   sent: { instance: string; number: string; text: string }[] = [];
   calls: string[] = [];
   failSend: number | null = null;
+  /** Reiniciar a instância volta ao ar (sessão salva) ou não (aparelho desconectado no celular). */
+  restartRecovers = true;
 
   async start() {
     this.server = createServer((req, res) => {
@@ -43,6 +45,11 @@ export class MockEvolution {
         if (req.method === 'GET' && parts[1] === 'fetchInstances') {
           const n = url.searchParams.get('instanceName') ?? '';
           return send(200, this.instances.has(n) ? [{ name: n, ownerJid: '5511999990000@s.whatsapp.net', connectionStatus: this.instances.get(n)!.state }] : []);
+        }
+        if (req.method === 'PUT' && parts[1] === 'restart') {
+          const i = this.instances.get(name); if (!i) return send(404, { status: 404 });
+          if (this.restartRecovers) i.state = 'open';
+          return send(200, { instance: { instanceName: name, state: i.state } });
         }
         if (req.method === 'DELETE' && parts[1] === 'logout') {
           const i = this.instances.get(name); if (!i) return send(404, { status: 404 });

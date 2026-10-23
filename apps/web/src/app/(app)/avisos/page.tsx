@@ -6,7 +6,9 @@ import { Alert, PageHeader, useUi } from '@/components/ui';
 
 interface Rule { type: string; emailEnabled: boolean; whatsappEnabled: boolean; daysBefore: number; minOverdueDays: number; repeatEveryDays: number; orderStatuses: string[]; subject: string | null; body: string | null; defaultSubject: string; defaultBody: string; variables: string[] }
 interface RulesRes { emailAvailable: boolean; whatsappAvailable: boolean; rules: Rule[] }
-interface Wa { configured: boolean; status: 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED'; phone: string | null; lastError: string | null }
+interface Wa { configured: boolean; status: 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED'; phone: string | null; lastError: string | null; wantConnected?: boolean; reconnectAttempts?: number; lastCheckedAt?: string | null }
+interface QrRes { qr: string; expiresInSeconds: number }
+const MAX_QR_CYCLES = 8; // ~6 minutos tentando; depois espera o clique (evita gerar QR sem ninguém olhando)
 interface LogRow { id: string; type: string; channel: string; recipient: string; subject: string | null; status: string; error: string | null; attempts: number; createdAt: string; sentAt: string | null }
 interface Logs { counts: Record<string, number>; items: LogRow[] }
 
@@ -24,6 +26,12 @@ export default function AvisosPage() {
   const [res, setRes] = useState<RulesRes | null>(null);
   const [wa, setWa] = useState<Wa | null>(null);
   const [qr, setQr] = useState<string | null>(null);
+  const [qrEnds, setQrEnds] = useState(0); // instante (ms) em que este QR deixa de valer
+  const [qrTotal, setQrTotal] = useState(45);
+  const [cycle, setCycle] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [expired, setExpired] = useState(false);
+  const renewing = useRef(false);
   const [logs, setLogs] = useState<Logs | null>(null);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
@@ -46,10 +54,27 @@ export default function AvisosPage() {
     setError(''); setOk('');
     try { await api(`/notifications/rules/${type}`, 'PUT', body); setOk(msg); load(); } catch (e) { setError((e as Error).message); }
   }
-  async function connect() {
-    setError(''); setOk('');
-    try { const r = await api<{ qr: string }>('/notifications/whatsapp/connect', 'POST'); setQr(r.qr); void loadWa(); } catch (e) { setError((e as Error).message); }
-  }
+  const connect = useCallback(async (auto = false, nextCycle = 1) => {
+    if (renewing.current) return;
+    renewing.current = true;
+    if (!auto) { setError(''); setOk(''); }
+    try {
+      const r = await api<QrRes>('/notifications/whatsapp/connect', 'POST');
+      setQr(r.qr); setQrTotal(r.expiresInSeconds); setQrEnds(Date.now() + r.expiresInSeconds * 1000); setCycle(nextCycle); setExpired(false);
+      void loadWa();
+    } catch (e) { setError((e as Error).message); setQr(null); } finally { renewing.current = false; }
+  }, [loadWa]);
+  // relógio do QR: 1 tique por segundo; ao zerar, gera outro sozinho (até MAX_QR_CYCLES) e depois pede o clique
+  useEffect(() => {
+    if (!qr) return;
+    const t = setInterval(() => setNowMs(Date.now()), 500);
+    return () => clearInterval(t);
+  }, [qr]);
+  useEffect(() => {
+    if (!qr || nowMs < qrEnds || renewing.current) return;
+    if (cycle >= MAX_QR_CYCLES) { setExpired(true); return; }
+    void connect(true, cycle + 1);
+  }, [nowMs, qr, qrEnds, cycle, connect]);
   async function disconnect() {
     if (!(await ui.confirm({ title: 'Desconectar o WhatsApp?', message: 'Os avisos por WhatsApp param até você ler um novo QR code.', confirmLabel: 'Desconectar' }))) return;
     try { await api('/notifications/whatsapp/disconnect', 'POST'); setQr(null); void loadWa(); } catch (e) { setError((e as Error).message); }
@@ -76,18 +101,37 @@ export default function AvisosPage() {
       <section className="card" style={{ marginBottom: 16 }} aria-label="WhatsApp">
         <h2>WhatsApp {wa && <span className={`badge ${wa.status === 'CONNECTED' ? 'ok' : 'warn'}`}>{wa.status === 'CONNECTED' ? 'Conectado' : wa.status === 'CONNECTING' ? 'Aguardando leitura do QR code' : 'Desconectado'}</span>}</h2>
         {wa && !wa.configured && <Alert kind="warn">O servidor ainda não está ligado à Evolution API (EVOLUTION_API_URL e EVOLUTION_API_KEY). Peça ao responsável pela instalação.</Alert>}
-        {wa?.lastError && <p className="muted">Último erro: {wa.lastError}</p>}
+        {wa?.lastError && <p className="muted">{wa.status === 'CONNECTED' ? 'Aviso' : 'Situação'}: {wa.lastError}</p>}
+        {wa?.status === 'CONNECTING' && wa.wantConnected && !qr && <Alert kind="warn">A sessão caiu e o sistema está tentando reconectar sozinho (tentativa {wa.reconnectAttempts} de 5). Não precisa ler QR code agora; se não voltar, você será avisado por e-mail.</Alert>}
+        {wa?.status === 'DISCONNECTED' && wa.lastError?.includes('QR code') && !qr && <Alert kind="error">A sessão foi encerrada e não voltou sozinha. Leia um novo QR code abaixo.</Alert>}
         {wa?.status === 'CONNECTED' ? (
-          <div className="row"><span>Número conectado: <strong>{wa.phone ?? '—'}</strong></span><button className="btn" onClick={() => test('WHATSAPP')}>Enviar teste</button><button className="btn" onClick={disconnect}>Desconectar</button></div>
+          <>
+            <div className="row"><span>Número conectado: <strong>{wa.phone ?? '—'}</strong></span><button className="btn" onClick={() => test('WHATSAPP')}>Enviar teste</button><button className="btn" onClick={disconnect}>Desconectar</button></div>
+            <p className="muted" style={{ fontSize: '0.82rem', marginBottom: 0 }}>Sessão vigiada: se cair, o sistema tenta reconectar sozinho a cada 2 minutos{wa.lastCheckedAt ? ` (última verificação às ${new Date(wa.lastCheckedAt).toLocaleTimeString('pt-BR')})` : ''}. Só pede novo QR code se o aparelho for desconectado no celular.</p>
+          </>
         ) : (
           <>
             <p className="muted">Use um número da empresa. No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho → ler o QR code abaixo. Mensagens automáticas em volume podem levar à restrição do número pelo WhatsApp: comece devagar.</p>
-            <button className="btn primary" onClick={connect} disabled={!wa?.configured}>{qr ? 'Gerar novo QR code' : 'Conectar WhatsApp'}</button>
-            {qr && (<div style={{ marginTop: 12 }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={qr} alt="QR code para conectar o WhatsApp" width={240} height={240} style={{ background: '#fff', padding: 8, borderRadius: 8 }} />
-              <p className="muted" style={{ fontSize: '0.82rem' }}>O QR code expira em cerca de um minuto; se não ler a tempo, gere outro. Esta tela confere sozinha quando conectar.</p>
-            </div>)}
+            <button className="btn primary" onClick={() => void connect(false, 1)} disabled={!wa?.configured}>{qr || expired ? 'Gerar novo QR code agora' : 'Conectar WhatsApp'}</button>
+            {qr && (() => {
+              const left = Math.max(0, Math.ceil((qrEnds - nowMs) / 1000));
+              const pct = Math.max(0, Math.min(100, ((qrEnds - nowMs) / (qrTotal * 1000)) * 100));
+              return (
+                <div style={{ marginTop: 12, maxWidth: 260 }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={qr} alt="QR code para conectar o WhatsApp" width={240} height={240} style={{ background: '#fff', padding: 8, borderRadius: 8, opacity: expired ? 0.25 : 1 }} />
+                  {!expired ? (
+                    <>
+                      <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={qrTotal} aria-valuenow={left} aria-label="Tempo restante do QR code" style={{ marginTop: 8 }}><span style={{ width: `${pct}%`, transition: 'width .5s linear', background: left <= 10 ? 'var(--danger, #c0392b)' : undefined }} /></div>
+                      <p style={{ margin: '6px 0 0', fontWeight: 600 }}>{left <= 0 ? 'Gerando novo QR code…' : `Expira em ${left}s`}</p>
+                      <p className="muted" style={{ fontSize: '0.82rem', margin: '2px 0 0' }}>Um novo QR code é gerado sozinho ao zerar (tentativa {cycle} de {MAX_QR_CYCLES}). Esta tela confere sozinha quando o celular conectar.</p>
+                    </>
+                  ) : (
+                    <p className="muted">O tempo para ler acabou. Clique em “Gerar novo QR code agora” quando estiver com o celular em mãos.</p>
+                  )}
+                </div>
+              );
+            })()}
           </>
         )}
       </section>

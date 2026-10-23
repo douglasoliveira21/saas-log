@@ -242,13 +242,25 @@ export class NotificationsService {
 export class NotificationWorker implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly log = new Logger(NotificationWorker.name);
   private timer?: NodeJS.Timeout; private running = false;
-  constructor(private readonly prisma: PrismaService, private readonly svc: NotificationsService) {}
+  private watchdog?: NodeJS.Timeout; private watching = false;
+  constructor(private readonly prisma: PrismaService, private readonly svc: NotificationsService, private readonly wa: WhatsappService) {}
 
   onApplicationBootstrap() {
     if (process.env.NODE_ENV === 'test' || !getConfig().workerEnabled) return;
     this.timer = setInterval(() => void this.tick().catch((e) => this.log.error(e)), 5 * 60_000);
+    // vigia da sessão do WhatsApp: a cada 2 minutos, a qualquer hora
+    this.watchdog = setInterval(() => void this.watch().catch((e) => this.log.error(e)), 2 * 60_000);
   }
-  onModuleDestroy() { if (this.timer) clearInterval(this.timer); }
+  onModuleDestroy() { if (this.timer) clearInterval(this.timer); if (this.watchdog) clearInterval(this.watchdog); }
+
+  async watch() {
+    if (this.watching) return;
+    this.watching = true;
+    try {
+      const rows = await this.prisma.$queryRaw<{ tenant_id: string }[]>`SELECT tenant_id FROM list_whatsapp_tenants()`;
+      for (const { tenant_id } of rows) await this.wa.keepAlive(tenant_id).catch((e) => this.log.error(`vigia tenant ${tenant_id}: ${(e as Error).message}`));
+    } finally { this.watching = false; }
+  }
 
   static inWindow(now = new Date()): boolean {
     const h = Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hour12: false, timeZone: 'America/Sao_Paulo' }).format(now));

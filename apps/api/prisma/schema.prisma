@@ -2372,6 +2372,11 @@ model WhatsappConnection {
   phone        String?
   lastError    String?   @map("last_error")
   connectedAt  DateTime? @map("connected_at")
+  /// A empresa quer o WhatsApp sempre ligado: o vigia reconecta sozinho se a sessão cair (só o QR code novo exige a pessoa).
+  wantConnected     Boolean   @default(false) @map("want_connected")
+  reconnectAttempts Int       @default(0) @map("reconnect_attempts")
+  lastCheckedAt     DateTime? @map("last_checked_at")
+  lostNotifiedAt    DateTime? @map("lost_notified_at")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 

@@ -212,6 +212,47 @@ describe('Avisos por e-mail e WhatsApp (Evolution API): vencimento, pedido e cob
     expect(NotificationWorker.inWindow(new Date('2026-10-23T10:30:00Z'))).toBe(false); // 7h30
   });
 
+  it('QR code com tempo de validade e vigia da sessão: reconecta sozinho, conta tentativas e avisa o dono quando só um QR novo resolve', async () => {
+    process.env.WA_RECHECK_MS = '5';
+    const wa = app.get(require('../src/notify/whatsapp').WhatsappService);
+    const name = `dh-${tenantId}`;
+    await owner.post('/api/notifications/whatsapp/disconnect').set(H).expect(200);
+    expect(await wa.keepAlive(tenantId)).toBe('SKIPPED'); // desconectou de propósito: o vigia não interfere
+    const c = (await owner.post('/api/notifications/whatsapp/connect').set(H).expect(200)).body;
+    expect(c.expiresInSeconds).toBe(45);
+    expect(new Date(c.issuedAt).getTime()).toBeLessThanOrEqual(Date.now());
+    evo.instances.get(name)!.state = 'open'; // celular leu o QR
+    const s1 = (await owner.get('/api/notifications/whatsapp').expect(200)).body;
+    expect(s1).toMatchObject({ status: 'CONNECTED', wantConnected: true, reconnectAttempts: 0 });
+    expect(await wa.keepAlive(tenantId)).toBe('OK');
+
+    // a sessão cai (queda de rede/reinício do servidor), mas as credenciais continuam salvas: reconecta sozinho, sem QR
+    evo.instances.get(name)!.state = 'close';
+    expect(await wa.keepAlive(tenantId)).toBe('RECONNECTED');
+    expect((await owner.get('/api/notifications/whatsapp').expect(200)).body).toMatchObject({ status: 'CONNECTED', reconnectAttempts: 0 });
+    expect(evo.calls.filter((x) => x.startsWith('PUT /instance/restart')).length).toBeGreaterThanOrEqual(1);
+
+    // servidor de WhatsApp fora do ar não gasta tentativas da sessão
+    const realBase = process.env.EVOLUTION_API_URL; process.env.EVOLUTION_API_URL = 'http://127.0.0.1:1';
+    expect(await wa.keepAlive(tenantId)).toBe('UNREACHABLE');
+    process.env.EVOLUTION_API_URL = realBase;
+    expect((await admin.whatsappConnection.findUniqueOrThrow({ where: { tenantId } })).reconnectAttempts).toBe(0);
+
+    // aparelho desconectado no celular: reiniciar não adianta; após 5 tentativas considera perdida e avisa o proprietário
+    evo.restartRecovers = false; evo.instances.get(name)!.state = 'close'; Mailer.outbox.length = 0;
+    for (let i = 1; i <= 5; i++) expect(await wa.keepAlive(tenantId)).toBe('RETRYING');
+    expect((await owner.get('/api/notifications/whatsapp').expect(200)).body.reconnectAttempts).toBe(5);
+    expect(await wa.keepAlive(tenantId)).toBe('LOST');
+    const lost = await admin.whatsappConnection.findUniqueOrThrow({ where: { tenantId } });
+    expect(lost).toMatchObject({ status: 'DISCONNECTED', wantConnected: false });
+    expect(lost.lastError).toContain('QR code');
+    expect(mailTo(`nt-${run}@teste.local`).filter((m) => /WhatsApp desconectado/.test(m.subject))).toHaveLength(1);
+    expect(await wa.keepAlive(tenantId)).toBe('SKIPPED'); // não insiste nem reenvia o aviso
+    expect(mailTo(`nt-${run}@teste.local`).filter((m) => /WhatsApp desconectado/.test(m.subject))).toHaveLength(1);
+    evo.restartRecovers = true;
+    delete process.env.WA_RECHECK_MS;
+  });
+
   it('isola por empresa: outra empresa não vê o histórico nem a conexão', async () => {
     const other = agent();
     await other.post('/api/auth/register').set(H).send({ companyName: `Outra ${run}`, name: 'Outro', email: `ot-${run}@teste.local`, password: PASSWORD }).expect(201);
