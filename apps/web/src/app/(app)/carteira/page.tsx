@@ -78,7 +78,7 @@ export default function CarteiraPage() {
               <tr key={i.id}>
                 {canTransfer && <td><input type="checkbox" aria-label={`Selecionar ${i.name}`} checked={picked.has(i.id)} onChange={(e) => { const n = new Set(picked); if (e.target.checked) n.add(i.id); else n.delete(i.id); setPicked(n); }} /></td>}
                 <td>{i.name}{i.priceTable === 'WHOLESALE' && <span className="badge" style={{ marginLeft: 6 }}>atacado</span>}<div className="muted" style={{ fontSize: '0.78rem' }}>{docOrDash(i.document)}</div></td>
-                <td>{[i.phone ? formatPhone(i.phone) : null, i.email].filter(Boolean).join(' · ') || '—'}</td>
+                <td className="contact-cell">{i.email || i.phone ? <>{i.email && <div className="ct-line" title={i.email}>{i.email}</div>}{i.phone && <div className="ct-line nowrap">{formatPhone(i.phone)}</div>}</> : '—'}</td>
                 <td>{[i.city, i.state].filter(Boolean).join('/') || '—'}</td>
                 {sum?.canSeeAll && <td>{i.salespersonName ?? <span className="muted">sem carteira</span>}</td>}
                 <td className="num">{i.orders}</td>

@@ -66,7 +66,7 @@ export default function FornecedoresPage() {
               {items?.map((s) => (
                 <tr key={s.id} style={s.active ? undefined : { opacity: 0.55 }}>
                   <td>{s.legalName}{s.tradeName && <span className="muted"> · {s.tradeName}</span>}</td><td className="nowrap">{docOrDash(s.document)}</td>
-                  <td>{[s.email, s.phone ? formatPhone(s.phone) : null].filter(Boolean).join(' · ') || '—'}</td><td>{s.paymentTerms ?? '—'}</td><td>{s.leadTimeDays != null ? `${s.leadTimeDays} d` : '—'}</td>
+                  <td className="contact-cell">{s.email || s.phone ? <>{s.email && <div className="ct-line" title={s.email}>{s.email}</div>}{s.phone && <div className="ct-line nowrap">{formatPhone(s.phone)}</div>}</> : '—'}</td><td>{s.paymentTerms ?? '—'}</td><td>{s.leadTimeDays != null ? `${s.leadTimeDays} d` : '—'}</td>
                   <td>{manage && <button className="btn sm" onClick={() => toggle(s)}>{s.active ? 'Inativar' : 'Reativar'}</button>}</td>
                 </tr>
               ))}

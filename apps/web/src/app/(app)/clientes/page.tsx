@@ -101,7 +101,7 @@ export default function ClientesPage() {
               {items?.length === 0 && <tr><td colSpan={7} className="empty">Nenhum cliente encontrado.</td></tr>}
               {items?.map((c) => (
                 <tr key={c.id} style={c.active ? undefined : { opacity: 0.55 }}>
-                  <td>{c.name}{c.priceTable === 'WHOLESALE' && <span className="badge" style={{ marginLeft: 6 }}>atacado</span>}</td><td>{c.kind}</td><td className="nowrap">{docOrDash(c.document)}</td><td>{[c.email, c.phone ? formatPhone(c.phone) : null].filter(Boolean).join(' · ') || '—'}</td>
+                  <td>{c.name}{c.priceTable === 'WHOLESALE' && <span className="badge" style={{ marginLeft: 6 }}>atacado</span>}</td><td>{c.kind}</td><td className="nowrap">{docOrDash(c.document)}</td><td className="contact-cell">{c.email || c.phone ? <>{c.email && <div className="ct-line" title={c.email}>{c.email}</div>}{c.phone && <div className="ct-line nowrap">{formatPhone(c.phone)}</div>}</> : '—'}</td>
                   <td>{[c.city, c.state].filter(Boolean).join('/') || '—'}</td>
                   <td><PurchaseBadge type={c.purchase?.type} daysSince={c.purchase?.daysSince} at="now" />{c.purchase && c.purchase.orders > 0 && <div className="muted" style={{ fontSize: '0.76rem' }}>{c.purchase.orders} pedido(s) · última {c.purchase.lastPurchaseAt ? new Date(c.purchase.lastPurchaseAt).toLocaleDateString('pt-BR') : '—'}</div>}</td>
                   <td className="actions">{manage && <button className="btn sm" onClick={() => startEdit(c)} aria-label={`Editar ${c.name}`}>Editar</button>} <button className="btn sm" onClick={() => setCredit(c)}>Crédito</button> {manage && <button className="btn sm" onClick={() => toggle(c)}>{c.active ? 'Inativar' : 'Reativar'}</button>}</td>

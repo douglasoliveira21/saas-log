@@ -679,3 +679,8 @@ input.otp { text-align: center; letter-spacing: .35em; font-size: 1.3rem; font-v
 .legal-foot { text-align: center; color: var(--muted); font-size: .82rem; padding: 0 16px 32px; }
 @media (max-width: 860px) { .legal-wrap { grid-template-columns: 1fr; } .legal-toc { position: static; } }
 @media print { .legal-bar, .legal-toc, .legal-foot { display: none; } .legal-wrap { display: block; padding: 0; } .legal-doc { border: 0; box-shadow: none; padding: 0; } }
+
+/* contato em tabelas: e-mail e telefone em linhas separadas, sem quebrar o número */
+.contact-cell { max-width: 260px; }
+.contact-cell .ct-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.45; }
+.contact-cell .ct-line + .ct-line { color: var(--muted); font-size: 0.86rem; }
