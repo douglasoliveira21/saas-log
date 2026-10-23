@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { Alert, PageHeader } from '@/components/ui';
+import { PasswordInput } from '@/components/password-input';
 
 interface Status { enabled: boolean; enabledAt: string | null; recoveryCodesLeft: number }
 interface Setup { secret: string; otpauthUrl: string; qrDataUrl: string }
@@ -56,7 +57,7 @@ export default function SegurancaPage() {
             <p className="muted">Ativa desde {st.enabledAt ? new Date(st.enabledAt).toLocaleDateString('pt-BR') : '—'} · {st.recoveryCodesLeft} código(s) de recuperação restante(s).</p>
             <p className="muted">Para desligar, confirme a senha e um código atual (ou de recuperação).</p>
             <div className="form-grid">
-              <div><label htmlFor="pw">Senha</label><input id="pw" name="password" type="password" autoComplete="current-password" required /></div>
+              <div><label htmlFor="pw">Senha</label><PasswordInput id="pw" name="password"  autoComplete="current-password" required /></div>
               <div><label htmlFor="cd">Código</label><input id="cd" name="code" inputMode="numeric" autoComplete="one-time-code" required maxLength={16} /></div>
             </div>
             <div className="row" style={{ marginTop: 12 }}><button className="btn danger">Desativar</button></div>

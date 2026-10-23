@@ -8,6 +8,7 @@ import { MaskedInput } from '@/components/fields';
 import { api } from '@/lib/api';
 import { formatPhone } from '@/lib/format';
 import { useSession } from '@/lib/session';
+import { PasswordInput } from '@/components/password-input';
 
 /** Meu perfil: foto, nome e telefone, troca de senha e atalho para o segundo fator. */
 export default function PerfilPage() {
@@ -107,9 +108,9 @@ export default function PerfilPage() {
       <form className="card" style={{ marginBottom: 16 }} onSubmit={savePassword}>
         <h2>Alterar senha</h2>
         <div className="form-grid">
-          <div><label htmlFor="pw-cur">Senha atual *</label><input id="pw-cur" name="current" type="password" autoComplete="current-password" required /></div>
-          <div><label htmlFor="pw-new">Nova senha *</label><input id="pw-new" name="next" type="password" autoComplete="new-password" required minLength={8} /></div>
-          <div><label htmlFor="pw-cf">Repita a nova senha *</label><input id="pw-cf" name="confirm" type="password" autoComplete="new-password" required minLength={8} /></div>
+          <div><label htmlFor="pw-cur">Senha atual *</label><PasswordInput id="pw-cur" name="current"  autoComplete="current-password" required /></div>
+          <div><label htmlFor="pw-new">Nova senha *</label><PasswordInput id="pw-new" name="next"  autoComplete="new-password" required minLength={8} /></div>
+          <div><label htmlFor="pw-cf">Repita a nova senha *</label><PasswordInput id="pw-cf" name="confirm"  autoComplete="new-password" required minLength={8} /></div>
         </div>
         <p className="muted" style={{ fontSize: '0.82rem' }}>Use letras e números, bem diferente da atual. Ao trocar, as outras sessões abertas (outros aparelhos) são encerradas; esta continua.</p>
         <div className="row"><button className={`btn primary ${busy === 'password' ? 'loading' : ''}`} disabled={busy === 'password'}>Alterar senha</button></div>

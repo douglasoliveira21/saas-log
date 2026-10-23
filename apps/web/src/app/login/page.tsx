@@ -1,12 +1,13 @@
 'use client';
 
+import { KeyRound, Lock, Mail } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { AuthShell } from '@/components/auth-shell';
+import { PasswordInput } from '@/components/password-input';
 import { Alert } from '@/components/ui';
-import { BRAND } from '@/lib/brand';
 
 type LoginResult = { selectedTenantId: string | null; mfaRequired?: undefined } | { mfaRequired: true; mfaToken: string };
 
@@ -39,34 +40,32 @@ export default function LoginPage() {
   return (
     <AuthShell>
       <form method="post" className="card auth-card" onSubmit={submit}>
-        <h1>{mfaToken ? 'Verificação em duas etapas' : 'Entrar'}</h1>
-        <p className="muted" style={{ marginBottom: 20 }}>
-          {mfaToken ? 'Digite o código de 6 dígitos do aplicativo autenticador. Sem o celular, use um código de recuperação.' : `Acesse sua conta no ${BRAND.name}.`}
-        </p>
+        <div className="auth-head">
+          <span className="auth-badge" aria-hidden>{mfaToken ? <KeyRound /> : <Lock />}</span>
+          <h1>{mfaToken ? 'Verificação em duas etapas' : 'Acesse sua conta'}</h1>
+          <p className="muted">{mfaToken ? 'Digite o código de 6 dígitos do aplicativo autenticador. Sem o celular, use um código de recuperação.' : 'Entre com o e-mail e a senha cadastrados.'}</p>
+        </div>
         {error && <Alert kind="error">{error}</Alert>}
         {mfaToken ? (
           <div className="field">
-            <label htmlFor="code">Código</label>
-            <input id="code" name="code" inputMode="numeric" autoComplete="one-time-code" autoFocus required maxLength={16} placeholder="000000" />
+            <label htmlFor="code">Código de verificação</label>
+            <input id="code" name="code" inputMode="numeric" autoComplete="one-time-code" autoFocus required maxLength={16} placeholder="000000" className="otp" />
           </div>
         ) : (
           <>
             <div className="field">
               <label htmlFor="email">E-mail</label>
-              <input id="email" name="email" type="email" autoComplete="username" required />
+              <span className="icon-field"><Mail aria-hidden /><input id="email" name="email" type="email" autoComplete="username" required placeholder="voce@empresa.com.br" autoFocus /></span>
             </div>
             <div className="field">
-              <label htmlFor="password">Senha</label>
-              <input id="password" name="password" type="password" autoComplete="current-password" required />
+              <div className="field-row"><label htmlFor="password">Senha</label><Link href="/esqueci-senha" className="forgot">Esqueci a senha</Link></div>
+              <PasswordInput id="password" name="password" autoComplete="current-password" required placeholder="Sua senha" />
             </div>
           </>
         )}
-        <button className={`btn primary ${busy ? 'loading' : ''}`} disabled={busy} style={{ width: '100%' }}>{busy ? 'Entrando…' : mfaToken ? 'Confirmar' : 'Entrar'}</button>
-        {mfaToken ? (
-          <p className="muted" style={{ marginBottom: 0 }}><a href="/login">Voltar</a></p>
-        ) : (
-          <p className="muted" style={{ marginBottom: 0 }}><Link href="/esqueci-senha">Esqueci a senha</Link> · Ainda não tem conta? <Link href="/register">Criar empresa</Link></p>
-        )}
+        <button className={`btn primary lg ${busy ? 'loading' : ''}`} disabled={busy} style={{ width: '100%' }}>{busy ? 'Entrando…' : mfaToken ? 'Confirmar' : 'Entrar'}</button>
+        {mfaToken && <p className="muted" style={{ marginBottom: 0, textAlign: 'center' }}><a href="/login">Voltar</a></p>}
+        {!mfaToken && <p className="auth-terms">Ao entrar, você concorda com os <Link href="/termos">Termos de uso</Link> e a <Link href="/privacidade">Política de privacidade</Link>.</p>}
       </form>
     </AuthShell>
   );

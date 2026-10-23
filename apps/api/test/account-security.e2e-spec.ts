@@ -34,6 +34,14 @@ describe('Conta e segurança: recuperação de senha, convite por e-mail e segun
   afterAll(async () => { await app.close(); });
   beforeEach(() => { Mailer.outbox.length = 0; Mailer.failNext = null; });
 
+  it('cadastro público pode ser desativado por configuração (ALLOW_SELF_REGISTRATION=false)', async () => {
+    process.env.ALLOW_SELF_REGISTRATION = 'false';
+    try {
+      const r = await agent().post('/api/auth/register').set(H).send({ companyName: `Fechada ${run}`, name: 'Xis', email: `fechada-${run}@teste.local`, password: PASSWORD }).expect(403);
+      expect(r.body.message).toContain('desativado');
+    } finally { delete process.env.ALLOW_SELF_REGISTRATION; }
+  });
+
   describe('recuperação de senha', () => {
     it('responde igual para e-mail desconhecido (nada é enviado) e envia o link para o cadastrado', async () => {
       const a = await agent().post('/api/auth/forgot-password').set(H).send({ email: `ninguem-${run}@teste.local` }).expect(200);

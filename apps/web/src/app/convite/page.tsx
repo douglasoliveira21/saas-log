@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { AuthShell } from '@/components/auth-shell';
 import { Alert } from '@/components/ui';
+import { PasswordInput } from '@/components/password-input';
 
 interface Info { email: string; name: string; company: string; existingUser: boolean }
 
@@ -44,13 +45,13 @@ export default function InvitePage() {
             {info.existingUser ? (
               <>
                 <p className="muted">Este e-mail já tem conta. Digite a sua senha atual para aceitar.</p>
-                <div className="field"><label htmlFor="password">Senha atual</label><input id="password" name="password" type="password" autoComplete="current-password" required /></div>
+                <div className="field"><label htmlFor="password">Senha atual</label><PasswordInput id="password" name="password"  autoComplete="current-password" required /></div>
               </>
             ) : (
               <>
                 <div className="field"><label htmlFor="name">Seu nome</label><input id="name" name="name" defaultValue={info.name} required minLength={2} /></div>
-                <div className="field"><label htmlFor="password">Crie uma senha</label><input id="password" name="password" type="password" autoComplete="new-password" required minLength={8} /></div>
-                <div className="field"><label htmlFor="confirm">Repita a senha</label><input id="confirm" name="confirm" type="password" autoComplete="new-password" required minLength={8} /></div>
+                <div className="field"><label htmlFor="password">Crie uma senha</label><PasswordInput id="password" name="password"  autoComplete="new-password" required minLength={8} /></div>
+                <div className="field"><label htmlFor="confirm">Repita a senha</label><PasswordInput id="confirm" name="confirm"  autoComplete="new-password" required minLength={8} /></div>
               </>
             )}
             <button className={`btn primary ${busy ? 'loading' : ''}`} disabled={busy} style={{ width: '100%' }}>{busy ? 'Aceitando…' : 'Aceitar convite'}</button>

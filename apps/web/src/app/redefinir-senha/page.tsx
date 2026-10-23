@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { AuthShell } from '@/components/auth-shell';
 import { Alert } from '@/components/ui';
+import { PasswordInput } from '@/components/password-input';
 
 export default function ResetPage() {
   const [token, setToken] = useState('');
@@ -34,8 +35,8 @@ export default function ResetPage() {
         ) : (
           <>
             <p className="muted" style={{ marginBottom: 20 }}>Escolha uma senha forte, com letras e números.</p>
-            <div className="field"><label htmlFor="password">Nova senha</label><input id="password" name="password" type="password" autoComplete="new-password" required minLength={8} /></div>
-            <div className="field"><label htmlFor="confirm">Repita a senha</label><input id="confirm" name="confirm" type="password" autoComplete="new-password" required minLength={8} /></div>
+            <div className="field"><label htmlFor="password">Nova senha</label><PasswordInput id="password" name="password"  autoComplete="new-password" required minLength={8} /></div>
+            <div className="field"><label htmlFor="confirm">Repita a senha</label><PasswordInput id="confirm" name="confirm"  autoComplete="new-password" required minLength={8} /></div>
             <button className={`btn primary ${busy ? 'loading' : ''}`} disabled={busy} style={{ width: '100%' }}>{busy ? 'Salvando…' : 'Salvar nova senha'}</button>
           </>
         )}
