@@ -10,7 +10,7 @@ import { useSession } from '@/lib/session';
 import { PurchaseBadge, type PurchaseInfo } from '@/components/purchase-badge';
 import { CreditDialog } from '@/components/credit-dialog';
 
-interface Customer { id: string; kind: 'PF' | 'PJ'; name: string; document: string | null; email: string | null; phone: string | null; city: string | null; state: string | null; active: boolean; priceTable?: string; salespersonId?: string | null; purchase?: PurchaseInfo }
+interface Customer { id: string; kind: 'PF' | 'PJ'; name: string; document: string | null; email: string | null; phone: string | null; city: string | null; state: string | null; stateRegistration?: string | null; zipCode?: string | null; street?: string | null; number?: string | null; district?: string | null; active: boolean; priceTable?: string; salespersonId?: string | null; purchase?: PurchaseInfo }
 interface Seller { id: string; name: string; active: boolean }
 
 export default function ClientesPage() {
@@ -21,6 +21,7 @@ export default function ClientesPage() {
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<Customer | null>(null);
   const [credit, setCredit] = useState<Customer | null>(null);
   const [sellers, setSellers] = useState<Seller[]>([]);
   useEffect(() => { if (can('sales.view_all') && can('commissions.view')) api<Seller[]>('/salespeople').then((s) => setSellers(s.filter((x) => x.active))).catch(() => undefined); }, [can]);
@@ -28,12 +29,31 @@ export default function ClientesPage() {
   const load = useCallback(() => { api<Customer[]>(`/customers${search ? `?search=${encodeURIComponent(search)}` : ''}`).then(setItems).catch((e) => setError(e.message)); }, [search]);
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
 
-  async function create(e: FormEvent<HTMLFormElement>) {
+  const OPTIONAL = ['stateRegistration', 'email', 'phone', 'zipCode', 'street', 'number', 'district', 'city', 'state'];
+  async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(''); setOk('');
-    const f = Object.fromEntries([...new FormData(e.currentTarget).entries()].filter(([, v]) => String(v).trim() !== ''));
-    try { await api('/customers', 'POST', f); setOk('Cliente cadastrado.'); setAdding(false); load(); } catch (err) { setError((err as Error).message); }
+    const entries = [...new FormData(e.currentTarget).entries()];
+    try {
+      if (editing) {
+        // na edição, campo opcional esvaziado é apagado (null); tipo e carteira não mudam por aqui
+        const body: Record<string, unknown> = {};
+        for (const [k, v] of entries) {
+          const val = String(v).trim();
+          if (k === 'kind' || k === 'salespersonId') continue;
+          if (val === '') { if (OPTIONAL.includes(k)) body[k] = null; continue; }
+          body[k] = val;
+        }
+        await api(`/customers/${editing.id}`, 'PATCH', body);
+        setOk('Cliente atualizado.'); setEditing(null);
+      } else {
+        await api('/customers', 'POST', Object.fromEntries(entries.filter(([, v]) => String(v).trim() !== '')));
+        setOk('Cliente cadastrado.'); setAdding(false);
+      }
+      load();
+    } catch (err) { setError((err as Error).message); }
   }
+  function startEdit(c: Customer) { setAdding(false); setEditing(c); setError(''); setOk(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   async function toggle(c: Customer) {
     try { await api(`/customers/${c.id}`, 'PATCH', { active: !c.active }); load(); } catch (err) { setError((err as Error).message); }
   }
@@ -41,30 +61,30 @@ export default function ClientesPage() {
   return (
     <>
       <PageHeader title="Clientes" description={<>Pessoas físicas e jurídicas. Dados pessoais ficam restritos às permissões do módulo.</>} actions={<>
-          {manage && <button className="btn primary" onClick={() => setAdding(true)}><Plus aria-hidden />Cliente</button>}
+          {manage && <button className="btn primary" onClick={() => { setEditing(null); setAdding(true); }}><Plus aria-hidden />Cliente</button>}
         </>} />
       {error && <Alert kind="error">{error}</Alert>}
       {ok && <Alert kind="ok">{ok}</Alert>}
-      {adding && (
-        <form className="card" style={{ marginBottom: 16 }} onSubmit={create}>
-          <h2>Novo cliente</h2>
+      {(adding || editing) && (
+        <form key={editing?.id ?? 'novo'} className="card" style={{ marginBottom: 16 }} onSubmit={save}>
+          <h2>{editing ? `Editar cliente — ${editing.name}` : 'Novo cliente'}</h2>
           <div className="form-grid">
-            <div><label htmlFor="kind">Tipo *</label><select id="kind" name="kind" defaultValue="PJ"><option value="PJ">Pessoa jurídica</option><option value="PF">Pessoa física</option></select></div>
-            <div><label htmlFor="name">Nome / razão social *</label><input id="name" name="name" required /></div>
-            <div><label htmlFor="document">CPF/CNPJ</label><DocumentField id="document" name="document" fill={{name: 'legalName',email: 'email',phone: 'phone',zipCode: 'zipCode',street: 'street',number: 'number',complement: 'complement',district: 'district',city: 'city',state: 'state'}} /></div>
-            <div><label htmlFor="stateRegistration">Inscrição estadual</label><input id="stateRegistration" name="stateRegistration" /></div>
-            <div><label htmlFor="email">E-mail</label><input id="email" name="email" type="email" /></div>
-            <div><label htmlFor="phone">Telefone</label><MaskedInput id="phone" name="phone" kind="phone" /></div>
-            <div><label htmlFor="zipCode">CEP</label><CepField id="zipCode" fill={{ street: 'street', district: 'district', city: 'city', state: 'state' }} /></div>
-            <div><label htmlFor="street">Logradouro</label><input id="street" name="street" /></div>
-            <div><label htmlFor="number">Número</label><input id="number" name="number" /></div>
-            <div><label htmlFor="district">Bairro</label><input id="district" name="district" /></div>
-            <div><label htmlFor="city">Município</label><input id="city" name="city" /></div>
-            <div><label htmlFor="state">UF</label><UfSelect id="state" /></div>
-            <div><label htmlFor="priceTable">Tabela de preço padrão</label><select id="priceTable" name="priceTable" defaultValue="RETAIL"><option value="RETAIL">Varejo</option><option value="WHOLESALE">Atacado</option></select></div>
-            {sellers.length > 0 && <div><label htmlFor="salespersonId">Vendedor da carteira</label><select id="salespersonId" name="salespersonId" defaultValue=""><option value="">Sem carteira (ou a minha)</option>{sellers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>}
+            <div><label htmlFor="kind">Tipo *</label><select id="kind" name="kind" defaultValue={editing?.kind ?? 'PJ'} disabled={!!editing} title={editing ? 'O tipo não pode ser alterado' : undefined}><option value="PJ">Pessoa jurídica</option><option value="PF">Pessoa física</option></select></div>
+            <div><label htmlFor="name">Nome / razão social *</label><input id="name" name="name" required defaultValue={editing?.name} /></div>
+            <div><label htmlFor="document">CPF/CNPJ</label><DocumentField id="document" name="document" defaultValue={editing?.document ?? undefined} fill={editing ? undefined : {name: 'legalName',email: 'email',phone: 'phone',zipCode: 'zipCode',street: 'street',number: 'number',complement: 'complement',district: 'district',city: 'city',state: 'state'}} /></div>
+            <div><label htmlFor="stateRegistration">Inscrição estadual</label><input id="stateRegistration" name="stateRegistration" defaultValue={editing?.stateRegistration ?? ''} /></div>
+            <div><label htmlFor="email">E-mail</label><input id="email" name="email" type="email" defaultValue={editing?.email ?? ''} /></div>
+            <div><label htmlFor="phone">Telefone</label><MaskedInput id="phone" name="phone" kind="phone" defaultValue={editing?.phone ?? undefined} /></div>
+            <div><label htmlFor="zipCode">CEP</label><CepField id="zipCode" defaultValue={editing?.zipCode ?? undefined} fill={{ street: 'street', district: 'district', city: 'city', state: 'state' }} /></div>
+            <div><label htmlFor="street">Logradouro</label><input id="street" name="street" defaultValue={editing?.street ?? ''} /></div>
+            <div><label htmlFor="number">Número</label><input id="number" name="number" defaultValue={editing?.number ?? ''} /></div>
+            <div><label htmlFor="district">Bairro</label><input id="district" name="district" defaultValue={editing?.district ?? ''} /></div>
+            <div><label htmlFor="city">Município</label><input id="city" name="city" defaultValue={editing?.city ?? ''} /></div>
+            <div><label htmlFor="state">UF</label><UfSelect id="state" defaultValue={editing?.state ?? ''} /></div>
+            <div><label htmlFor="priceTable">Tabela de preço padrão</label><select id="priceTable" name="priceTable" defaultValue={editing?.priceTable ?? 'RETAIL'}><option value="RETAIL">Varejo</option><option value="WHOLESALE">Atacado</option></select></div>
+            {!editing && sellers.length > 0 && <div><label htmlFor="salespersonId">Vendedor da carteira</label><select id="salespersonId" name="salespersonId" defaultValue=""><option value="">Sem carteira (ou a minha)</option>{sellers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>}
           </div>
-          <div className="row" style={{ marginTop: 12 }}><button className="btn primary">Salvar</button><button type="button" className="btn" onClick={() => setAdding(false)}>Cancelar</button></div>
+          <div className="row" style={{ marginTop: 12 }}><button className="btn primary">{editing ? 'Salvar alterações' : 'Salvar'}</button><button type="button" className="btn" onClick={() => { setAdding(false); setEditing(null); }}>Cancelar</button></div>
         </form>
       )}
       <section className="card">
@@ -80,7 +100,7 @@ export default function ClientesPage() {
                   <td>{c.name}{c.priceTable === 'WHOLESALE' && <span className="badge" style={{ marginLeft: 6 }}>atacado</span>}</td><td>{c.kind}</td><td className="nowrap">{docOrDash(c.document)}</td><td>{[c.email, c.phone ? formatPhone(c.phone) : null].filter(Boolean).join(' · ') || '—'}</td>
                   <td>{[c.city, c.state].filter(Boolean).join('/') || '—'}</td>
                   <td><PurchaseBadge type={c.purchase?.type} daysSince={c.purchase?.daysSince} at="now" />{c.purchase && c.purchase.orders > 0 && <div className="muted" style={{ fontSize: '0.76rem' }}>{c.purchase.orders} pedido(s) · última {c.purchase.lastPurchaseAt ? new Date(c.purchase.lastPurchaseAt).toLocaleDateString('pt-BR') : '—'}</div>}</td>
-                  <td className="actions"><button className="btn sm" onClick={() => setCredit(c)}>Crédito</button> {manage && <button className="btn sm" onClick={() => toggle(c)}>{c.active ? 'Inativar' : 'Reativar'}</button>}</td>
+                  <td className="actions">{manage && <button className="btn sm" onClick={() => startEdit(c)} aria-label={`Editar ${c.name}`}>Editar</button>} <button className="btn sm" onClick={() => setCredit(c)}>Crédito</button> {manage && <button className="btn sm" onClick={() => toggle(c)}>{c.active ? 'Inativar' : 'Reativar'}</button>}</td>
                 </tr>
               ))}
             </tbody>

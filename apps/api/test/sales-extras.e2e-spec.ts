@@ -159,6 +159,22 @@ describe('Venda: tabela varejo/atacado, vendedor automático, carteira de client
     await ana.get(`/api/sales/orders/${o}/documents/00000000-0000-4000-8000-000000000000/file`).expect(404);
   });
 
+  it('edição de cliente: altera dados, apaga campo opcional com null, valida e-mail/telefone/CEP e mantém o tipo', async () => {
+    const c = await customer(owner, 'Editar', { email: 'velho@x.com', phone: '(11) 98888-7777', city: 'Campinas', state: 'SP', zipCode: '13000-000' });
+    await owner.patch(`/api/customers/${c.id}`).set(H).send({ name: 'Nome Novo', email: 'novo@x.com', city: 'Santos', priceTable: 'WHOLESALE', phone: null, zipCode: null }).expect(200);
+    const row = await admin.customer.findUniqueOrThrow({ where: { id: c.id } });
+    expect(row).toMatchObject({ name: 'Nome Novo', email: 'novo@x.com', city: 'Santos', priceTable: 'WHOLESALE', phone: null, zipCode: null, state: 'SP', kind: 'PF' });
+    await owner.patch(`/api/customers/${c.id}`).set(H).send({ email: 'sem-arroba' }).expect(400);
+    await owner.patch(`/api/customers/${c.id}`).set(H).send({ phone: '123' }).expect(400);
+    await owner.patch(`/api/customers/${c.id}`).set(H).send({ zipCode: '123' }).expect(400);
+    await owner.patch(`/api/customers/${c.id}`).set(H).send({ kind: 'PJ' }).expect(400); // o tipo não muda
+    await ana.patch(`/api/customers/${c.id}`).set(H).send({ city: 'X' }).expect(200); // vendedor tem customers.manage
+    await accountant.patch(`/api/customers/${c.id}`).set(H).send({ city: 'Y' }).expect(403);
+    const other = agent();
+    await other.post('/api/auth/register').set(H).send({ companyName: `Co ed ${run}`, name: 'Outro', email: `ed-${run}@teste.local`, password: PASSWORD }).expect(201);
+    await other.patch(`/api/customers/${c.id}`).set(H).send({ city: 'Z' }).expect(404);
+  });
+
   it('impostos federais: grava por empresa, valida UF/CST/alíquotas, só quem tem permissão altera e outra empresa não vê', async () => {
     const ok = { regime: 'LUCRO_REAL', pisRate: 1.65, cofinsRate: 7.6, scArticle: 'Art. 1º', showTotalTaxes: true, presumedCredit: false, exceededSublimit: false, icmsByUf: [{ uf: 'MG', cst: '00', ratePct: 18 }, { uf: 'SP', cst: '102' }], ibsCbsByUf: [{ uf: 'MG', cst: '000', classification: '000001' }] };
     const before = (await owner.get('/api/fiscal/federal-taxes').expect(200)).body;
