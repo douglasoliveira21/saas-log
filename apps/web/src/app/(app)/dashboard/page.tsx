@@ -9,6 +9,7 @@ import { api } from '@/lib/api';
 import { brl } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { OrdersPanel } from './orders-panel';
+import { SalesCharts } from './sales-charts';
 
 interface Metrics { products: number; belowMin: number; outOfStock: number; stockValue: string; fiscalPending: number }
 interface Overview {
@@ -55,6 +56,7 @@ export default function DashboardPage() {
           </section>
 
           {can('sales.view') && <OrdersPanel />}
+          {can('sales.view') && <SalesCharts />}
 
           {m && (
             <section aria-label="Estoque">

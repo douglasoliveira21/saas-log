@@ -15,7 +15,7 @@ interface Product {
   id: string; sku: string; name: string; title: string | null; barcode: string | null; brand: string | null; model: string | null; mpn: string | null; condition: string; warrantyMonths: number | null;
   categoryId: string | null; saleUnit: string; purchaseUnit: string; unitConversion: number; shortDescription: string | null; description: string | null; attributes: Attr[];
   netWeightG: number | null; grossWeightG: number | null; heightMm: number | null; widthMm: number | null; lengthMm: number | null;
-  costPrice: string | null; extraCost: string | null; suggestedPrice: string | null; minPrice: string | null; targetMarginPct: string | null;
+  costPrice: string | null; extraCost: string | null; suggestedPrice: string | null; wholesalePrice: string | null; minPrice: string | null; targetMarginPct: string | null;
   minStock: number; maxStock: number | null; reorderPoint: number | null; leadTimeDays: number | null; locationNote: string | null;
   ncm: string | null; cest: string | null; taxOrigin: number | null; taxUnit: string | null; taxGtin: string | null; active: boolean;
 }
@@ -24,7 +24,7 @@ interface Category { id: string; name: string }
 const SUGGESTED_ATTRS = ['Cor', 'Material', 'Acabamento', 'Tamanho', 'Voltagem', 'Potência', 'Capacidade', 'Peso', 'Largura', 'Altura', 'Comprimento', 'Modelo', 'Garantia', 'Origem', 'Conteúdo da embalagem'];
 const TEXT = ['name', 'title', 'brand', 'model', 'mpn', 'barcode', 'shortDescription', 'description', 'locationNote', 'ncm', 'cest', 'taxGtin', 'taxUnit'] as const;
 const INTS = ['warrantyMonths', 'netWeightG', 'grossWeightG', 'heightMm', 'widthMm', 'lengthMm', 'maxStock', 'reorderPoint', 'leadTimeDays', 'taxOrigin'] as const;
-const DECS = ['costPrice', 'extraCost', 'suggestedPrice', 'minPrice', 'targetMarginPct'] as const;
+const DECS = ['costPrice', 'extraCost', 'suggestedPrice', 'wholesalePrice', 'minPrice', 'targetMarginPct'] as const;
 
 /** Dígito verificador de GTIN/EAN (8, 12, 13 ou 14 dígitos). */
 function gtinOk(c: string) {
@@ -184,7 +184,8 @@ export default function ProdutoEditorPage() {
               <div className="form-grid">
                 <Field id="costPrice" label="Custo (R$)"><input id="costPrice" name="costPrice" inputMode="decimal" defaultValue={v('costPrice')} /></Field>
                 <Field id="extraCost" label="Custos extras (R$)" hint="Embalagem, frete de compra, etc."><input id="extraCost" name="extraCost" inputMode="decimal" defaultValue={v('extraCost')} /></Field>
-                <Field id="suggestedPrice" label="Preço sugerido de venda (R$)" req><input id="suggestedPrice" name="suggestedPrice" inputMode="decimal" defaultValue={v('suggestedPrice')} /></Field>
+                <Field id="suggestedPrice" label="Preço de varejo (R$)" req hint="Tabela padrão das vendas."><input id="suggestedPrice" name="suggestedPrice" inputMode="decimal" defaultValue={v('suggestedPrice')} /></Field>
+                <Field id="wholesalePrice" label="Preço de atacado (R$)" hint="Usado quando a venda é na tabela de atacado. Vazio = vende pelo preço de varejo."><input id="wholesalePrice" name="wholesalePrice" inputMode="decimal" defaultValue={v('wholesalePrice')} /></Field>
                 <Field id="minPrice" label="Preço mínimo (R$)" hint="Abaixo disso o sistema bloqueia o envio do preço."><input id="minPrice" name="minPrice" inputMode="decimal" defaultValue={v('minPrice')} /></Field>
                 <Field id="targetMarginPct" label="Margem alvo (%)"><input id="targetMarginPct" name="targetMarginPct" inputMode="decimal" defaultValue={v('targetMarginPct')} /></Field>
               </div>

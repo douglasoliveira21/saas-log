@@ -1,5 +1,5 @@
 import {
-  BarChart3, Bell, Building2, ClipboardList, Container, FileText, Gauge, CreditCard, Handshake, LayoutDashboard, type LucideIcon, Package, PackageSearch,
+  BarChart3, Bell, Briefcase, Building2, ClipboardList, Container, FileText, Gauge, CreditCard, Landmark, Handshake, LayoutDashboard, type LucideIcon, Package, PackageSearch,
   Navigation, Percent, Plug, ReceiptText, Route, ScrollText, Settings2, ShieldCheck, ShoppingCart, Store, Truck, Users, Wallet, Warehouse,
 } from 'lucide-react';
 
@@ -24,6 +24,7 @@ export const NAV: NavItem[] = [
   { href: '/vendas', label: 'Vendas e pedidos', icon: ShoppingCart, group: 'Comercial', permission: 'sales.view', implemented: true },
   { href: '/orcamentos', label: 'Orçamentos', icon: FileText, group: 'Comercial', permission: 'sales.view', implemented: true },
   { href: '/clientes', label: 'Clientes', icon: Users, group: 'Comercial', permission: 'customers.view', implemented: true },
+  { href: '/carteira', label: 'Carteira de clientes', icon: Briefcase, group: 'Comercial', permission: 'customers.view', implemented: true },
   { href: '/comissoes', label: 'Vendedores e comissões', icon: Percent, group: 'Comercial', permission: 'commissions.view', implemented: true },
 
   { href: '/produtos', label: 'Produtos e catálogo', icon: Package, group: 'Suprimentos', permission: 'products.view', implemented: true },
@@ -40,6 +41,7 @@ export const NAV: NavItem[] = [
 
   { href: '/financeiro', label: 'Financeiro', icon: Wallet, group: 'Financeiro e fiscal', permission: 'finance.view', implemented: true },
   { href: '/fiscal', label: 'Fiscal e notas', icon: ReceiptText, group: 'Financeiro e fiscal', permission: 'fiscal.view', implemented: true },
+  { href: '/impostos', label: 'Impostos', icon: Landmark, group: 'Financeiro e fiscal', permission: 'fiscal.view', implemented: true },
   { href: '/gestao', label: 'Metas e indicadores', icon: Gauge, group: 'Financeiro e fiscal', permission: 'management.view', implemented: true },
   { href: '/relatorios', label: 'Relatórios', icon: BarChart3, group: 'Financeiro e fiscal', permission: 'reports.view', implemented: true },
 

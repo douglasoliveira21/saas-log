@@ -10,7 +10,8 @@ import { useSession } from '@/lib/session';
 import { PurchaseBadge, type PurchaseInfo } from '@/components/purchase-badge';
 import { CreditDialog } from '@/components/credit-dialog';
 
-interface Customer { id: string; kind: 'PF' | 'PJ'; name: string; document: string | null; email: string | null; phone: string | null; city: string | null; state: string | null; active: boolean; purchase?: PurchaseInfo }
+interface Customer { id: string; kind: 'PF' | 'PJ'; name: string; document: string | null; email: string | null; phone: string | null; city: string | null; state: string | null; active: boolean; priceTable?: string; salespersonId?: string | null; purchase?: PurchaseInfo }
+interface Seller { id: string; name: string; active: boolean }
 
 export default function ClientesPage() {
   const { can } = useSession();
@@ -21,6 +22,8 @@ export default function ClientesPage() {
   const [ok, setOk] = useState('');
   const [adding, setAdding] = useState(false);
   const [credit, setCredit] = useState<Customer | null>(null);
+  const [sellers, setSellers] = useState<Seller[]>([]);
+  useEffect(() => { if (can('sales.view_all') && can('commissions.view')) api<Seller[]>('/salespeople').then((s) => setSellers(s.filter((x) => x.active))).catch(() => undefined); }, [can]);
 
   const load = useCallback(() => { api<Customer[]>(`/customers${search ? `?search=${encodeURIComponent(search)}` : ''}`).then(setItems).catch((e) => setError(e.message)); }, [search]);
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
@@ -58,6 +61,8 @@ export default function ClientesPage() {
             <div><label htmlFor="district">Bairro</label><input id="district" name="district" /></div>
             <div><label htmlFor="city">Município</label><input id="city" name="city" /></div>
             <div><label htmlFor="state">UF</label><UfSelect id="state" /></div>
+            <div><label htmlFor="priceTable">Tabela de preço padrão</label><select id="priceTable" name="priceTable" defaultValue="RETAIL"><option value="RETAIL">Varejo</option><option value="WHOLESALE">Atacado</option></select></div>
+            {sellers.length > 0 && <div><label htmlFor="salespersonId">Vendedor da carteira</label><select id="salespersonId" name="salespersonId" defaultValue=""><option value="">Sem carteira (ou a minha)</option>{sellers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>}
           </div>
           <div className="row" style={{ marginTop: 12 }}><button className="btn primary">Salvar</button><button type="button" className="btn" onClick={() => setAdding(false)}>Cancelar</button></div>
         </form>
@@ -72,7 +77,7 @@ export default function ClientesPage() {
               {items?.length === 0 && <tr><td colSpan={7} className="empty">Nenhum cliente encontrado.</td></tr>}
               {items?.map((c) => (
                 <tr key={c.id} style={c.active ? undefined : { opacity: 0.55 }}>
-                  <td>{c.name}</td><td>{c.kind}</td><td className="nowrap">{docOrDash(c.document)}</td><td>{[c.email, c.phone ? formatPhone(c.phone) : null].filter(Boolean).join(' · ') || '—'}</td>
+                  <td>{c.name}{c.priceTable === 'WHOLESALE' && <span className="badge" style={{ marginLeft: 6 }}>atacado</span>}</td><td>{c.kind}</td><td className="nowrap">{docOrDash(c.document)}</td><td>{[c.email, c.phone ? formatPhone(c.phone) : null].filter(Boolean).join(' · ') || '—'}</td>
                   <td>{[c.city, c.state].filter(Boolean).join('/') || '—'}</td>
                   <td><PurchaseBadge type={c.purchase?.type} daysSince={c.purchase?.daysSince} at="now" />{c.purchase && c.purchase.orders > 0 && <div className="muted" style={{ fontSize: '0.76rem' }}>{c.purchase.orders} pedido(s) · última {c.purchase.lastPurchaseAt ? new Date(c.purchase.lastPurchaseAt).toLocaleDateString('pt-BR') : '—'}</div>}</td>
                   <td className="actions"><button className="btn sm" onClick={() => setCredit(c)}>Crédito</button> {manage && <button className="btn sm" onClick={() => toggle(c)}>{c.active ? 'Inativar' : 'Reativar'}</button>}</td>

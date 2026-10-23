@@ -8,7 +8,7 @@ import { useUi, PageHeader, Alert, Skeleton, EmptyState, SortTh, useSort } from 
 import { formatNcm } from '@/lib/format';
 import { useSession } from '@/lib/session';
 
-interface Product { id: string; sku: string; name: string; title: string | null; _count: { images: number }; images: { id: string }[]; barcode: string | null; brand: string | null; saleUnit: string; costPrice: string | null; suggestedPrice: string | null; minStock: number; ncm: string | null; active: boolean; fiscalPending: boolean; category: { name: string } | null }
+interface Product { id: string; sku: string; name: string; title: string | null; _count: { images: number }; images: { id: string }[]; barcode: string | null; brand: string | null; saleUnit: string; costPrice: string | null; wholesalePrice?: string | null; suggestedPrice: string | null; minStock: number; ncm: string | null; active: boolean; fiscalPending: boolean; category: { name: string } | null }
 interface Category { id: string; name: string }
 interface ImportReport { committed: boolean; created: number; updated: number; initialized: number; errors: { line: number; message: string }[] }
 
@@ -114,7 +114,7 @@ export default function ProdutosPage() {
               {sortedItems?.map((p) => (
                 <tr key={p.id} style={p.active ? undefined : { opacity: 0.55 }}>
                   <td>{p.images[0] ? <Link href={`/produtos/${p.id}`} aria-label={`Abrir ${p.name}`}>{/* eslint-disable-next-line @next/next/no-img-element */}<img className="thumb" src={`/api/products/${p.id}/images/${p.images[0].id}/file`} alt="" loading="lazy" /></Link> : <span className="thumb empty" title="Sem foto"><ImageOff size={16} aria-hidden /></span>}</td><td className="mono">{p.sku}</td><td><Link href={`/produtos/${p.id}`} style={{ fontWeight: 600 }}>{p.title || p.name}</Link>{p.brand && <span className="muted"> · {p.brand}</span>}</td><td>{p.category?.name ?? '—'}</td>
-                  <td className="num">{brl(p.costPrice)}</td><td className="num">{brl(p.suggestedPrice)}</td><td className="num">{p.minStock}</td><td>{p._count.images > 0 ? <span className="badge">{p._count.images}</span> : <span className="badge warn">0</span>}</td>
+                  <td className="num">{brl(p.costPrice)}</td><td className="num">{brl(p.suggestedPrice)}{p.wholesalePrice != null && <div className="muted" style={{ fontSize: '0.74rem' }}>atacado {brl(p.wholesalePrice)}</div>}</td><td className="num">{p.minStock}</td><td>{p._count.images > 0 ? <span className="badge">{p._count.images}</span> : <span className="badge warn">0</span>}</td>
                   <td>{p.fiscalPending ? <span className="badge warn">NCM pendente</span> : <span className="badge ok">NCM {formatNcm(p.ncm)}</span>}</td>
                   <td className="actions"><span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}><Link className="btn sm" href={`/produtos/${p.id}`}><Pencil aria-hidden />{manage ? 'Editar' : 'Abrir'}</Link>{manage && <button className="btn sm" onClick={() => toggle(p)}>{p.active ? 'Inativar' : 'Reativar'}</button>}</span></td>
                 </tr>

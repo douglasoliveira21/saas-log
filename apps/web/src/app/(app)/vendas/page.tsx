@@ -1,6 +1,6 @@
 'use client';
 
-import { Plus, Search, ShoppingCart, Trash2 } from 'lucide-react';
+import { FileText, Plus, Printer, Search, ShoppingCart, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { brl, dateBr, ORDER_STATUS } from '@/lib/format';
@@ -10,14 +10,18 @@ import { boletoPreview, FLOW, PAYMENT_LABEL, STATUS_INFO, SUMMARY_GROUPS } from 
 import { useSession } from '@/lib/session';
 import { PurchaseBadge, purchaseHint, type PurchaseInfo, type PurchaseType } from '@/components/purchase-badge';
 import { FISCAL_LABEL, FiscalChoicePicker, FiscalPreviewDialog, type FiscalChoice } from './fiscal';
+import { printOrder } from './print';
 
 interface OrderRow { paymentMethod?: string | null; id: string; number: number; status: string; channel: string; total: string; createdAt: string; customerType?: PurchaseType | null; dispatchDate?: string | null; dispatchDeferred?: boolean; customer: { name: string }; salesperson: { name: string } | null }
 interface Detail extends OrderRow {
+  priceTable?: string;
+  fiscalDocuments?: { id: string; model: string; number: number | null; series: number | null; status: string; accessKey: string | null; environment: string }[];
   customerId: string; warehouseId: string; fiscalDocType: FiscalChoice; installmentCount: number; firstDueDate: string | null; installmentIntervalDays: number; installments: { id: string; installmentNo: number; installmentTotal: number; dueDate: string; amount: string; status: string }[]; notes?: string | null; subtotal: string; discountTotal: string; shipping: string; approvalReason: string | null; cancelReason: string | null; warehouse: { code: string };
   items: { id: string; productId: string; quantity: number; unitPrice: string; discountPct: string; total: string; returnedQty: number; costSnapshot?: string | null; product: { sku: string; name: string } }[];
 }
-interface Product { id: string; sku: string; name: string; suggestedPrice: string | null }
-interface Customer { id: string; name: string; kind?: string; document?: string | null }
+interface Product { id: string; sku: string; name: string; suggestedPrice: string | null; wholesalePrice?: string | null }
+interface Customer { id: string; name: string; kind?: string; document?: string | null; priceTable?: string }
+interface Seller { id: string; name: string; active: boolean }
 interface Warehouse { id: string; code: string; name: string; active: boolean }
 interface Line { productId: string; quantity: string; unitPrice: string; discountPct: string }
 
@@ -28,8 +32,9 @@ const STEPS = ['Cliente', 'Produtos', 'Pagamento', 'Entrega e nota'];
 const num = (v: string) => (v.trim() === '' ? undefined : Number(v.replace(',', '.')));
 
 export default function VendasPage() {
-  const { can } = useSession();
+  const { can, me } = useSession();
   const ui = useUi();
+  const [sellers, setSellers] = useState<Seller[]>([]);
   const [rows, setRows] = useState<OrderRow[] | null>(null);
   const [status, setStatus] = useState('');
   const [group, setGroup] = useState('');
@@ -43,7 +48,7 @@ export default function VendasPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [whs, setWhs] = useState<Warehouse[]>([]);
   const [lines, setLines] = useState<Line[]>([{ productId: '', quantity: '1', unitPrice: '', discountPct: '' }]);
-  const [meta, setMeta] = useState({ customerId: '', warehouseId: '', channel: 'DIRECT', shipping: '', notes: '', fiscalDocType: 'NONE' as FiscalChoice, paymentMethod: '', installments: '1', firstDueDate: '', intervalDays: '30' });
+  const [meta, setMeta] = useState({ priceTable: 'RETAIL', salespersonId: '', customerId: '', warehouseId: '', channel: 'DIRECT', shipping: '', notes: '', fiscalDocType: 'NONE' as FiscalChoice, paymentMethod: '', installments: '1', firstDueDate: '', intervalDays: '30' });
   const [credit, setCredit] = useState<CreditInfo | null>(null);
   const [profile, setProfile] = useState<PurchaseInfo | null>(null);
   const [cutoff, setCutoff] = useState<{ enabled: boolean; cutoffTime: string | null; businessDaysOnly: boolean; dispatchDate: string | null; deferred: boolean } | null>(null);
@@ -56,6 +61,7 @@ export default function VendasPage() {
   useEffect(() => {
     api<{ items: Product[] }>('/products?limit=200').then((r) => setProducts(r.items)).catch(() => undefined);
     api<Customer[]>('/customers').then(setCustomers).catch(() => undefined);
+    if (can('sales.view_all') && can('commissions.view')) api<Seller[]>('/salespeople').then((s) => setSellers(s.filter((x) => x.active))).catch(() => undefined);
     api<{ establishments: { warehouses: Warehouse[] }[] }[]>('/structure').then((t) => setWhs(t.flatMap((c) => c.establishments.flatMap((e) => e.warehouses)).filter((w) => w.active))).catch(() => undefined);
   }, []);
 
@@ -76,7 +82,7 @@ export default function VendasPage() {
   function startForm(d?: Detail) {
     setError(''); setStep(0);
     setForm({ id: d?.id });
-    setMeta(d ? { customerId: d.customerId, warehouseId: d.warehouseId, channel: d.channel, shipping: String(Number(d.shipping) || ''), notes: d.notes ?? '', fiscalDocType: d.fiscalDocType ?? 'NONE', paymentMethod: d.paymentMethod ?? '', installments: String(d.installmentCount ?? 1), firstDueDate: d.firstDueDate?.slice(0, 10) ?? '', intervalDays: String(d.installmentIntervalDays ?? 30) } : { customerId: customers[0]?.id ?? '', warehouseId: whs[0]?.id ?? '', channel: 'DIRECT', shipping: '', notes: '', fiscalDocType: 'NONE', paymentMethod: '', installments: '1', firstDueDate: '', intervalDays: '30' });
+    setMeta(d ? { priceTable: d.priceTable ?? 'RETAIL', salespersonId: '', customerId: d.customerId, warehouseId: d.warehouseId, channel: d.channel, shipping: String(Number(d.shipping) || ''), notes: d.notes ?? '', fiscalDocType: d.fiscalDocType ?? 'NONE', paymentMethod: d.paymentMethod ?? '', installments: String(d.installmentCount ?? 1), firstDueDate: d.firstDueDate?.slice(0, 10) ?? '', intervalDays: String(d.installmentIntervalDays ?? 30) } : { priceTable: customers[0]?.priceTable ?? 'RETAIL', salespersonId: '', customerId: customers[0]?.id ?? '', warehouseId: whs[0]?.id ?? '', channel: 'DIRECT', shipping: '', notes: '', fiscalDocType: 'NONE', paymentMethod: '', installments: '1', firstDueDate: '', intervalDays: '30' });
     setLines(d ? d.items.map((i) => ({ productId: i.productId, quantity: String(i.quantity), unitPrice: i.unitPrice, discountPct: String(Number(i.discountPct) || '') })) : [{ productId: '', quantity: '1', unitPrice: '', discountPct: '' }]);
   }
 
@@ -86,7 +92,7 @@ export default function VendasPage() {
     if (meta.paymentMethod === 'BOLETO' && !meta.firstDueDate) { setStep(2); setError('Boleto: informe a data de vencimento da primeira parcela.'); return; }
     const { installments, firstDueDate, intervalDays, ...rest } = meta;
     const body = {
-      ...rest, ...(meta.paymentMethod === 'BOLETO' ? { installments: Number(installments) || 1, firstDueDate, intervalDays: Number(intervalDays) || 30 } : {}), shipping: num(meta.shipping) ?? 0, notes: meta.notes || undefined,
+      ...rest, salespersonId: rest.salespersonId || undefined, ...(meta.paymentMethod === 'BOLETO' ? { installments: Number(installments) || 1, firstDueDate, intervalDays: Number(intervalDays) || 30 } : {}), shipping: num(meta.shipping) ?? 0, notes: meta.notes || undefined,
       items: lines.filter((l) => l.productId).map((l) => ({ productId: l.productId, quantity: Number(l.quantity), unitPrice: num(l.unitPrice), discountPct: num(l.discountPct) })),
     };
     try {
@@ -118,6 +124,12 @@ export default function VendasPage() {
     }
     setStep(step + 1);
   }
+  const priceOf = (p: Product | undefined, table: string) => (table === 'WHOLESALE' && p?.wholesalePrice ? p.wholesalePrice : p?.suggestedPrice ?? null);
+  /** Troca a tabela (varejo/atacado) e refaz o preço das linhas já escolhidas com o preço da nova tabela. */
+  const changeTable = (table: string, extra: Partial<typeof meta> = {}) => {
+    setMeta({ ...meta, ...extra, priceTable: table });
+    setLines(lines.map((l) => { const p = products.find((x) => x.id === l.productId); return p ? { ...l, unitPrice: priceOf(p, table) ?? l.unitPrice } : l; }));
+  };
   const setLine = (i: number, patch: Partial<Line>) => setLines(lines.map((l, k) => (k === i ? { ...l, ...patch } : l)));
 
   async function doReturn(d: Detail) {
@@ -177,8 +189,10 @@ export default function VendasPage() {
             <h3>Quem compra e de onde sai</h3>
             <p className="sub">Escolha o cliente e o depósito que vai separar os produtos.</p>
             <div className="form-grid">
-              <div><label htmlFor="c">Cliente *</label><select id="c" value={meta.customerId} onChange={(e) => setMeta({ ...meta, customerId: e.target.value })}><option value="">Selecione…</option>{customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+              <div><label htmlFor="c">Cliente *</label><select id="c" value={meta.customerId} onChange={(e) => { const c = customers.find((x) => x.id === e.target.value); changeTable(c?.priceTable === 'WHOLESALE' ? 'WHOLESALE' : 'RETAIL', { customerId: e.target.value }); }}><option value="">Selecione…</option>{customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
               <div><label htmlFor="w">Depósito de saída *</label><select id="w" value={meta.warehouseId} onChange={(e) => setMeta({ ...meta, warehouseId: e.target.value })}><option value="">Selecione…</option>{whs.map((w) => <option key={w.id} value={w.id}>{w.code} — {w.name}</option>)}</select></div>
+              <div><label htmlFor="pt">Tabela de preço</label><select id="pt" value={meta.priceTable} onChange={(e) => changeTable(e.target.value)}><option value="RETAIL">Varejo</option><option value="WHOLESALE">Atacado</option></select></div>
+              <div><label htmlFor="sp">Vendedor</label>{sellers.length > 0 ? <select id="sp" value={meta.salespersonId} onChange={(e) => setMeta({ ...meta, salespersonId: e.target.value })}><option value="">{me.user.name} (você)</option>{sellers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select> : <input id="sp" value={me.user.name} readOnly aria-readonly="true" title="A venda é registrada em nome de quem está logado." />}</div>
               <div><label htmlFor="ch">Como o pedido chegou</label><select id="ch" value={meta.channel} onChange={(e) => setMeta({ ...meta, channel: e.target.value })}>{CHANNELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
             </div>
             {profile && <div className="alert info" role="status" style={{ marginTop: 12 }}><PurchaseBadge type={profile.type} daysSince={profile.daysSince} />&nbsp;{purchaseHint(profile)}</div>}
@@ -187,11 +201,11 @@ export default function VendasPage() {
           {step === 1 && (
           <div className="form-sec"><span className="num-badge">2</span><div>
             <h3>Produtos</h3>
-            <p className="sub">Ao escolher o produto, o preço sugerido é preenchido. Você pode ajustar o preço e dar desconto em %.</p>
+            <p className="sub">Ao escolher o produto, o preço da tabela de {meta.priceTable === 'WHOLESALE' ? 'atacado' : 'varejo'} é preenchido (produto sem preço de atacado usa o de varejo). Você pode ajustar o preço e dar desconto em %.</p>
             <div className="line-grid head" aria-hidden><span>Produto</span><span>Qtd.</span><span>Preço (R$)</span><span>Desc. %</span><span style={{ textAlign: 'right' }}>Total</span><span /></div>
             {lines.map((l, i) => (
               <div className="line-grid" key={i}>
-                <select aria-label="Produto" value={l.productId} onChange={(e) => { const p = products.find((x) => x.id === e.target.value); setLine(i, { productId: e.target.value, unitPrice: p?.suggestedPrice ?? l.unitPrice }); }}>
+                <select aria-label="Produto" value={l.productId} onChange={(e) => { const p = products.find((x) => x.id === e.target.value); setLine(i, { productId: e.target.value, unitPrice: priceOf(p, meta.priceTable) ?? l.unitPrice }); }}>
                   <option value="">Escolha o produto…</option>{products.map((p) => <option key={p.id} value={p.id}>{p.sku} — {p.name}</option>)}
                 </select>
                 <input aria-label="Quantidade" inputMode="numeric" placeholder="Qtd." value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} />
@@ -319,6 +333,7 @@ export default function VendasPage() {
                   <button className="btn" onClick={async () => { const r = await ui.prompt({ title: 'Rejeitar pedido', label: 'Motivo da rejeição', multiline: true, confirmLabel: 'Rejeitar' }); if (r) void act(() => api(`/sales/orders/${detail.id}/reject`, 'POST', { reason: r }), 'Pedido devolvido a rascunho.'); }}>Rejeitar</button>
                 </>}
                 {NEXT[detail.status] && can('sales.fulfill') && <button className="btn primary" onClick={() => act(() => api(`/sales/orders/${detail.id}/advance`, 'POST', { to: NEXT[detail.status][0] }), 'Situação atualizada.')}>{NEXT[detail.status][1]}</button>}
+                <button className="btn" onClick={async () => { try { if (!(await printOrder(detail.id))) setError('Libere pop-ups para imprimir.'); } catch (e) { setError((e as Error).message); } }}><Printer aria-hidden />Imprimir venda</button>
                 {['DRAFT', 'PENDING_APPROVAL', 'CONFIRMED', 'PICKING', 'PACKED'].includes(detail.status) && can('sales.create') && <button className="btn" onClick={() => cancel(detail)}>Cancelar pedido</button>}
                 {['SHIPPED', 'DELIVERED', 'CLOSED'].includes(detail.status) && can('sales.return') && <button className="btn" onClick={() => doReturn(detail)}>Registrar devolução</button>}
               </div>
@@ -337,11 +352,24 @@ export default function VendasPage() {
             <div className="row" style={{ marginBottom: 12 }}>
               <PurchaseBadge type={detail.customerType} />
               {detail.dispatchDate && <span className={`badge ${detail.dispatchDeferred ? 'warn' : ''}`} title={detail.dispatchDeferred ? 'Confirmado depois do horário de corte (ou fora de dia útil)' : 'Confirmado antes do horário de corte'}>Saída prevista: {dateBr(detail.dispatchDate)}{detail.dispatchDeferred ? ' · após o corte' : ''}</span>}
+              <span className="badge">Tabela de {detail.priceTable === 'WHOLESALE' ? 'atacado' : 'varejo'}</span>
               <span className="badge">Pagamento: {detail.paymentMethod ? PAYMENT_LABEL[detail.paymentMethod] : 'não informado'}{detail.paymentMethod === 'BOLETO' ? ` em ${detail.installmentCount}x` : ''}</span>
               <span className={`badge ${detail.fiscalDocType === 'NONE' ? '' : 'brand'}`}>Documento fiscal: {FISCAL_LABEL[detail.fiscalDocType ?? 'NONE']}</span>
               <button className="btn sm" onClick={() => setFiscalView({ id: detail.id, docType: detail.fiscalDocType ?? 'NONE' })}>{detail.fiscalDocType === 'NONE' ? 'Ver modelos (NF-e e NFC-e)' : 'Ver documento'}</button>
             </div>
-            {detail.paymentMethod === 'BOLETO' && (detail.installments.length > 0
+            {(detail.fiscalDocuments?.length ?? 0) > 0 && (
+              <div className="card" style={{ marginBottom: 12 }} aria-label="Notas fiscais da venda">
+                <h3 style={{ margin: '0 0 6px', fontSize: '0.98rem' }}>Notas fiscais desta venda</h3>
+                {detail.fiscalDocuments!.map((n) => (
+                  <div className="row" key={n.id} style={{ justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                    <span><strong>{n.model === '65' ? 'NFC-e' : 'NF-e'} {n.number ?? '—'}/{n.series ?? '—'}</strong> <span className={`badge ${n.status === 'AUTHORIZED' ? 'ok' : 'warn'}`}>{n.status === 'AUTHORIZED' ? 'Autorizada' : n.status}</span>{n.environment === 'HOMOLOGACAO' && <span className="badge" style={{ marginLeft: 4 }}>homologação</span>}</span>
+                    {n.status === 'AUTHORIZED' && <span className="row"><a className="btn sm" href={`/api/sales/orders/${detail.id}/documents/${n.id}/file?kind=danfe`} target="_blank" rel="noreferrer"><FileText aria-hidden />{n.model === '65' ? 'Cupom (DANFCe)' : 'DANFE'}</a><a className="btn sm" href={`/api/sales/orders/${detail.id}/documents/${n.id}/file?kind=xml`}>XML</a></span>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {detail.installments.length > 0 && <p className="muted" style={{ margin: '0 0 6px', fontSize: '0.82rem' }}>Cobrança: o sistema gera as parcelas a receber (abaixo e no Financeiro). A emissão do boleto bancário (registro no banco) não está integrada.</p>}
+            {(detail.paymentMethod === 'BOLETO' || detail.installments.length > 0) && (detail.installments.length > 0
               ? <div className="table-wrap" style={{ marginBottom: 12 }}><table><thead><tr><th>Parcela</th><th>Vencimento</th><th className="num">Valor</th><th>Situação</th></tr></thead><tbody>{detail.installments.map((t) => <tr key={t.id}><td>{t.installmentNo}/{t.installmentTotal}</td><td>{dateBr(t.dueDate)}</td><td className="num">{brl(t.amount)}</td><td><span className={`badge ${t.status === 'PAID' ? 'ok' : t.status === 'CANCELLED' ? 'danger' : ''}`}>{t.status === 'PAID' ? 'Paga' : t.status === 'PARTIAL' ? 'Paga em parte' : t.status === 'CANCELLED' ? 'Cancelada' : 'Em aberto'}</span></td></tr>)}</tbody></table></div>
               : detail.firstDueDate && <p className="muted" style={{ marginTop: 0 }}>Boleto em {detail.installmentCount}x, 1º vencimento em {dateBr(detail.firstDueDate)}. As contas a receber são criadas quando o pedido for confirmado.</p>)}
             {detail.approvalReason && <Alert kind="warn">{detail.approvalReason}</Alert>}

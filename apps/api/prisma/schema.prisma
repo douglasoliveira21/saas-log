@@ -381,7 +381,10 @@ model Product {
   active           Boolean     @default(true)
   costPrice        Decimal?    @map("cost_price") @db.Decimal(14, 4)
   extraCost        Decimal?    @map("extra_cost") @db.Decimal(14, 4)
+  /// Preço de varejo (tabela padrão).
   suggestedPrice   Decimal?    @map("suggested_price") @db.Decimal(14, 2)
+  /// Preço de atacado (tabela de atacado); vazio = vende pelo preço de varejo.
+  wholesalePrice   Decimal?    @map("wholesale_price") @db.Decimal(14, 2)
   minPrice         Decimal?    @map("min_price") @db.Decimal(14, 2)
   targetMarginPct  Decimal?    @map("target_margin_pct") @db.Decimal(6, 2)
   minStock         Int         @default(0) @map("min_stock")
@@ -678,6 +681,10 @@ model Customer {
   email             String?
   phone             String?
   /// Cliente que pediu para não receber avisos automáticos (e-mail/WhatsApp).
+  /// Tabela de preço padrão deste cliente nas vendas: RETAIL (varejo) ou WHOLESALE (atacado).
+  priceTable        String       @default("RETAIL") @map("price_table")
+  /// Carteira de clientes: vendedor responsável por este cliente.
+  salespersonId     String?      @map("salesperson_id") @db.Uuid
   notifyOptOut      Boolean      @default(false) @map("notify_opt_out")
   zipCode           String?      @map("zip_code")
   street            String?
@@ -704,10 +711,13 @@ model Customer {
 
   @@unique([tenantId, document])
   @@unique([tenantId, id])
+  portfolioOwner Salesperson? @relation("CustomerPortfolio", fields: [tenantId, salespersonId], references: [tenantId, id])
+
   @@map("customers")
 }
 
 model Salesperson {
+  portfolio Customer[] @relation("CustomerPortfolio")
   id           String   @id @default(uuid()) @db.Uuid
   tenantId     String   @map("tenant_id") @db.Uuid
   name         String
@@ -771,6 +781,8 @@ model SalesOrder {
   customerType   CustomerPurchaseType? @map("customer_type")
   /// Forma de pagamento: CASH | PIX | DEBIT | CREDIT | BOLETO | CHECK | OTHER. Boleto exige parcelas e 1º vencimento; ao confirmar, gera as contas a receber.
   paymentMethod  String?      @map("payment_method")
+  /// Tabela de preço usada nesta venda: RETAIL (varejo) ou WHOLESALE (atacado).
+  priceTable     String       @default("RETAIL") @map("price_table")
   installmentCount Int        @default(1) @map("installment_count")
   firstDueDate   DateTime?    @map("first_due_date") @db.Date
   installmentIntervalDays Int @default(30) @map("installment_interval_days")
@@ -2461,4 +2473,28 @@ model GoalBonus {
 
   @@unique([tenantId, salespersonId, period])
   @@map("goal_bonuses")
+}
+
+/// Impostos federais da empresa (Simples/Presumido/Real/MEI, PIS/COFINS e opções da Lei 12.741). Valores digitados e validados pelo contador;
+/// o sistema não traz alíquotas prontas.
+model FederalTaxConfig {
+  id                 String     @id @default(uuid()) @db.Uuid
+  tenantId           String     @map("tenant_id") @db.Uuid
+  companyId          String     @map("company_id") @db.Uuid
+  regime             TaxRegime
+  pisRate            Decimal    @map("pis_rate") @db.Decimal(7, 4)
+  cofinsRate         Decimal    @map("cofins_rate") @db.Decimal(7, 4)
+  scArticle          String?    @map("sc_article")
+  showTotalTaxes     Boolean    @default(false) @map("show_total_taxes")
+  presumedCredit     Boolean    @default(false) @map("presumed_credit")
+  exceededSublimit   Boolean    @default(false) @map("exceeded_sublimit")
+  /// Lista por UF de destino: [{ uf, cst, ratePct? }] para ICMS e [{ uf, cst, classification }] para IBS/CBS.
+  icmsByUf           Json       @default("[]") @map("icms_by_uf")
+  ibsCbsByUf         Json       @default("[]") @map("ibs_cbs_by_uf")
+  updatedById        String?    @map("updated_by_id") @db.Uuid
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+
+  @@unique([tenantId, companyId])
+  @@map("federal_tax_configs")
 }

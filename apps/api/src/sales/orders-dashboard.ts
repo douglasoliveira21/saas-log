@@ -16,6 +16,10 @@ const DAY = 86_400_000;
 const TZ = 'America/Sao_Paulo';
 const dayKey = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
 
+export class ChartsQuery {
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(365) days?: number;
+}
+
 export class OrdersDashQuery {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(90) days?: number;
 }
@@ -29,6 +33,39 @@ export class OrdersDashboardService {
     if (ctx.permissions.has('sales.view_all')) return {};
     const mine = await tx.salesperson.findFirst({ where: { tenantId: ctx.tenantId!, userId: ctx.userId }, select: { id: true } });
     return { OR: [{ createdById: ctx.userId }, ...(mine ? [{ salespersonId: mine.id }] : [])] };
+  }
+
+  /** Rankings de venda no período (pedidos confirmados, sem cancelados): clientes, produtos e vendedores. Respeita o escopo do usuário. */
+  charts(ctx: AuthContext, q: { days?: number }, now = new Date()) {
+    const days = q.days ?? 30;
+    return this.prisma.withContext(ctx, async (tx) => {
+      const since = new Date(now.getTime() - days * DAY);
+      const sold: OrderStatus[] = ['CONFIRMED', 'PICKING', 'PACKED', 'SHIPPED', 'DELIVERED', 'CLOSED'];
+      const orderWhere: Prisma.SalesOrderWhereInput = { tenantId: ctx.tenantId!, status: { in: sold }, confirmedAt: { gte: since }, AND: [await this.scope(tx, ctx)] };
+      const [byCustomer, byProduct, bySeller, totals] = await Promise.all([
+        tx.salesOrder.groupBy({ by: ['customerId'], where: orderWhere, _sum: { total: true }, _count: { _all: true }, orderBy: { _sum: { total: 'desc' } }, take: 10 }),
+        tx.salesOrderItem.groupBy({ by: ['productId'], where: { tenantId: ctx.tenantId!, order: { is: orderWhere } }, _sum: { total: true, quantity: true } }),
+        tx.salesOrder.groupBy({ by: ['salespersonId'], where: orderWhere, _sum: { total: true }, _count: { _all: true }, orderBy: { _sum: { total: 'desc' } }, take: 15 }),
+        tx.salesOrder.aggregate({ where: orderWhere, _sum: { total: true }, _count: { _all: true } }),
+      ]);
+      const num = (d: Prisma.Decimal | null | undefined) => Math.round(Number(d ?? 0) * 100) / 100;
+      const customers = new Map((await tx.customer.findMany({ where: { tenantId: ctx.tenantId!, id: { in: byCustomer.map((c) => c.customerId) } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
+      const sellers = new Map((await tx.salesperson.findMany({ where: { tenantId: ctx.tenantId!, id: { in: bySeller.map((c) => c.salespersonId).filter((x): x is string => !!x) } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
+      const prodSorted = byProduct.sort((a, b) => num(b._sum.total) - num(a._sum.total));
+      const topProducts = prodSorted.slice(0, 7);
+      const products = new Map((await tx.product.findMany({ where: { tenantId: ctx.tenantId!, id: { in: topProducts.map((p) => p.productId) } }, select: { id: true, name: true, sku: true } })).map((p) => [p.id, p]));
+      const rest = prodSorted.slice(7);
+      return {
+        days, totalSold: num(totals._sum.total), orders: totals._count._all,
+        topCustomers: byCustomer.map((c) => ({ id: c.customerId, name: customers.get(c.customerId) ?? '—', total: num(c._sum.total), orders: c._count._all })),
+        topProducts: [
+          ...topProducts.map((p) => ({ id: p.productId, name: products.get(p.productId)?.name ?? '—', sku: products.get(p.productId)?.sku ?? '', total: num(p._sum.total), quantity: p._sum.quantity ?? 0 })),
+          ...(rest.length ? [{ id: null, name: `Outros (${rest.length} produtos)`, sku: '', total: Math.round(rest.reduce((s, p) => s + num(p._sum.total), 0) * 100) / 100, quantity: rest.reduce((s, p) => s + (p._sum.quantity ?? 0), 0) }] : []),
+        ],
+        bySalesperson: bySeller.map((s) => ({ id: s.salespersonId, name: s.salespersonId ? (sellers.get(s.salespersonId) ?? '—') : 'Sem vendedor', total: num(s._sum.total), orders: s._count._all })),
+        basis: 'Pedidos confirmados no período, sem cancelados, pelo valor total do pedido (antes de devoluções).',
+      };
+    });
   }
 
   summary(ctx: AuthContext, q: { days?: number }, now = new Date()) {
@@ -119,6 +156,9 @@ export class OrdersDashboardService {
 @Controller('dashboard')
 export class OrdersDashboardController {
   constructor(private readonly svc: OrdersDashboardService) {}
+
+  @Get('sales-charts') @RequirePermissions('sales.view')
+  charts(@CurrentAuth() ctx: AuthContext, @Query() q: ChartsQuery) { return this.svc.charts(ctx, q); }
 
   @Get('orders') @RequirePermissions('sales.view')
   orders(@CurrentAuth() ctx: AuthContext, @Query() q: OrdersDashQuery) { return this.svc.summary(ctx, q); }

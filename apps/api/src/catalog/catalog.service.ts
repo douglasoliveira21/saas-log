@@ -57,7 +57,7 @@ export class CatalogService {
       const [items, total] = await Promise.all([
         tx.product.findMany({
           where, orderBy: { name: 'asc' }, take: q.limit ?? 50, skip: q.offset ?? 0,
-          select: { id: true, sku: true, name: true, barcode: true, brand: true, saleUnit: true, trackLots: true, costPrice: true, suggestedPrice: true, minStock: true, ncm: true, active: true, title: true, category: { select: { name: true } }, _count: { select: { images: true } }, images: { where: { position: 0 }, select: { id: true }, take: 1 } },
+          select: { id: true, sku: true, name: true, barcode: true, brand: true, saleUnit: true, trackLots: true, costPrice: true, suggestedPrice: true, wholesalePrice: true, minStock: true, ncm: true, active: true, title: true, category: { select: { name: true } }, _count: { select: { images: true } }, images: { where: { position: 0 }, select: { id: true }, take: 1 } },
         }),
         tx.product.count({ where }),
       ]);
@@ -95,7 +95,7 @@ export class CatalogService {
       await this.assertCategory(tx, ctx, dto.categoryId);
       const row = await tx.product.update({ where: { id }, data: { ...dto, attributes: dto.attributes as unknown as Prisma.InputJsonValue | undefined } }).catch((e) => conflict(e, 'Já existe um produto com este código de barras.'));
       // Preço/custo/fiscal são campos sensíveis: registramos o antes e o depois.
-      const sensitive = ['costPrice', 'extraCost', 'suggestedPrice', 'minPrice', 'ncm', 'cest', 'taxOrigin', 'taxGtin'] as const;
+      const sensitive = ['costPrice', 'extraCost', 'suggestedPrice', 'wholesalePrice', 'minPrice', 'ncm', 'cest', 'taxOrigin', 'taxGtin'] as const;
       const changes = sensitive
         .filter((k) => dto[k] !== undefined && String(dto[k]) !== String(current[k] ?? ''))
         .map((k) => ({ field: k, from: current[k]?.toString() ?? null, to: String(dto[k]) }));

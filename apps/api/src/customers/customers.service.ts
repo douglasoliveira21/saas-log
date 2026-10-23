@@ -1,6 +1,6 @@
-import { Body, ConflictException, Controller, Get, Injectable, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, ForbiddenException, Controller, Get, Injectable, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { CustomerKind, Prisma } from '@prisma/client';
-import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, Length, Matches, MaxLength, Validate } from 'class-validator';
+import { IsBoolean, IsEmail, IsEnum, IsIn, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, Validate } from 'class-validator';
 import { AuditService } from '../audit/audit.service';
 import { AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
 import { onlyDigits } from '../common/cnpj';
@@ -10,8 +10,12 @@ import { CpfCnpjConstraint } from '../catalog/catalog.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { purchaseProfiles } from './purchase-profile';
+import { ensureSalesperson } from '../sales/ensure-salesperson';
 
 class CustomerFields {
+  @IsOptional() @IsIn(['RETAIL', 'WHOLESALE']) priceTable?: 'RETAIL' | 'WHOLESALE';
+  /** Carteira: vendedor responsável. Só quem enxerga todas as vendas pode escolher outro vendedor. */
+  @IsOptional() @IsUUID() salespersonId?: string;
   @IsOptional() @IsString() @MaxLength(30) stateRegistration?: string;
   @IsOptional() @IsEmail() email?: string;
   @IsOptional() @IsBrPhone() @MaxLength(30) phone?: string;
@@ -62,10 +66,25 @@ export class CustomersService {
     });
   }
 
+  /** Carteira de um cliente novo/alterado: vendedor de quem cadastra (se for vendedor) ou o escolhido por quem enxerga todas as vendas. */
+  private async portfolioOwner(tx: Prisma.TransactionClient, ctx: AuthContext, wanted: string | undefined, current?: string | null): Promise<string | null | undefined> {
+    const all = ctx.permissions.has('sales.view_all');
+    if (wanted !== undefined) {
+      if (!all) throw new ForbiddenException('Somente quem enxerga todas as vendas pode escolher o vendedor da carteira.');
+      if (!(await tx.salesperson.findFirst({ where: { id: wanted, tenantId: ctx.tenantId!, active: true } }))) throw new BadRequestException('Vendedor inválido ou inativo.');
+      return wanted;
+    }
+    if (current !== undefined) return undefined; // edição sem mexer na carteira
+    if (all) return null; // quem enxerga todas as vendas cadastra sem dono, a menos que escolha um vendedor
+    const mine = await ensureSalesperson(tx, ctx, this.audit);
+    return mine?.id ?? null; // cliente novo cadastrado por um vendedor entra na carteira dele
+  }
+
   create(ctx: AuthContext, dto: CreateCustomerDto) {
     return this.prisma.withContext(ctx, async (tx) => {
+      const salespersonId = await this.portfolioOwner(tx, ctx, dto.salespersonId);
       const row = await tx.customer
-        .create({ data: { ...normalizeContact(dto), document: dto.document ? onlyDigits(dto.document) : undefined, state: dto.state?.toUpperCase(), tenantId: ctx.tenantId! } })
+        .create({ data: { ...normalizeContact(dto), salespersonId, document: dto.document ? onlyDigits(dto.document) : undefined, state: dto.state?.toUpperCase(), tenantId: ctx.tenantId! } })
         .catch(dup);
       await this.audit.record(tx, ctx, { action: 'customer.created', entity: 'customer', entityId: row.id, metadata: { name: row.name, kind: row.kind } });
       return row;
@@ -74,8 +93,10 @@ export class CustomersService {
 
   update(ctx: AuthContext, id: string, dto: UpdateCustomerDto) {
     return this.prisma.withContext(ctx, async (tx) => {
-      if (!(await tx.customer.findFirst({ where: { id, tenantId: ctx.tenantId! } }))) throw new NotFoundException('Cliente não encontrado.');
-      const row = await tx.customer.update({ where: { id }, data: { ...normalizeContact(dto), document: dto.document ? onlyDigits(dto.document) : undefined, state: dto.state?.toUpperCase() } }).catch(dup);
+      const cur = await tx.customer.findFirst({ where: { id, tenantId: ctx.tenantId! } });
+      if (!cur) throw new NotFoundException('Cliente não encontrado.');
+      const salespersonId = await this.portfolioOwner(tx, ctx, dto.salespersonId, cur.salespersonId);
+      const row = await tx.customer.update({ where: { id }, data: { ...normalizeContact(dto), ...(salespersonId !== undefined ? { salespersonId } : {}), document: dto.document ? onlyDigits(dto.document) : undefined, state: dto.state?.toUpperCase() } }).catch(dup);
       await this.audit.record(tx, ctx, { action: 'customer.updated', entity: 'customer', entityId: id, metadata: { fields: Object.keys(dto) } });
       return row;
     });

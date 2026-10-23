@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { FiscalDocChoice, CommissionRuleKind, CommissionStatus, OrderStatus, SalesChannel } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
@@ -7,6 +8,8 @@ import {
 import { AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
 import { IsBrPhone } from '../common/phone';
 import { CommissionsService } from '../commissions/commissions.service';
+import { BrandingService } from '../branding/branding.service';
+import { FiscalOutgoingService } from '../fiscal/fiscal-outgoing.service';
 import { PAYMENT_METHODS } from './payment';
 import { SalesService } from './sales.service';
 
@@ -19,6 +22,7 @@ class OrderItemDto {
   @IsOptional() @IsNumber(money) @Min(0) @Max(100) discountPct?: number;
 }
 class OrderDto {
+  @IsOptional() @IsIn(['RETAIL', 'WHOLESALE']) priceTable?: 'RETAIL' | 'WHOLESALE';
   @IsUUID() customerId: string;
   @IsUUID() warehouseId: string;
   @IsOptional() @IsUUID() salespersonId?: string;
@@ -91,6 +95,8 @@ export class SalesController {
   constructor(
     private readonly sales: SalesService,
     private readonly commissions: CommissionsService,
+    private readonly outgoing: FiscalOutgoingService,
+    private readonly branding: BrandingService,
   ) {}
 
   @Get('sales/orders') @RequirePermissions('sales.view')
@@ -107,6 +113,26 @@ export class SalesController {
 
   @Post('sales/orders') @RequirePermissions('sales.create')
   create(@CurrentAuth() ctx: AuthContext, @Body() dto: OrderDto) { return this.sales.create(ctx, dto); }
+
+  /** Tudo que a impressão da venda precisa (empresa, logotipo, cliente, itens, parcelas, notas), já no escopo do usuário. */
+  @Get('sales/orders/:id/print') @RequirePermissions('sales.view')
+  async print(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    const order = await this.sales.get(ctx, id);
+    const company = await this.sales.printCompany(ctx, id);
+    let logo: string | null = null;
+    try { const l = await this.branding.get(ctx); logo = `data:${l.contentType};base64,${l.content.toString('base64')}`; } catch { logo = null; }
+    return { order, company, logo };
+  }
+
+  /** DANFE/XML de uma nota da venda, com o escopo da venda (o vendedor não precisa da permissão do módulo Fiscal). */
+  @Get('sales/orders/:id/documents/:docId/file') @RequirePermissions('sales.view')
+  async docFile(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Param('docId', ParseUUIDPipe) docId: string, @Query('kind') kind: string, @Res() res: Response) {
+    await this.sales.assertDocumentOfOrder(ctx, id, docId);
+    const f = await this.outgoing.file(ctx, docId, kind === 'xml' ? 'xml' : 'danfe');
+    res.setHeader('Content-Type', f.contentType); res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:");
+    res.setHeader('Content-Disposition', `${kind === 'xml' ? 'attachment' : 'inline'}; filename="${f.name}"`);
+    res.send(f.content);
+  }
 
   @Put('sales/orders/:id') @RequirePermissions('sales.create')
   update(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: OrderDto) { return this.sales.update(ctx, id, dto); }

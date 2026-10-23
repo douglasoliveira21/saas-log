@@ -53,6 +53,8 @@ export class ProductFields {
   @IsOptional() @IsNumber(money) @Min(0) costPrice?: number;
   @IsOptional() @IsNumber(money) @Min(0) extraCost?: number;
   @IsOptional() @IsNumber(money) @Min(0) suggestedPrice?: number;
+  /** Preço de atacado; vazio = vende pelo preço de varejo (suggestedPrice). */
+  @IsOptional() @IsNumber(money) @Min(0) wholesalePrice?: number;
   @IsOptional() @IsNumber(money) @Min(0) minPrice?: number;
   @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100) targetMarginPct?: number;
   @IsOptional() @IsInt() @Min(0) minStock?: number;

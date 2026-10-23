@@ -521,3 +521,17 @@ th[aria-sort] .sort { opacity: 1; color: var(--brand); }
   .line-grid > :first-child { grid-column: 1 / -1; }
   .form-sec { gap: 8px; }
 }
+
+/* ─────────── gráficos (paleta categórica validada, ordem fixa; escura é a sua própria seleção) ─────────── */
+:root { --dv-1: #2a78d6; --dv-2: #eb6834; --dv-3: #1baf7a; --dv-4: #eda100; --dv-5: #e87ba4; --dv-6: #008300; --dv-7: #6250d6; --dv-8: #e34948; --dv-other: #98a2b3; }
+:root[data-theme='dark'] { --dv-1: #3987e5; --dv-2: #d95926; --dv-3: #199e70; --dv-4: #c98500; --dv-5: #d55181; --dv-6: #008300; --dv-7: #9085e9; --dv-8: #e66767; --dv-other: #667085; }
+.dv-wrap { position: relative; }
+.dv-bar { transition: opacity .12s; cursor: default; }
+.dv-wrap:has(.dv-bar:hover) .dv-bar:not(:hover) { opacity: .45; }
+.dv-tip { position: absolute; z-index: 5; pointer-events: none; background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: var(--shadow-lg); padding: 7px 10px; font-size: .82rem; line-height: 1.35; max-width: 260px; transform: translate(-50%, -100%); white-space: normal; }
+.dv-tip b { display: block; }
+.dv-legend { display: flex; flex-direction: column; gap: 4px; font-size: .84rem; min-width: 0; }
+.dv-legend li { display: flex; align-items: center; gap: 8px; list-style: none; min-width: 0; }
+.dv-legend span.sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.dv-legend span.nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.dv-legend ul { margin: 0; padding: 0; }

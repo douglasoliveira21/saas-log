@@ -12,6 +12,7 @@ import { AuditService } from '../audit/audit.service';
 import { AuthContext } from '../common/auth';
 import { CommissionsService, fromCents, toCents } from '../commissions/commissions.service';
 import { NotificationsService } from '../notify/notifications';
+import { ensureSalesperson } from './ensure-salesperson';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { StockService } from '../stock/stock.service';
@@ -22,6 +23,8 @@ export interface OrderInput extends PaymentInput {
   customerId: string;
   warehouseId: string;
   salespersonId?: string;
+  /** Tabela de preço: vazio = a padrão do cliente. */
+  priceTable?: 'RETAIL' | 'WHOLESALE';
   channel?: SalesChannel;
   fiscalDocType?: FiscalDocChoice;
   shipping?: number;
@@ -89,8 +92,27 @@ export class SalesService {
       });
       if (!order) throw new NotFoundException('Pedido não encontrado.');
       const titles = await tx.financialTitle.findMany({ where: { tenantId: ctx.tenantId!, origin: 'SALES_ORDER', originRef: { startsWith: `${id}:` } }, orderBy: { installmentNo: 'asc' }, select: { id: true, installmentNo: true, installmentTotal: true, dueDate: true, amount: true, status: true } });
-      return { ...order, installments: titles, items: order.items.map(({ returnItems, ...i }) => ({ ...i, returnedQty: returnItems.reduce((s, r) => s + r.quantity, 0) })) };
+      const fiscalDocuments = await tx.fiscalDocument.findMany({ where: { tenantId: ctx.tenantId!, salesOrderId: id, direction: 'EXIT' }, orderBy: { createdAt: 'asc' }, select: { id: true, model: true, number: true, series: true, status: true, accessKey: true, environment: true, authProtocol: true, purpose: true } });
+      return { ...order, installments: titles, fiscalDocuments, items: order.items.map(({ returnItems, ...i }) => ({ ...i, returnedQty: returnItems.reduce((s, r) => s + r.quantity, 0) })) };
     });
+  }
+
+  /** Dados da empresa emitente para o cabeçalho da impressão (estabelecimento do depósito do pedido). */
+  printCompany(ctx: AuthContext, id: string) {
+    return this.prisma.withContext(ctx, async (tx) => {
+      const o = await tx.salesOrder.findFirst({ where: { id, tenantId: ctx.tenantId!, AND: [await this.scope(tx, ctx)] }, select: { warehouse: { select: { establishment: { select: { name: true, cnpj: true, stateRegistration: true, street: true, number: true, district: true, city: true, state: true, zipCode: true, company: { select: { legalName: true, tradeName: true, cnpj: true, contactPhone: true, contactEmail: true } } } } } } } });
+      if (!o) throw new NotFoundException('Pedido não encontrado.');
+      const e = o.warehouse.establishment;
+      return { name: e.company.tradeName ?? e.company.legalName, legalName: e.company.legalName, cnpj: e.cnpj ?? e.company.cnpj, stateRegistration: e.stateRegistration, address: [e.street && `${e.street}${e.number ? `, ${e.number}` : ''}`, e.district, e.city && `${e.city}${e.state ? `/${e.state}` : ''}`, e.zipCode].filter(Boolean).join(' · '), phone: e.company.contactPhone, email: e.company.contactEmail };
+    });
+  }
+
+  async assertDocumentOfOrder(ctx: AuthContext, orderId: string, docId: string) {
+    const ok = await this.prisma.withContext(ctx, async (tx) => {
+      const own = await tx.salesOrder.findFirst({ where: { id: orderId, tenantId: ctx.tenantId!, AND: [await this.scope(tx, ctx)] }, select: { id: true } });
+      return own ? tx.fiscalDocument.findFirst({ where: { id: docId, tenantId: ctx.tenantId!, salesOrderId: orderId, direction: 'EXIT' }, select: { id: true } }) : null;
+    });
+    if (!ok) throw new NotFoundException('Documento não encontrado nesta venda.');
   }
 
   /** Espelho (DANFE/cupom) e pendências para emitir o documento fiscal escolhido. Respeita o escopo do usuário. */
@@ -133,10 +155,12 @@ export class SalesService {
       const order = await tx.salesOrder.create({
         data: {
           tenantId: ctx.tenantId!, number, customerId: dto.customerId, warehouseId: dto.warehouseId, salespersonId: data.salespersonId,
-          channel: dto.channel ?? 'DIRECT', fiscalDocType: dto.fiscalDocType ?? 'NONE', customerType: await this.customerTypeOf(tx, ctx, dto.customerId), notes: dto.notes, createdById: ctx.userId, ...normalizePayment(dto, localToday()), ...data.totals,
+          priceTable: data.priceTable, channel: dto.channel ?? 'DIRECT', fiscalDocType: dto.fiscalDocType ?? 'NONE', customerType: await this.customerTypeOf(tx, ctx, dto.customerId), notes: dto.notes, createdById: ctx.userId, ...normalizePayment(dto, localToday()), ...data.totals,
         },
       });
       await tx.salesOrderItem.createMany({ data: data.rows.map((r) => ({ ...r, orderId: order.id })) });
+      // cliente sem carteira entra na carteira do vendedor da primeira venda
+      if (data.salespersonId) await tx.customer.updateMany({ where: { id: dto.customerId, tenantId: ctx.tenantId!, salespersonId: null }, data: { salespersonId: data.salespersonId } });
       await this.audit.record(tx, ctx, { action: 'sales.created', entity: 'sales_order', entityId: order.id, metadata: { number, total: data.totals.total } });
       return { id: order.id, number };
     }
@@ -151,7 +175,7 @@ export class SalesService {
       await tx.salesOrder.update({
         where: { id },
         data: {
-          customerId: dto.customerId, warehouseId: dto.warehouseId, salespersonId: data.salespersonId, channel: dto.channel ?? 'DIRECT', fiscalDocType: dto.fiscalDocType ?? 'NONE', customerType: await this.customerTypeOf(tx, ctx, dto.customerId, id), notes: dto.notes, ...normalizePayment(dto, localToday()), ...data.totals,
+          customerId: dto.customerId, warehouseId: dto.warehouseId, salespersonId: data.salespersonId, priceTable: data.priceTable, channel: dto.channel ?? 'DIRECT', fiscalDocType: dto.fiscalDocType ?? 'NONE', customerType: await this.customerTypeOf(tx, ctx, dto.customerId, id), notes: dto.notes, ...normalizePayment(dto, localToday()), ...data.totals,
         },
       });
       await tx.salesOrderItem.createMany({ data: data.rows.map((r) => ({ ...r, orderId: id })) });
@@ -462,19 +486,22 @@ export class SalesService {
     if (new Set(dto.items.map((i) => i.productId)).size !== dto.items.length) throw new BadRequestException('Produto repetido no pedido: some as quantidades em uma linha.');
 
     let salespersonId = dto.salespersonId ?? null;
-    const mine = ctx.userId ? await tx.salesperson.findFirst({ where: { tenantId: ctx.tenantId!, userId: ctx.userId, active: true }, select: { id: true } }) : null;
+    // Quem registra a venda é o vendedor: se o usuário ainda não tem cadastro de vendedor, ele é criado com o nome dele.
+    const mine = dto.channel !== 'MARKETPLACE' && !opts.skipDelinquency ? await ensureSalesperson(tx, ctx, this.audit) : ctx.userId ? await tx.salesperson.findFirst({ where: { tenantId: ctx.tenantId!, userId: ctx.userId, active: true }, select: { id: true } }) : null;
     if (!ctx.permissions.has('sales.view_all')) salespersonId = mine?.id ?? null; // vendedor só vende em seu próprio nome
     else if (!salespersonId) salespersonId = mine?.id ?? null;
     if (salespersonId && !(await tx.salesperson.findFirst({ where: { id: salespersonId, tenantId: ctx.tenantId!, active: true } }))) throw new BadRequestException('Vendedor inválido ou inativo.');
 
     const products = await tx.product.findMany({ where: { tenantId: ctx.tenantId!, id: { in: dto.items.map((i) => i.productId) }, active: true, kind: 'PHYSICAL' } });
     const byId = new Map(products.map((p) => [p.id, p]));
+    const priceTable: 'RETAIL' | 'WHOLESALE' = dto.priceTable ?? (customer.priceTable === 'WHOLESALE' ? 'WHOLESALE' : 'RETAIL');
     let subtotal = 0;
     let net = 0;
     const rows = dto.items.map((i) => {
       const p = byId.get(i.productId);
       if (!p) throw new BadRequestException('Produto inválido, inativo ou não físico.');
-      const price = i.unitPrice ?? (p.suggestedPrice ? Number(p.suggestedPrice) : undefined);
+      const tablePrice = priceTable === 'WHOLESALE' && p.wholesalePrice != null ? Number(p.wholesalePrice) : p.suggestedPrice ? Number(p.suggestedPrice) : undefined;
+      const price = i.unitPrice ?? tablePrice;
       if (price === undefined) throw new BadRequestException(`Informe o preço de ${p.sku} (sem preço sugerido).`);
       const disc = i.discountPct ?? 0;
       const unitCents = Math.round(price * 100);
@@ -485,7 +512,7 @@ export class SalesService {
     });
     const shippingCents = Math.round((dto.shipping ?? 0) * 100);
     return {
-      salespersonId, rows,
+      salespersonId, rows, priceTable,
       totals: { subtotal: fromCents(subtotal), discountTotal: fromCents(subtotal - net), shipping: fromCents(shippingCents), total: fromCents(net + shippingCents) },
     };
   }
