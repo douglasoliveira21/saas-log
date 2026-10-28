@@ -33,6 +33,10 @@ cd android && ./gradlew assembleDebug
 - A tela do motorista detecta que está no app (`Capacitor.isNativePlatform()`) e usa o plugin de localização em segundo plano; no navegador usa o GPS do navegador.
 - Sem internet o app mostra a tela “Sem conexão” (`www/index.html`); as posições ficam guardadas e seguem quando a conexão volta.
 
+## Segundo plano
+
+Para o GPS continuar com a tela bloqueada ou com outro app aberto: permissão de localização **o tempo todo**, notificações liberadas e, quando o app pedir, **“Permitir sem restrição de bateria”**. Em Xiaomi, Huawei, Samsung e Motorola também pode ser preciso ativar “Início automático” / tirar o app da economia de bateria nos ajustes do fabricante.
+
 ## Pendências e avisos
 
 - **Ainda não testado em celular real** (veja os limites em `docs/DRIVER-TRACKING.md`).

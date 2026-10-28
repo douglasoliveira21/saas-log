@@ -43,6 +43,7 @@ Veja [`mobile/README.md`](../mobile/README.md).
 
 - **O APK não foi compilado nem testado em aparelho real nesta máquina** (não há Android SDK/JDK 21 aqui). O projeto Android é gerado e compilado pelo GitHub Actions; o primeiro APK precisa ser instalado e testado em um celular antes do uso real (permissão “o tempo todo”, notificação fixa, economia de bateria do fabricante).
 - Alguns fabricantes (Xiaomi, Huawei, Samsung em modo econômico) encerram serviços em segundo plano: o motorista deve tirar o app da “otimização de bateria”.
+- **Segundo plano (tela bloqueada / outro app aberto):** o APK usa um serviço em primeiro plano do Android (notificação fixa) e pede ao motorista para liberar o app das restrições de bateria (plugin nativo `PowerSettings`, instalado por `mobile/scripts/patch-android.mjs`). As posições são enviadas quando o Android entrega a localização ao app; se o envio falhar, ficam em fila e seguem ao voltar a rede ou ao reabrir o app. **Isso não foi testado em aparelho real**; teste bloqueando a tela por 10+ minutos com uma rota em andamento e conferindo a trilha no mapa ao vivo.
 - No **navegador** o rastreio para quando a tela apaga ou a aba fica em segundo plano — por isso o APK.
 - A precisão do GPS e a previsão de chegada são **estimativas** (a previsão usa distância em linha reta × 1,3 e 30 km/h).
 - A conta de motorista é reconhecida por ter `delivery.perform` e **não** ter `routes.view`; um usuário com os dois não é bloqueado.

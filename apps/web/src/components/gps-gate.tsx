@@ -1,6 +1,6 @@
 'use client';
 
-import { LocateFixed, LogOut, MapPinOff, Settings } from 'lucide-react';
+import { BatteryWarning, LocateFixed, LogOut, MapPinOff, Settings } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useSession } from '@/lib/session';
@@ -21,6 +21,15 @@ export function GpsGate({ children }: { children: ReactNode }) {
   if (t.status === 'ok' || t.status === 'weak') {
     return (
       <>
+        {t.native && t.battery === 'restricted' && (
+          <div className="alert warn" role="status" style={{ marginBottom: 12 }}>
+            <BatteryWarning aria-hidden />
+            <div>
+              <strong>Libere a bateria para o GPS continuar com a tela bloqueada.</strong> Sem isso o Android pode pausar o aplicativo e sua rota deixa de ser acompanhada. Toque em “Permitir” e confirme.
+              <div style={{ marginTop: 8 }}><button className="btn sm primary" onClick={() => void tracker.requestBattery()}>Permitir sem restrição de bateria</button></div>
+            </div>
+          </div>
+        )}
         {t.status === 'weak' && (
           <div className="alert warn" role="status" style={{ marginBottom: 12 }}>
             <MapPinOff aria-hidden /><div><strong>Sem sinal de GPS no momento.</strong> Confira se a localização do aparelho está ligada e, se possível, vá para um local aberto. As posições pendentes serão enviadas quando o sinal voltar.</div>

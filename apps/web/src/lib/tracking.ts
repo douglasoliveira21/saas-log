@@ -26,10 +26,13 @@ export interface TrackerState {
   pending: number;
   lastSentAt: number | null;
   sendError: boolean;
+  /** Só no aplicativo: o Android está (restricted) ou não (ok) limitando a bateria do app, o que pode parar o GPS com a tela bloqueada. */
+  battery: 'unknown' | 'ok' | 'restricted';
 }
 
 interface Pt { lat: number; lng: number; accuracyM?: number; speedMps?: number; heading?: number; recordedAt: string }
 interface NativeLocation { latitude: number; longitude: number; accuracy: number; speed: number | null; bearing: number | null; time: number | null }
+interface PowerSettingsPlugin { status(): Promise<{ ignoring: boolean }>; request(): Promise<void> }
 interface BackgroundGeolocationPlugin {
   addWatcher(options: { backgroundMessage?: string; backgroundTitle?: string; requestPermissions?: boolean; stale?: boolean; distanceFilter?: number }, callback: (position?: NativeLocation, error?: { code?: string; message?: string }) => void): Promise<string>;
   removeWatcher(options: { id: string }): Promise<void>;
@@ -45,13 +48,14 @@ const FLUSH_MS = 15_000;
 
 const isNative = () => { try { return Capacitor.isNativePlatform(); } catch { return false; } };
 const native = () => registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
+const power = () => registerPlugin<PowerSettingsPlugin>('PowerSettings');
 
 function store(op: 'get' | 'set' | 'del', value?: string): string | null {
   try { if (op === 'set') { localStorage.setItem(BUF_KEY, value!); return value!; } if (op === 'del') { localStorage.removeItem(BUF_KEY); return null; } return localStorage.getItem(BUF_KEY); } catch { return null; }
 }
 
 class Tracker {
-  state: TrackerState = { status: 'idle', native: false, last: null, routeActive: null, routeNumber: null, pending: 0, lastSentAt: null, sendError: false };
+  state: TrackerState = { status: 'idle', native: false, last: null, routeActive: null, routeNumber: null, pending: 0, lastSentAt: null, sendError: false, battery: 'unknown' };
   private listeners = new Set<() => void>();
   private started = false;
   private watchId: number | null = null;
@@ -61,7 +65,7 @@ class Tracker {
   private lastKept = 0;
   private lastFlush = 0;
   private sending = false;
-  private onVisible = () => { if (document.visibilityState === 'visible') void this.flush(); };
+  private onVisible = () => { if (document.visibilityState === 'visible') { void this.flush(); void this.checkBattery(); } };
 
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
   getSnapshot = () => this.state;
@@ -73,6 +77,7 @@ class Tracker {
     try { this.buffer = (JSON.parse(store('get') ?? '[]') as Pt[]).slice(-MAX_BUFFER); } catch { this.buffer = []; }
     this.set({ native: isNative() });
     this.watch();
+    void this.checkBattery();
     this.timers.push(setInterval(() => void this.flush(true), HEARTBEAT_MS));
     window.addEventListener('online', this.onVisible);
     document.addEventListener('visibilitychange', this.onVisible);
@@ -91,6 +96,15 @@ class Tracker {
 
   /** Pede (de novo) o acesso à localização. No navegador precisa de um toque do usuário em alguns aparelhos. */
   retry() { this.unwatch(); this.watch(); }
+
+  /** Pergunta ao Android se o app está livre das restrições de bateria (só no aplicativo). */
+  async checkBattery() {
+    if (!isNative()) return;
+    try { const r = await power().status(); this.set({ battery: r.ignoring ? 'ok' : 'restricted' }); } catch { this.set({ battery: 'unknown' }); }
+  }
+
+  /** Abre a tela do Android que libera o app das restrições de bateria. */
+  async requestBattery() { if (isNative()) { try { await power().request(); } catch { /* o aviso na tela continua orientando */ } } }
 
   async openSettings() { if (isNative()) { try { await native().openSettings(); } catch { /* sem tela de ajustes: o aviso já orienta */ } } }
 
