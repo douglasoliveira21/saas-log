@@ -43,7 +43,9 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - uses: android-actions/setup-android@v3
+      # o Android SDK já vem instalado no ubuntu-latest; só aceita as licenças
+      - name: Aceitar licenças do Android SDK
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
       - name: Instalar dependências
         run: npm install --no-audit --no-fund
