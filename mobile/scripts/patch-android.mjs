@@ -2,8 +2,9 @@
 // e número da versão. Pode ser executado várias vezes sem duplicar nada.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+const root = fileURLToPath(new URL('..', import.meta.url));
 const manifestPath = join(root, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
 const gradlePath = join(root, 'android', 'app', 'build.gradle');
 if (!existsSync(manifestPath)) { console.error('Projeto Android não encontrado. Rode antes: npx cap add android'); process.exit(1); }

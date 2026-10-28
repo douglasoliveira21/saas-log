@@ -1,19 +1,14 @@
 'use client';
 
-import { FileText, Fuel, Printer } from 'lucide-react';
+import { FileText, Fuel, Printer, Truck, User } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Dialog, useUi } from '@/components/ui';
 import { api } from '@/lib/api';
-import { brl } from '@/lib/format';
+import { brl, dateBr } from '@/lib/format';
+import { docLabel, kg, manifestHtml, ROUTE_STATUS, usedPct, type Manifest } from './manifest-print';
 
 interface Load { vehicle: { id: string; plate: string; description: string } | null; orders: number; weightKg: number; itemsWithoutWeight: number; value: string; capacityKg: number | null; usedPct: number | null; overCapacity: boolean; cost: string }
 interface Vehicle { id: string; plate: string; description: string; capacityKg: number | null; active: boolean }
-interface Manifest {
-  route: { number: number; date: string; status: string }; vehicle: { plate: string; description: string; capacityKg: number | null } | null; driver: { name: string; phone: string | null };
-  stops: { sequence: number; orderNumber: number | null; customer: string; city: string | null; state: string | null; address: string; value: number; documents: { model: string; number: number | null; series: number | null; accessKey: string | null }[] }[];
-  states: string[]; weightKg: number; value: string; warnings: string[]; notice: string;
-}
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const KINDS: [string, string][] = [['FUEL', 'Combustível'], ['TOLL', 'Pedágio'], ['MAINTENANCE', 'Manutenção'], ['DRIVER', 'Motorista'], ['INSURANCE', 'Seguro'], ['OTHER', 'Outros']];
 
 /** Veículo, carga (peso x capacidade), custos e manifesto de uma viagem. */
@@ -40,10 +35,9 @@ export function RouteFleetCard({ routeId, manage, editable }: { routeId: string;
   }
   async function openManifest() { try { setManifest(await api<Manifest>(`/fleet/routes/${routeId}/manifest`)); } catch (e) { setError((e as Error).message); } }
   function print(m: Manifest) {
-    const w = window.open('', '_blank', 'width=900,height=1000');
+    const w = window.open('', '_blank', 'width=900,height=1100');
     if (!w) { ui.toast.error('Libere pop-ups para imprimir.'); return; }
-    const rows = m.stops.map((s) => `<tr><td>${s.sequence}</td><td>${s.orderNumber ?? ''}</td><td>${esc(s.customer)}<br><small>${esc(s.address)}</small></td><td>${esc([s.city, s.state].filter(Boolean).join('/'))}</td><td>${s.documents.length ? s.documents.map((d) => `${d.model === '65' ? 'NFC-e' : 'NF-e'} ${d.number ?? ''}<br><small>${esc(d.accessKey ?? '')}</small>`).join('<br>') : '<b style="color:#b00">sem NF-e</b>'}</td><td class="n">${brl(s.value)}</td></tr>`).join('');
-    w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Manifesto da viagem ${m.route.number}</title><style>body{font:12px system-ui,sans-serif;margin:24px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border-bottom:1px solid #ccc;padding:5px;text-align:left;vertical-align:top}.n{text-align:right}small{color:#555;word-break:break-all}.warn{border:1px solid #b00;padding:8px;margin:8px 0}</style></head><body><h2>Manifesto de carga — viagem #${m.route.number} (${m.route.date})</h2><p>Veículo: <b>${esc(m.vehicle ? `${m.vehicle.plate} — ${m.vehicle.description}` : 'não definido')}</b> · Motorista: <b>${esc(m.driver.name)}</b> · UF(s): ${esc(m.states.join(', ') || '—')} · Peso: <b>${m.weightKg} kg</b>${m.vehicle?.capacityKg ? ` de ${m.vehicle.capacityKg} kg` : ''} · Valor: <b>${brl(m.value)}</b></p>${m.warnings.map((x) => `<div class="warn">${esc(x)}</div>`).join('')}<table><thead><tr><th>#</th><th>Pedido</th><th>Cliente / endereço</th><th>Cidade</th><th>Documento fiscal</th><th class="n">Valor</th></tr></thead><tbody>${rows}</tbody></table><p><small>${esc(m.notice)}</small></p><script>window.onload=()=>window.print()</script></body></html>`);
+    w.document.write(manifestHtml(m).replace('</body>', '<script>window.onload=function(){setTimeout(function(){window.print()},350)}</script></body>'));
     w.document.close();
   }
 
@@ -71,23 +65,46 @@ export function RouteFleetCard({ routeId, manage, editable }: { routeId: string;
           {load.itemsWithoutWeight > 0 && <p className="muted" style={{ fontSize: '0.8rem', marginBottom: 0 }}>{load.itemsWithoutWeight} item(ns) sem peso cadastrado: o peso total está subestimado.</p>}
         </div>
       )}
-      {manifest && (
-        <Dialog title={`Manifesto de carga — viagem #${manifest.route.number}`} description="Documento de conferência. Não é o MDF-e." onClose={() => setManifest(null)} xl>
-          <div className="modal-body">
-            {manifest.warnings.map((w) => <Alert key={w} kind="warn">{w}</Alert>)}
-            <div className="meta" style={{ marginBottom: 12 }}><span><b>Veículo:</b> {manifest.vehicle ? `${manifest.vehicle.plate} — ${manifest.vehicle.description}` : '—'}</span><span><b>Motorista:</b> {manifest.driver.name}</span><span><b>UF:</b> {manifest.states.join(', ') || '—'}</span><span><b>Peso:</b> {manifest.weightKg} kg</span><span><b>Valor:</b> {brl(manifest.value)}</span></div>
-            <div className="table-wrap"><table>
-              <thead><tr><th>#</th><th>Pedido</th><th>Cliente</th><th>Cidade</th><th>Documento fiscal</th><th className="num">Valor</th></tr></thead>
-              <tbody>{manifest.stops.map((s) => (
-                <tr key={s.sequence}><td>{s.sequence}</td><td>{s.orderNumber ?? '—'}</td><td>{s.customer}<div className="muted" style={{ fontSize: '0.78rem' }}>{s.address}</div></td><td>{[s.city, s.state].filter(Boolean).join('/')}</td>
-                  <td>{s.documents.length ? s.documents.map((d, i) => <div key={i}><span className="badge">{d.model === '65' ? 'NFC-e' : 'NF-e'} {d.number}</span></div>) : <span className="badge danger">sem NF-e autorizada</span>}</td><td className="num">{brl(s.value)}</td></tr>
-              ))}</tbody>
-            </table></div>
-            <p className="muted" style={{ fontSize: '0.8rem' }}>{manifest.notice}</p>
-          </div>
-          <div className="modal-foot"><button className="btn" onClick={() => print(manifest)}><Printer aria-hidden />Imprimir</button></div>
-        </Dialog>
-      )}
+      {manifest && (() => {
+        const pct = usedPct(manifest);
+        const cls = manifest.overCapacity ? 'bad' : pct !== null && pct >= 85 ? 'warn' : '';
+        const withNf = manifest.stops.filter((x) => x.documents.length).length;
+        return (
+          <Dialog title={`Manifesto de carga — viagem #${manifest.route.number}`} description={`${dateBr(manifest.route.date)} · ${ROUTE_STATUS[manifest.route.status] ?? manifest.route.status}. Documento de conferência, não é o MDF-e.`} onClose={() => setManifest(null)} xl>
+            <div className="modal-body mf">
+              {manifest.warnings.map((w) => <Alert key={w} kind="warn">{w}</Alert>)}
+              <div className="mf-cards">
+                <div className="mf-card"><span className="mf-ico"><Truck aria-hidden /></span><div><small>Veículo</small>{manifest.vehicle ? <><span className="mf-plate">{manifest.vehicle.plate}</span><div className="muted">{manifest.vehicle.description}</div></> : <b>Não definido</b>}</div></div>
+                <div className="mf-card"><span className="mf-ico"><User aria-hidden /></span><div><small>Motorista</small><b>{manifest.driver.name}</b>{manifest.driver.phone && <div className="muted">{manifest.driver.phone}</div>}</div></div>
+                <div className="mf-card wide"><div style={{ width: '100%' }}><small>Carga x capacidade</small><b>{kg(manifest.weightKg)}{manifest.vehicle?.capacityKg ? ` de ${kg(manifest.vehicle.capacityKg)}` : ''}</b>
+                  {pct !== null ? <><div className={`mf-cap ${cls}`} role="progressbar" aria-valuenow={Math.min(100, pct)} aria-valuemin={0} aria-valuemax={100} aria-label="Uso da capacidade do veículo"><i style={{ width: `${Math.min(100, pct)}%` }} /></div><div className="muted" style={{ fontSize: '0.8rem' }}>{pct}% da capacidade{manifest.overCapacity ? ' — excede' : ''}</div></> : <div className="muted" style={{ fontSize: '0.8rem' }}>Capacidade do veículo não informada</div>}
+                </div></div>
+              </div>
+              <div className="mf-kpis">
+                <div><b>{manifest.stops.length}</b><small>Paradas</small></div>
+                <div><b>{brl(manifest.value)}</b><small>Valor da carga</small></div>
+                <div><b>{manifest.states.join(', ') || '—'}</b><small>UF de destino</small></div>
+                <div className={withNf < manifest.stops.length ? 'bad' : ''}><b>{withNf}/{manifest.stops.length}</b><small>Com NF-e</small></div>
+              </div>
+              <div className="table-wrap"><table>
+                <thead><tr><th>Ordem</th><th>Pedido</th><th>Cliente / endereço</th><th>Cidade</th><th>Documento fiscal</th><th className="num">Valor</th></tr></thead>
+                <tbody>{manifest.stops.map((s) => (
+                  <tr key={s.sequence}>
+                    <td><span className="mf-seq">{s.sequence}</span></td><td>{s.orderNumber ?? '—'}</td>
+                    <td><strong>{s.customer}</strong><div className="muted" style={{ fontSize: '0.78rem' }}>{s.address}</div>{s.phone && <div className="muted" style={{ fontSize: '0.76rem' }}>{s.phone}</div>}</td>
+                    <td>{[s.city, s.state].filter(Boolean).join('/')}</td>
+                    <td>{s.documents.length ? s.documents.map((d, i) => <div key={i}><span className="badge ok">{docLabel(d)} {d.number}{d.series != null ? `/${d.series}` : ''}</span></div>) : <span className="badge danger">sem NF-e autorizada</span>}</td>
+                    <td className="num">{brl(s.value)}</td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+              {manifest.route.notes && <p className="muted" style={{ fontSize: '0.84rem' }}>Observações da viagem: {manifest.route.notes}</p>}
+              <p className="muted" style={{ fontSize: '0.8rem' }}>{manifest.notice}</p>
+            </div>
+            <div className="modal-foot"><button className="btn" onClick={() => setManifest(null)}>Fechar</button><button className="btn primary" onClick={() => print(manifest)}><Printer aria-hidden />Imprimir manifesto</button></div>
+          </Dialog>
+        );
+      })()}
     </div>
   );
 }

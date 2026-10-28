@@ -191,6 +191,9 @@ describe('Compras inteligentes, cotação entre fornecedores e frota', () => {
       expect(m.warnings.join(' ')).toMatch(/sem NF-e autorizada/);
       expect(m.notice).toMatch(/Não é o MDF-e/);
       expect(m.states).toEqual(['SP']);
+      expect(m.company).toMatchObject({ name: expect.any(String), legalName: expect.any(String) }); // cabeçalho do documento impresso
+      expect(m).toHaveProperty('logo');
+      expect(m.generatedAt).toEqual(expect.any(String));
     });
 
     it('permissões e isolamento', async () => {

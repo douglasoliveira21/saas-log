@@ -3,7 +3,9 @@ import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, I
 import { AuditService } from '../audit/audit.service';
 import { AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
 import { fromCents, toCents } from '../commissions/commissions.service';
+import { BrandingService } from '../branding/branding.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SalesService } from '../sales/sales.service';
 import { localToday } from '../sales/cutoff';
 
 const BRT = 3 * 3_600_000;
@@ -48,7 +50,7 @@ class RangeQuery { @IsOptional() @IsString() from?: string; @IsOptional() @IsStr
 /** Frota e carga: veículos, capacidade x peso da viagem, custos (combustível, pedágio...) e custo de frete por entrega e sobre a venda. */
 @Injectable()
 export class FleetService {
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly sales: SalesService) {}
 
   vehicles(ctx: AuthContext) {
     return this.prisma.withContext(ctx, async (tx) => {
@@ -186,19 +188,21 @@ export class FleetService {
       if (!r) throw new NotFoundException('Viagem não encontrada.');
       const orderIds = r.stops.filter((s) => s.status !== 'CANCELLED').map((s) => s.salesOrderId);
       const [orders, docs, load] = await Promise.all([
-        tx.salesOrder.findMany({ where: { tenantId: ctx.tenantId!, id: { in: orderIds } }, select: { id: true, number: true, total: true } }),
+        tx.salesOrder.findMany({ where: { tenantId: ctx.tenantId!, id: { in: orderIds } }, select: { id: true, number: true, total: true, warehouseId: true } }),
         tx.fiscalDocument.findMany({ where: { tenantId: ctx.tenantId!, salesOrderId: { in: orderIds }, direction: 'EXIT', status: 'AUTHORIZED' }, select: { salesOrderId: true, model: true, number: true, series: true, accessKey: true } }),
         this.load(tx, ctx.tenantId!, routeId),
       ]);
       const stops = r.stops.filter((s) => s.status !== 'CANCELLED').map((s) => {
         const o = orders.find((x) => x.id === s.salesOrderId); const d = docs.filter((x) => x.salesOrderId === s.salesOrderId);
-        return { sequence: s.sequence, orderNumber: o?.number ?? null, customer: s.customerName, city: s.city, state: s.state, address: s.addressText, value: o ? Number(o.total) : 0, documents: d.map((x) => ({ model: x.model, number: x.number, series: x.series, accessKey: x.accessKey })), status: s.status };
+        return { sequence: s.sequence, orderNumber: o?.number ?? null, customer: s.customerName, city: s.city, state: s.state, address: s.addressText, value: o ? Number(o.total) : 0, phone: s.customerPhone, documents: d.map((x) => ({ model: x.model, number: x.number, series: x.series, accessKey: x.accessKey })), status: s.status };
       });
       const withoutNote = stops.filter((s) => !s.documents.length).map((s) => s.orderNumber);
       const states = [...new Set(stops.map((s) => s.state).filter(Boolean))] as string[];
       const cap = r.vehicle?.capacityKg ?? null;
+      const company = orders[0] ? await this.sales.companyOfWarehouse(tx, ctx.tenantId!, orders[0].warehouseId) : null; // cabeçalho do documento: empresa do depósito de saída
       return {
-        route: { id: r.id, number: r.number, date: r.routeDate.toISOString().slice(0, 10), status: r.status },
+        company, generatedAt: new Date().toISOString(),
+        route: { id: r.id, number: r.number, date: r.routeDate.toISOString().slice(0, 10), status: r.status, notes: r.notes, startedAt: r.startedAt },
         vehicle: r.vehicle ? { plate: r.vehicle.plate, description: r.vehicle.description, kind: r.vehicle.kind, capacityKg: cap } : null,
         driver: { name: r.driver.name, phone: r.driver.phone }, stops, states, ...load, overCapacity: cap !== null && load.weightKg > cap,
         warnings: [...(r.vehicle ? [] : ['Viagem sem veículo definido.']), ...(withoutNote.length ? [`Pedido(s) sem NF-e autorizada: ${withoutNote.join(', ')}. O transporte de mercadoria exige o documento fiscal.`] : []), ...(cap !== null && load.weightKg > cap ? [`Carga de ${load.weightKg} kg passa da capacidade do veículo (${cap} kg).`] : []), ...(load.itemsWithoutWeight ? [`${load.itemsWithoutWeight} item(ns) sem peso cadastrado: o peso total está subestimado.`] : [])],
@@ -210,7 +214,7 @@ export class FleetService {
 
 @Controller()
 export class FleetController {
-  constructor(private readonly svc: FleetService) {}
+  constructor(private readonly svc: FleetService, private readonly branding: BrandingService) {}
 
   @Get('fleet/vehicles') @RequirePermissions('routes.view')
   vehicles(@CurrentAuth() ctx: AuthContext) { return this.svc.vehicles(ctx); }
@@ -224,7 +228,12 @@ export class FleetController {
   @Get('fleet/routes/:id/load') @RequirePermissions('routes.view')
   load(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.svc.routeLoad(ctx, id); }
   @Get('fleet/routes/:id/manifest') @RequirePermissions('routes.view')
-  manifest(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.svc.manifest(ctx, id); }
+  async manifest(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    const data = await this.svc.manifest(ctx, id);
+    let logo: string | null = null;
+    try { const l = await this.branding.get(ctx); logo = `data:${l.contentType};base64,${l.content.toString('base64')}`; } catch { /* sem logotipo cadastrado */ }
+    return { ...data, logo };
+  }
 
   @Post('fleet/costs') @HttpCode(200) @RequirePermissions('routes.manage')
   addCost(@CurrentAuth() ctx: AuthContext, @Body() dto: CostDto) { return this.svc.addCost(ctx, dto); }

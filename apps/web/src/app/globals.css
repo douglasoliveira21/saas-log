@@ -733,3 +733,20 @@ input.otp { text-align: center; letter-spacing: .35em; font-size: 1.3rem; font-v
 .map-pin.ok { background: #16a34a; } .map-pin.warn { background: #d97706; } .map-pin.bad { background: #dc2626; } .map-pin.muted { background: #6b7280; }
 .map-pin.me { width: 16px; height: 16px; margin: 7px; background: #2563eb; box-shadow: 0 0 0 6px rgba(37,99,235,.25); }
 @media (max-width: 900px) { .live-grid { grid-template-columns: 1fr; } .live-list { max-height: none; } }
+
+/* ─────────── manifesto de carga ─────────── */
+.mf-cards { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 10px; margin: 8px 0 12px; }
+.mf-card { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.mf-card small, .mf-kpis small { display: block; color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 2px; }
+.mf-ico { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); flex: none; }
+.mf-ico svg { width: 18px; height: 18px; }
+.mf-plate { display: inline-block; margin: 2px 0; padding: 1px 10px; border: 2px solid var(--text); border-radius: 6px; font: 700 1rem var(--mono, monospace); letter-spacing: .12em; background: var(--surface); }
+.mf-cap { height: 8px; border-radius: 99px; background: var(--surface-3); overflow: hidden; margin: 6px 0 3px; }
+.mf-cap i { display: block; height: 100%; background: var(--brand); border-radius: 99px; }
+.mf-cap.warn i { background: var(--warn); } .mf-cap.bad i { background: var(--danger); }
+.mf-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
+.mf-kpis > div { text-align: center; padding: 10px 8px; border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.mf-kpis > div.bad { border-color: var(--danger); background: var(--danger-soft); }
+.mf-kpis b { font-size: 1.15rem; display: block; }
+.mf-seq { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--brand); color: #fff; font-weight: 700; font-size: .78rem; }
+@media (max-width: 760px) { .mf-cards { grid-template-columns: 1fr; } .mf-kpis { grid-template-columns: repeat(2, 1fr); } }
