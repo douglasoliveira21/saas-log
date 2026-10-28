@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, Dialog, useUi } from '@/components/ui';
 import { api } from '@/lib/api';
 import { brl, dateBr } from '@/lib/format';
-import { docLabel, kg, manifestHtml, ROUTE_STATUS, usedPct, type Manifest } from './manifest-print';
+import { docLabel, kg, manifestHtml, romaneioHtml, ROUTE_STATUS, usedPct, type Manifest } from './manifest-print';
 
 interface Load { vehicle: { id: string; plate: string; description: string } | null; orders: number; weightKg: number; itemsWithoutWeight: number; value: string; capacityKg: number | null; usedPct: number | null; overCapacity: boolean; cost: string }
 interface Vehicle { id: string; plate: string; description: string; capacityKg: number | null; active: boolean }
@@ -34,10 +34,10 @@ export function RouteFleetCard({ routeId, manage, editable }: { routeId: string;
     try { await api('/fleet/costs', 'POST', { vehicleId: load.vehicle.id, routeId, kind: v.kind, amount: Number(String(v.amount).replace(',', '.')), date: new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10), note: v.note || undefined }); ui.toast.ok('Custo lançado.'); refresh(); } catch (e) { ui.toast.error((e as Error).message); }
   }
   async function openManifest() { try { setManifest(await api<Manifest>(`/fleet/routes/${routeId}/manifest`)); } catch (e) { setError((e as Error).message); } }
-  function print(m: Manifest) {
+  function print(m: Manifest, kind: 'manifesto' | 'romaneio' = 'manifesto') {
     const w = window.open('', '_blank', 'width=900,height=1100');
     if (!w) { ui.toast.error('Libere pop-ups para imprimir.'); return; }
-    w.document.write(manifestHtml(m).replace('</body>', '<script>window.onload=function(){setTimeout(function(){window.print()},350)}</script></body>'));
+    w.document.write((kind === 'romaneio' ? romaneioHtml(m) : manifestHtml(m)).replace('</body>', '<script>window.onload=function(){setTimeout(function(){window.print()},350)}</script></body>'));
     w.document.close();
   }
 
@@ -101,7 +101,7 @@ export function RouteFleetCard({ routeId, manage, editable }: { routeId: string;
               {manifest.route.notes && <p className="muted" style={{ fontSize: '0.84rem' }}>Observações da viagem: {manifest.route.notes}</p>}
               <p className="muted" style={{ fontSize: '0.8rem' }}>{manifest.notice}</p>
             </div>
-            <div className="modal-foot"><button className="btn" onClick={() => setManifest(null)}>Fechar</button><button className="btn primary" onClick={() => print(manifest)}><Printer aria-hidden />Imprimir manifesto</button></div>
+            <div className="modal-foot"><button className="btn" onClick={() => setManifest(null)}>Fechar</button><button className="btn" onClick={() => print(manifest, 'romaneio')}><Printer aria-hidden />Imprimir romaneio</button><button className="btn primary" onClick={() => print(manifest)}><Printer aria-hidden />Imprimir manifesto</button></div>
           </Dialog>
         );
       })()}

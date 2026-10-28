@@ -5,6 +5,7 @@ import { cnpjFmt, esc, PRINT_CSS } from '../vendas/print';
 export interface ManifestStop {
   sequence: number; orderNumber: number | null; customer: string; phone: string | null; city: string | null; state: string | null; address: string; value: number; status: string;
   documents: { model: string; number: number | null; series: number | null; accessKey: string | null }[];
+  items: { sku: string; name: string; unit: string; quantity: number }[];
 }
 export interface Manifest {
   company: { name: string; legalName: string; cnpj: string | null; stateRegistration: string | null; address: string; phone: string | null; email: string | null } | null;
@@ -68,6 +69,36 @@ ${m.route.notes ? `<div class="note"><b>Observações da viagem:</b> ${esc(m.rou
 <div class="sign3"><div>Expedição / conferente</div><div>Motorista — ${esc(m.driver.name)}</div><div>Data e hora da saída</div></div>
 <div class="legal">${esc(m.notice)}${delivered ? ` Entregas já confirmadas até a emissão: ${delivered}.` : ''}</div>
 <div class="foot"><span>${esc(c?.name ?? '')} · Manifesto gerado pelo sistema</span><span>Impresso em ${esc(new Date(m.generatedAt).toLocaleString('pt-BR'))}</span></div>
+</body></html>`;
+}
+
+const ROMANEIO_CSS = `
+.stop{margin-top:12px;border:1px solid #dfe6f2;border-radius:10px;overflow:hidden;break-inside:avoid}
+.stop-h{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#f4f7fc;border-bottom:1px solid #dfe6f2}
+.stop-h .t{flex:1;min-width:0}.stop-h .nfs{text-align:right;font-size:10px;color:#445063}
+.stop table{margin:0}.stop th{border-radius:0!important;background:#eef2fa;color:#445063}
+.stop td{padding:5px 10px}.box{display:inline-block;width:13px;height:13px;border:1.5px solid #6a7686;border-radius:3px;vertical-align:middle}
+.rec{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:14px;padding:12px 12px 8px}.rec div{border-top:1px solid #8591a1;padding-top:3px;color:#6a7686;font-size:9.5px}
+`;
+
+/** Romaneio: a lista de entrega do motorista, com os itens de cada parada e o recebimento do cliente. Mesmo desenho do manifesto. */
+export function romaneioHtml(m: Manifest): string {
+  const c = m.company;
+  const veh = m.vehicle;
+  const totalItems = m.stops.reduce((a, s) => a + s.items.reduce((b, i) => b + i.quantity, 0), 0);
+  const blocks = m.stops.map((s) => `<div class="stop"><div class="stop-h"><span class="seq">${s.sequence}</span><div class="t"><div class="cust">${esc(s.customer)}</div><div class="addr">${esc(s.address)}${s.city ? ` · ${esc([s.city, s.state].filter(Boolean).join('/'))}` : ''}${s.phone ? ` · ${esc(phoneFmt(s.phone))}` : ''}</div></div><div class="nfs">Pedido ${s.orderNumber ?? '—'}<br>${s.documents.length ? s.documents.map((d) => `${docLabel(d)} ${d.number ?? ''}`).join(' · ') : '<span class="nonf">sem NF-e</span>'}<br><b>${esc(brl(s.value))}</b></div></div>
+<table><thead><tr><th style="width:22px" class="c">OK</th><th style="width:90px">Código</th><th>Produto</th><th class="r" style="width:70px">Qtd.</th></tr></thead><tbody>${s.items.map((i) => `<tr><td class="c"><span class="box"></span></td><td class="sku">${esc(i.sku)}</td><td>${esc(i.name)}</td><td class="r"><b>${i.quantity}</b> ${esc(i.unit)}</td></tr>`).join('')}</tbody></table>
+<div class="rec"><div>Recebido por (nome legível e documento)</div><div>Assinatura</div><div>Data e hora</div></div></div>`).join('');
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Romaneio de carga ${m.route.number}${c ? ` — ${esc(c.name)}` : ''}</title><style>${PRINT_CSS}${EXTRA_CSS}${ROMANEIO_CSS}</style></head><body>
+<div class="top"><div class="brand">${m.logo ? `<img class="logo" src="${esc(m.logo)}" alt="">` : ''}<div>${c ? `<h1>${esc(c.name)}</h1><p>${esc(c.legalName !== c.name ? c.legalName : '')}${c.cnpj ? ` · CNPJ ${esc(cnpjFmt(c.cnpj))}` : ''}</p><p>${esc(c.address)}</p><p>${esc([phoneFmt(c.phone), c.email].filter(Boolean).join(' · '))}</p>` : '<h1>Romaneio de carga</h1>'}</div></div>
+<div class="num"><span class="tag">Romaneio de carga</span><div class="n">Viagem #${m.route.number}</div><div class="d">${esc(dateBr(m.route.date))} · ${esc(ROUTE_STATUS[m.route.status] ?? m.route.status)}</div></div></div>
+<div class="cards4"><div class="card"><small>Veículo</small>${veh ? `<span class="plate">${esc(veh.plate)}</span><div>${esc(veh.description)}</div>` : '<b>Não definido</b>'}</div><div class="card"><small>Motorista</small><b>${esc(m.driver.name)}</b>${m.driver.phone ? `<div class="ph">${esc(phoneFmt(m.driver.phone))}</div>` : ''}</div><div class="card"><small>Resumo da carga</small><b>${m.stops.length} entrega(s) · ${totalItems} item(ns)</b><div class="ph">${esc(kg(m.weightKg))} · ${esc(brl(m.value))}</div></div></div>
+${m.warnings.map((w) => `<div class="alertbox ${/passa da capacidade|sem NF-e/.test(w) ? 'bad' : ''}">${esc(w)}</div>`).join('')}
+${m.route.notes ? `<div class="note"><b>Observações:</b> ${esc(m.route.notes)}</div>` : ''}
+${blocks}
+<div class="sign3"><div>Expedição — carga conferida</div><div>Motorista — ${esc(m.driver.name)}</div><div>Data e hora da saída</div></div>
+<div class="legal">Cada parada deve ser entregue com a nota fiscal e o canhoto assinado. Em caso de recusa ou ausência, registre o motivo no aplicativo do motorista. ${esc(m.notice)}</div>
+<div class="foot"><span>${esc(c?.name ?? '')} · Romaneio gerado pelo sistema</span><span>Impresso em ${esc(new Date(m.generatedAt).toLocaleString('pt-BR'))}</span></div>
 </body></html>`;
 }
 

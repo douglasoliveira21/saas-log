@@ -193,6 +193,7 @@ describe('Compras inteligentes, cotação entre fornecedores e frota', () => {
       expect(m.states).toEqual(['SP']);
       expect(m.company).toMatchObject({ name: expect.any(String), legalName: expect.any(String) }); // cabeçalho do documento impresso
       expect(m).toHaveProperty('logo');
+      expect(m.stops.every((x: any) => Array.isArray(x.items) && x.items.length > 0 && x.items[0].quantity > 0)).toBe(true); // itens de cada parada (romaneio)
       expect(m.generatedAt).toEqual(expect.any(String));
     });
 

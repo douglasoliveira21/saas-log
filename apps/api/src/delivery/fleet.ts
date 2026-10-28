@@ -187,14 +187,15 @@ export class FleetService {
       const r = await tx.deliveryRoute.findFirst({ where: { id: routeId, tenantId: ctx.tenantId! }, include: { vehicle: true, driver: true, stops: { orderBy: { sequence: 'asc' } } } });
       if (!r) throw new NotFoundException('Viagem não encontrada.');
       const orderIds = r.stops.filter((s) => s.status !== 'CANCELLED').map((s) => s.salesOrderId);
-      const [orders, docs, load] = await Promise.all([
+      const [orders, docs, load, items] = await Promise.all([
         tx.salesOrder.findMany({ where: { tenantId: ctx.tenantId!, id: { in: orderIds } }, select: { id: true, number: true, total: true, warehouseId: true } }),
         tx.fiscalDocument.findMany({ where: { tenantId: ctx.tenantId!, salesOrderId: { in: orderIds }, direction: 'EXIT', status: 'AUTHORIZED' }, select: { salesOrderId: true, model: true, number: true, series: true, accessKey: true } }),
         this.load(tx, ctx.tenantId!, routeId),
+        tx.salesOrderItem.findMany({ where: { tenantId: ctx.tenantId!, orderId: { in: orderIds } }, orderBy: { product: { name: 'asc' } }, select: { orderId: true, quantity: true, product: { select: { sku: true, name: true, saleUnit: true } } } }),
       ]);
       const stops = r.stops.filter((s) => s.status !== 'CANCELLED').map((s) => {
         const o = orders.find((x) => x.id === s.salesOrderId); const d = docs.filter((x) => x.salesOrderId === s.salesOrderId);
-        return { sequence: s.sequence, orderNumber: o?.number ?? null, customer: s.customerName, city: s.city, state: s.state, address: s.addressText, value: o ? Number(o.total) : 0, phone: s.customerPhone, documents: d.map((x) => ({ model: x.model, number: x.number, series: x.series, accessKey: x.accessKey })), status: s.status };
+        return { sequence: s.sequence, orderNumber: o?.number ?? null, customer: s.customerName, city: s.city, state: s.state, address: s.addressText, value: o ? Number(o.total) : 0, phone: s.customerPhone, items: items.filter((i) => i.orderId === s.salesOrderId).map((i) => ({ sku: i.product.sku, name: i.product.name, unit: i.product.saleUnit, quantity: i.quantity })), documents: d.map((x) => ({ model: x.model, number: x.number, series: x.series, accessKey: x.accessKey })), status: s.status };
       });
       const withoutNote = stops.filter((s) => !s.documents.length).map((s) => s.orderNumber);
       const states = [...new Set(stops.map((s) => s.state).filter(Boolean))] as string[];
