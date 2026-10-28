@@ -1,6 +1,7 @@
 'use client';
 
-import { ArrowDown, ArrowUp, Map as MapIcon, Play, Plus, Route as RouteIcon, Trash2, Wand2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Map as MapIcon, MapPinned, Play, Plus, Route as RouteIcon, Trash2, Wand2 } from 'lucide-react';
+import Link from 'next/link';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Alert, Dialog, EmptyState, PageHeader, StatCard, useUi } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -102,10 +103,11 @@ export default function RotasPage() {
 
   return (
     <>
-      <PageHeader title="Rotas e entregas" description={<>Monte a rota do dia, ordene as paradas e acompanhe as entregas. O motorista confirma cada entrega pelo celular e <strong>precisa enviar a foto do canhoto assinado</strong>.</>} actions={
-        manage && tab === 'rotas' ? <button className="btn primary" onClick={() => { setPanel('nova'); setPicked(new Set()); void loadEligible(); }}><Plus aria-hidden />Nova rota</button>
-          : manage && tab === 'motoristas' ? <button className="btn primary" onClick={() => setPanel('motorista')}><Plus aria-hidden />Motorista</button> : undefined
-      } />
+      <PageHeader title="Rotas e entregas" description={<>Monte a rota do dia, ordene as paradas e acompanhe as entregas. O motorista confirma cada entrega pelo celular e <strong>precisa enviar a foto do canhoto assinado</strong>.</>} actions={<>
+        <Link className="btn" href="/rotas/mapa"><MapPinned aria-hidden />Mapa ao vivo</Link>
+        {manage && tab === 'rotas' ? <button className="btn primary" onClick={() => { setPanel('nova'); setPicked(new Set()); void loadEligible(); }}><Plus aria-hidden />Nova rota</button>
+          : manage && tab === 'motoristas' ? <button className="btn primary" onClick={() => setPanel('motorista')}><Plus aria-hidden />Motorista</button> : undefined}
+      </>} />
       {error && <Alert kind="error">{error}</Alert>}
       {ok && <Alert kind="ok">{ok}</Alert>}
 

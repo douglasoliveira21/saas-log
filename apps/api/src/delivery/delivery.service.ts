@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SalesService } from '../sales/sales.service';
 import { SettingsService } from '../settings/settings.service';
 import { UsersService } from '../users/users.service';
+import { TrackingService } from './tracking';
 /** CPF só com dígitos; vazio limpa o campo; inválido é recusado. */function cpfOf(v?: string): string | null {  const d = onlyDigits(v ?? '');  if (!d) return null;  if (!isValidCpf(d)) throw new BadRequestException('CPF inválido.');  return d;}
 
 type Tx = Prisma.TransactionClient;
@@ -65,6 +66,7 @@ export class DeliveryService {
     private readonly sales: SalesService,
     private readonly settings: SettingsService,
     private readonly users: UsersService,
+    private readonly tracking: TrackingService,
   ) {}
 
   // ───────────── motoristas ─────────────
@@ -280,7 +282,7 @@ export class DeliveryService {
       await tx.deliveryRoute.update({ where: { id }, data: { status: 'IN_PROGRESS', startedAt: new Date() } });
       await this.audit.record(tx, ctx, { action: 'delivery.route_started', entity: 'delivery_route', entityId: id, metadata: { number: r.number, stops: pending.length } });
       return this.view(await this.loadRoute(tx, ctx, id));
-    });
+    }).then((v) => { if (process.env.NODE_ENV !== 'test' || process.env.GEOCODER_URL) void this.tracking.planSafe(ctx, id); return v; }); // coordenadas e trajeto em segundo plano: o início nunca depende do mapa
   }
 
   cancel(ctx: AuthContext, id: string, reason: string) {

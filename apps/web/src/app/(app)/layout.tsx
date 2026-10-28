@@ -6,9 +6,11 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Avatar } from '@/components/avatar';
 import { api } from '@/lib/api';
+import { GpsGate } from '@/components/gps-gate';
 import { BRAND } from '@/lib/brand';
 import { NAV, NAV_GROUP_ICONS, NAV_GROUPS } from '@/lib/nav';
 import { SessionProvider, useSession } from '@/lib/session';
+import { clearTrackerBuffer } from '@/lib/tracking';
 
 
 function safeStorage(op: 'get' | 'set', key: string, value?: string): string | null {
@@ -63,6 +65,8 @@ function Shell({ children }: { children: ReactNode }) {
   // Só mostra o que o usuário pode acessar (o servidor reforça a mesma regra).
   const visible = NAV.filter((n) => can(n.permission));
   const toggleGroup = (g: string, now: boolean) => { const next = { ...openGroups, [g]: !now }; setOpenGroups(next); safeStorage('set', 'dh-nav-open', JSON.stringify(next)); };
+  // conta de motorista (só confirma entregas): o GPS do aparelho é obrigatório
+  const driverOnly = can('delivery.perform') && !can('routes.view');
   const launcher = me.user.navStyle === 'LAUNCHER';
   const atHome = pathname === '/inicio';
   async function changeStyle() {
@@ -181,12 +185,12 @@ function Shell({ children }: { children: ReactNode }) {
                 <button role="menuitem" onClick={changeStyle}>{launcher ? <PanelLeft /> : <LayoutGrid />}{launcher ? 'Usar menu lateral (clássico)' : 'Usar início em blocos'}</button>
                 <button role="menuitem" onClick={() => router.push('/seguranca')}><ShieldCheck />Segurança da conta</button>
                 {me.tenants.length > 1 && <button role="menuitem" onClick={() => router.push('/select-tenant')}><Repeat />Trocar empresa</button>}
-                <button role="menuitem" onClick={logout}><LogOut />Sair</button>
+                <button role="menuitem" onClick={() => { clearTrackerBuffer(); void logout(); }}><LogOut />Sair</button>
               </div>
             )}
           </div>
         </header>
-        <main className="content" id="conteudo">{children}</main>
+        <main className="content" id="conteudo">{driverOnly ? <GpsGate>{children}</GpsGate> : children}</main>
       </div>
     </div>
   );

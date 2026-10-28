@@ -238,6 +238,10 @@ model Establishment {
   district              String?
   city                  String?
   state                 String?           @db.Char(2)
+  /// Coordenadas do endereço (geocodificadas): ponto de partida das rotas de entrega.
+  geoLat                Decimal?          @map("geo_lat") @db.Decimal(9, 6)
+  geoLng                Decimal?          @map("geo_lng") @db.Decimal(9, 6)
+  geocodedAt            DateTime?         @map("geocoded_at")
   active                Boolean           @default(true)
   createdAt             DateTime          @default(now()) @map("created_at")
   updatedAt             DateTime          @updatedAt @map("updated_at")
@@ -1831,6 +1835,8 @@ model Driver {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   routes DeliveryRoute[]
+  position   DriverPosition?
+  trackPoints DriverTrackPoint[]
 
   @@unique([tenantId, userId])
   @@unique([tenantId, id])
@@ -1850,6 +1856,11 @@ model DeliveryRoute {
   finishedAt   DateTime? @map("finished_at")
   cancelledAt  DateTime? @map("cancelled_at")
   cancelReason String?   @map("cancel_reason")
+  /// Trajeto planejado [[lat,lng],...] (OpenRouteService), distância/tempo e quando foi calculado. Sem chave do serviço fica vazio.
+  planGeometry Json?     @map("plan_geometry")
+  planDistanceM Int?     @map("plan_distance_m")
+  planDurationS Int?     @map("plan_duration_s")
+  plannedAt    DateTime? @map("planned_at")
   createdById  String?   @map("created_by_id") @db.Uuid
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
@@ -1886,6 +1897,11 @@ model DeliveryStop {
   lat              Decimal?  @db.Decimal(9, 6)
   lng              Decimal?  @db.Decimal(9, 6)
   accuracyM        Int?      @map("accuracy_m")
+  /// Destino planejado (endereço geocodificado). lat/lng acima é onde o motorista estava ao confirmar a entrega.
+  destLat          Decimal?  @map("dest_lat") @db.Decimal(9, 6)
+  destLng          Decimal?  @map("dest_lng") @db.Decimal(9, 6)
+  geocodedAt       DateTime? @map("geocoded_at")
+  geocodeStatus    String?   @map("geocode_status") // OK | NOT_FOUND | ERROR
   resolvedById     String?   @map("resolved_by_id") @db.Uuid
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
@@ -2521,4 +2537,47 @@ model UserAvatar {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_avatars")
+}
+
+/// Última posição conhecida de cada motorista (uma linha por motorista) e o estado do GPS do aparelho dele.
+model DriverPosition {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  driverId    String   @map("driver_id") @db.Uuid
+  routeId     String?  @map("route_id") @db.Uuid
+  lat         Decimal? @db.Decimal(9, 6)
+  lng         Decimal? @db.Decimal(9, 6)
+  accuracyM   Int?     @map("accuracy_m")
+  speedMps    Float?   @map("speed_mps")
+  heading     Float?
+  gpsEnabled  Boolean  @default(true) @map("gps_enabled")
+  permission  String?  // granted | denied | prompt
+  source      String   @default("APP") // APP (aplicativo do motorista) | WEB (navegador)
+  recordedAt  DateTime? @map("recorded_at")
+  receivedAt  DateTime @default(now()) @map("received_at")
+
+  driver Driver @relation(fields: [tenantId, driverId], references: [tenantId, id])
+
+  @@unique([tenantId, driverId])
+  @@map("driver_positions")
+}
+
+/// Trilha percorrida: um ponto por registro, só enquanto há rota em andamento. Apagada depois do prazo de retenção (padrão 30 dias).
+model DriverTrackPoint {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  driverId   String   @map("driver_id") @db.Uuid
+  routeId    String   @map("route_id") @db.Uuid
+  lat        Decimal  @db.Decimal(9, 6)
+  lng        Decimal  @db.Decimal(9, 6)
+  accuracyM  Int?     @map("accuracy_m")
+  speedMps   Float?   @map("speed_mps")
+  heading    Float?
+  recordedAt DateTime @map("recorded_at")
+
+  driver Driver @relation(fields: [tenantId, driverId], references: [tenantId, id])
+
+  @@unique([tenantId, driverId, recordedAt])
+  @@index([tenantId, routeId, recordedAt])
+  @@map("driver_track_points")
 }

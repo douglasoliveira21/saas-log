@@ -22,9 +22,25 @@ const S: LegalSection[] = [
       <li><strong>Dados da conta do Usuário:</strong> nome, e-mail, telefone (opcional), foto de perfil (opcional), papel e permissões, empresa a que pertence e preferências de uso.</li>
       <li><strong>Dados de autenticação e segurança:</strong> senha (guardada apenas na forma de hash, nunca em texto), dados da verificação em duas etapas (segredo cifrado e códigos de recuperação em hash), tentativas de acesso, endereço IP e tipo de navegador das sessões, e a trilha de auditoria das ações realizadas.</li>
       <li><strong>Dados inseridos pelo Cliente:</strong> cadastros de pessoas e empresas (nome, CPF/CNPJ, contatos, endereços), produtos, estoques, pedidos, finanças, documentos e arquivos fiscais, certificados digitais (guardados cifrados) e credenciais de integrações (guardadas cifradas).</li>
+      <li><strong>Localização (apenas motoristas):</strong> posição do aparelho durante rotas em andamento e estado do GPS, conforme a seção “Localização dos motoristas”.</li>
       <li><strong>Dados técnicos:</strong> registros de funcionamento e de erros necessários para operar e proteger o serviço.</li>
       <li><strong>Comunicações:</strong> mensagens de suporte enviadas a nós e o histórico de avisos (e-mail e WhatsApp) que o Cliente configurar a partir da Plataforma.</li>
     </ul>,
+  },
+  {
+    id: 'localizacao', title: 'Localização dos motoristas',
+    body: <>
+      <p>Quando o Usuário tem perfil de <strong>motorista</strong>, o acesso exige que o GPS do aparelho esteja liberado, porque a empresa (o Cliente) acompanha a rota e as entregas em tempo real.</p>
+      <ul>
+        <li><strong>Quando coletamos:</strong> a posição (latitude, longitude, precisão, velocidade e direção, com data e hora) só é <strong>registrada enquanto há uma rota do motorista em andamento</strong>. Sem rota em andamento, o aparelho não envia posições; só informamos se o GPS está ligado ou bloqueado.</li>
+        <li><strong>No aplicativo (APK):</strong> a localização continua sendo enviada com a tela apagada ou em outro aplicativo, e o Android mostra uma notificação fixa enquanto isso ocorre. No navegador, só enquanto a página está aberta.</li>
+        <li><strong>Para quê:</strong> mostrar ao despachante onde está o veículo, o trajeto percorrido, a previsão até a próxima parada e alertas (GPS desligado, sem sinal, fora da rota, parado por muito tempo) — execução do serviço contratado pelo Cliente, que é o controlador desses dados.</li>
+        <li><strong>Quem vê:</strong> usuários da empresa com permissão de rotas e entregas. A posição não é compartilhada com outras empresas.</li>
+        <li><strong>Por quanto tempo:</strong> os pontos da trilha são apagados automaticamente após 30 dias (prazo configurável pelo Cliente, no servidor). A última posição conhecida é sobrescrita a cada envio.</li>
+        <li><strong>Endereços de entrega:</strong> para desenhar o mapa, o endereço de cada parada é convertido em coordenadas por um serviço de mapas de código aberto (dados do OpenStreetMap) e o trajeto pelas ruas é calculado pelo OpenRouteService. Nessas consultas seguem apenas o endereço e as coordenadas, sem o nome do cliente ou do motorista.</li>
+      </ul>
+      <p>O motorista deve ser informado pela empresa sobre o acompanhamento. O Cliente é responsável por definir as regras internas de uso e por respeitar a legislação trabalhista aplicável.</p>
+    </>,
   },
   {
     id: 'finalidades', title: 'Para que usamos e em que base legal',

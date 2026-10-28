@@ -1,0 +1,86 @@
+name: Aplicativo Android (APK)
+
+# Gera o APK do motorista. Não roda sozinho a cada commit: abra a aba Actions → "Aplicativo Android (APK)" → Run workflow.
+# Pré-requisito: defina a variável do repositório APP_URL (Settings → Secrets and variables → Actions → Variables),
+# com o endereço https do sistema em produção, ou informe-o ao executar.
+on:
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: 'Endereço https do sistema (se vazio, usa a variável APP_URL do repositório)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      APP_URL: ${{ inputs.app_url || vars.APP_URL }}
+      VERSION_CODE: ${{ github.run_number }}
+      VERSION_NAME: 1.0.${{ github.run_number }}
+      HAS_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Conferir o endereço do sistema
+        run: |
+          if [ -z "$APP_URL" ]; then echo "::error::Defina a variável APP_URL (https://...) ou informe o endereço ao executar."; exit 1; fi
+          case "$APP_URL" in https://*) ;; *) echo "::error::APP_URL precisa começar com https://"; exit 1;; esac
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Instalar dependências
+        run: npm install --no-audit --no-fund
+
+      - name: Criar o projeto Android e ajustar permissões
+        run: |
+          npx cap add android
+          node scripts/patch-android.mjs
+          npx cap sync android
+
+      - name: Gerar o APK
+        working-directory: mobile/android
+        run: |
+          chmod +x gradlew
+          if [ "$HAS_KEY" = "true" ]; then ./gradlew assembleRelease --no-daemon; else ./gradlew assembleDebug --no-daemon; fi
+
+      - name: Assinar o APK de produção (somente se houver chave cadastrada)
+        if: ${{ env.HAS_KEY == 'true' }}
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          UNSIGNED=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
+          "$BT/zipalign" -f -p 4 "$UNSIGNED" "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/release.jks" --ks-pass env:KS_PASS --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASS --out android/app/build/outputs/apk/release/distribuihub-motorista.apk "$RUNNER_TEMP/aligned.apk"
+          rm -f "$RUNNER_TEMP/release.jks"
+
+      - name: Guardar o APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribuihub-motorista-apk
+          path: |
+            mobile/android/app/build/outputs/apk/debug/*.apk
+            mobile/android/app/build/outputs/apk/release/distribuihub-motorista.apk
+          if-no-files-found: error
+          retention-days: 30

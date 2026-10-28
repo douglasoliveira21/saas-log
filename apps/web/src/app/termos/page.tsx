@@ -65,6 +65,13 @@ const S: LegalSection[] = [
     </>,
   },
   {
+    id: 'localizacao', title: 'Motoristas e uso da localização',
+    body: <>
+      <p>O acesso com perfil de motorista exige que a localização (GPS) do aparelho esteja liberada; sem ela o sistema não abre. A posição é registrada apenas enquanto há rota em andamento, é mostrada à gestão da própria empresa e é apagada após o prazo de retenção descrito na <a href="/privacidade">Política de privacidade</a>.</p>
+      <p>O Cliente deve informar seus motoristas sobre esse acompanhamento e é responsável por usá-lo de forma lícita e proporcional. A precisão depende do aparelho, do sinal e das configurações do sistema operacional; o mapa e a previsão de chegada são estimativas e não substituem a conferência do despachante.</p>
+    </>,
+  },
+  {
     id: 'fiscal', title: 'Responsabilidade fiscal e legal do Cliente',
     body: <>
       <p>O Cliente é o único responsável pelas informações que lança, pelas regras tributárias que cadastra e aprova, pelos documentos fiscais que emite e pelo cumprimento de suas obrigações (fiscais, trabalhistas, consumeristas, regulatórias). Recomenda-se validar toda configuração com o contador e emitir primeiro em ambiente de homologação.</p>

@@ -1,6 +1,6 @@
 import {
   BarChart3, Bell, Boxes, Briefcase, ShoppingBag, Building2, ClipboardList, Container, FileText, Gauge, CreditCard, Landmark, Handshake, LayoutDashboard, type LucideIcon, Package, PackageSearch,
-  Navigation, Percent, Plug, ReceiptText, Route, ScrollText, Settings2, ShieldCheck, ShoppingCart, Store, Truck, Users, Wallet, Warehouse,
+  MapPinned, Navigation, Percent, Plug, ReceiptText, Route, ScrollText, Settings2, ShieldCheck, ShoppingCart, Store, Truck, Users, Wallet, Warehouse,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -42,6 +42,7 @@ export const NAV: NavItem[] = [
   { href: '/expedicao', label: 'Expedição', icon: Truck, group: 'Canais e logística', permission: 'sales.fulfill', implemented: true },
   { href: '/frota', label: 'Frota e carga', icon: Container, group: 'Canais e logística', permission: 'routes.view', implemented: true },
   { href: '/rotas', label: 'Rotas e entregas', icon: Route, group: 'Canais e logística', permission: 'routes.view', implemented: true },
+  { href: '/rotas/mapa', label: 'Mapa ao vivo', icon: MapPinned, group: 'Canais e logística', permission: 'routes.view', implemented: true },
   { href: '/motorista', label: 'Minhas entregas', icon: Navigation, group: 'Canais e logística', permission: 'delivery.perform', implemented: true },
 
   { href: '/financeiro', label: 'Financeiro', icon: Wallet, group: 'Financeiro e fiscal', permission: 'finance.view', implemented: true },

@@ -36,6 +36,8 @@ import { FiscalConfigService } from './fiscal/fiscal-config.service';
 import { FiscalController } from './fiscal/fiscal.controller';
 import { MdfeController, MdfeService } from './fiscal/mdfe/mdfe.service';
 import { Mailer } from './notify/mailer';
+import { Geocoder, RoutePlanner } from './delivery/geo';
+import { DriverTrackingController, TrackingService } from './delivery/tracking';
 import { DispatchController, DispatchService } from './dispatch/dispatch';
 import { PortfolioController, PortfolioService } from './customers/portfolio';
 import { FederalTaxController, FederalTaxService } from './fiscal/federal-tax';
@@ -100,7 +102,7 @@ class HealthController {
       skipIf: () => process.env.NODE_ENV === 'test',
     }),
   ],
-  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, SmartPurchasingController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, MdfeController, InvitesController, NotificationsController, PortfolioController, FederalTaxController, DispatchController, GoalBonusController, FinanceController, ReportsController, DeliveryController, DelinquencyController, NegotiationsController, ManagementController, CreditController, QuotesController, WarehouseController, FleetController, OrdersDashboardController, LogisticsController, BillingController, PlatformController, ObservabilityController, LookupController, BrandingController, ProductImagesController, MediaController, ProductQualityController, ChannelProductsController],
+  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, SmartPurchasingController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, MdfeController, InvitesController, NotificationsController, PortfolioController, FederalTaxController, DispatchController, GoalBonusController, FinanceController, ReportsController, DeliveryController, DriverTrackingController, DelinquencyController, NegotiationsController, ManagementController, CreditController, QuotesController, WarehouseController, FleetController, OrdersDashboardController, LogisticsController, BillingController, PlatformController, ObservabilityController, LookupController, BrandingController, ProductImagesController, MediaController, ProductQualityController, ChannelProductsController],
   providers: [
     AuthService,
     StructureService,
@@ -126,6 +128,9 @@ class HealthController {
     FiscalOutgoingService,
     MdfeService,
     Mailer,
+    Geocoder,
+    RoutePlanner,
+    TrackingService,
     DispatchService,
     PortfolioService,
     FederalTaxService,

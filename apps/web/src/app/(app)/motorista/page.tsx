@@ -1,11 +1,13 @@
 'use client';
 
-import { Camera, CheckCircle2, MapPin, Navigation, Phone, TriangleAlert, XCircle } from 'lucide-react';
+import { Camera, CheckCircle2, LocateFixed, Map as MapIcon, MapPin, Navigation, Phone, TriangleAlert, XCircle } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { LiveMap, type MapLine, type MapMarker } from '@/components/live-map';
 import { Alert, Dialog, EmptyState, PageHeader } from '@/components/ui';
 import { api } from '@/lib/api';
 import { stopMapUrl } from '@/lib/maps';
 import { dateBr } from '@/lib/format';
+import { useTracker } from '@/lib/tracking';
 
 interface Stop {
   id: string; sequence: number; status: 'PENDING' | 'DELIVERED' | 'FAILED' | 'CANCELLED'; customerName: string; customerPhone: string | null; address: string;
@@ -145,6 +147,48 @@ function FailDialog({ stop, onClose, onDone }: { stop: Stop; onClose: () => void
   );
 }
 
+interface RouteMap { plan: { geometry: [number, number][] }; stops: { id: string; sequence: number; status: string; customer: string; address: string; lat: number | null; lng: number | null }[] }
+
+/** Mapa da própria rota: paradas numeradas, trajeto planejado (se calculado) e a posição atual do aparelho. */
+function RouteMapCard({ routeId }: { routeId: string }) {
+  const t = useTracker();
+  const [data, setData] = useState<RouteMap | null>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    let dead = false;
+    const get = () => api<RouteMap>(`/delivery/my/routes/${routeId}/map`).then((d) => { if (!dead) setData(d); }).catch(() => undefined);
+    void get(); const id = setInterval(get, 30_000);
+    return () => { dead = true; clearInterval(id); };
+  }, [open, routeId]);
+  const markers: MapMarker[] = [];
+  const lines: MapLine[] = data && data.plan.geometry.length > 1 ? [{ id: 'plan', kind: 'plan', points: data.plan.geometry }] : [];
+  for (const s of data?.stops ?? []) if (s.lat != null && s.lng != null) markers.push({ id: s.id, kind: 'stop', lat: s.lat, lng: s.lng, tag: String(s.sequence), tone: s.status === 'DELIVERED' ? 'ok' : s.status === 'FAILED' ? 'bad' : 'brand', title: `${s.sequence}. ${s.customer}`, detail: s.address });
+  if (t.last) markers.push({ id: 'me', kind: 'me', lat: t.last.lat, lng: t.last.lng, tag: '', tone: 'brand', title: 'Você está aqui' });
+  return (
+    <section className="card">
+      <div className="card-head"><h2>Mapa da rota</h2><button className="btn sm" onClick={() => setOpen(!open)} aria-expanded={open}><MapIcon aria-hidden />{open ? 'Esconder' : 'Mostrar mapa'}</button></div>
+      {open && <>
+        <LiveMap markers={markers} lines={lines} fitKey={`${routeId}-${data ? 'ok' : 'wait'}`} height={340} label="Mapa da minha rota" />
+        {data && !lines.length && <p className="muted" style={{ fontSize: '0.84rem', margin: '6px 0 0' }}>O desenho do trajeto não está disponível; as paradas aparecem no mapa quando o endereço é localizado.</p>}
+      </>}
+    </section>
+  );
+}
+
+/** Mostra que o GPS está ligado e se a rota está sendo acompanhada. */
+function GpsBadge() {
+  const t = useTracker();
+  return (
+    <div className="muted" style={{ fontSize: '0.84rem', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }} role="status">
+      <LocateFixed size={14} aria-hidden />
+      <span className={`badge ${t.status === 'ok' ? 'ok' : 'warn'}`}>{t.status === 'ok' ? 'GPS ativo' : 'GPS sem sinal'}</span>
+      {t.routeActive ? <span>Sua rota está sendo acompanhada em tempo real.</span> : t.routeActive === false ? <span>Sem rota em andamento: sua localização não é registrada.</span> : null}
+      {t.sendError && t.pending > 0 && <span>{t.pending} posição(ões) aguardando conexão.</span>}
+    </div>
+  );
+}
+
 export default function MotoristaPage() {
   const [routes, setRoutes] = useState<MyRoute[] | null>(null);
   const [sel, setSel] = useState<string>('');
@@ -165,6 +209,7 @@ export default function MotoristaPage() {
       <PageHeader title="Minhas entregas" description="Confirme cada entrega com a foto do canhoto assinado." />
       {error && <Alert kind="error">{error}</Alert>}
       {ok && <Alert kind="ok">{ok}</Alert>}
+      <GpsBadge />
       {routes && routes.length === 0 && <EmptyState icon={<Navigation size={22} />} title="Nenhuma rota para você agora">Quando o despachante criar uma rota para você, ela aparece aqui.</EmptyState>}
 
       {routes && routes.length > 1 && (
@@ -181,6 +226,8 @@ export default function MotoristaPage() {
             <div className="muted">{route.totals.delivered} entregue(s), {route.totals.failed} não entregue(s), {route.totals.pending} pendente(s).{route.notes ? ` ${route.notes}` : ''}</div>
             {route.status === 'PLANNED' && <div className="alert warn" role="status" style={{ marginTop: 10 }}><TriangleAlert aria-hidden /><div>O despachante ainda não iniciou esta rota. Você poderá confirmar as entregas assim que ela for iniciada.</div></div>}
           </section>
+
+          {route.status !== 'COMPLETED' && <RouteMapCard routeId={route.id} />}
 
           {route.stops.filter((s) => s.status !== 'CANCELLED').map((s) => {
             const nav = stopMapUrl(s.address);

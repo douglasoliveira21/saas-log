@@ -21,7 +21,7 @@
 
 ## Limites conhecidos (honestos)
 - **Não calcula o menor caminho.** A ordem por região agrupa por CEP, mas otimizar distância real exige coordenadas e um serviço de rotas (ex.: Google Routes, OSRM), **não implementado**. O link do mapa apenas abre as paradas na ordem definida.
-- Não há geocodificação, previsão de chegada, janela de entrega por cliente nem capacidade/peso do veículo.
-- O app do motorista é a página web do sistema (funciona no navegador do celular); **não há modo offline** nem rastreamento contínuo do veículo — só a posição no momento da confirmação, se permitida.
+- Geocodificação, mapa ao vivo, trilha percorrida, alertas e previsão aproximada de chegada existem — veja [`DRIVER-TRACKING.md`](DRIVER-TRACKING.md). Não há janela de entrega por cliente nem capacidade/peso do veículo.
+- O app do motorista é a página web do sistema (navegador ou APK, veja `mobile/`); **não há modo offline completo** — só as posições do GPS ficam em fila quando falta internet.
 - O sistema **não** verifica a assinatura no canhoto (é uma foto); a conferência é visual pelo despachante.
 - Fotos ficam no banco (limite por foto); armazenamento de objetos e retenção por prazo legal são um próximo passo.

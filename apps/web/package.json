@@ -8,9 +8,11 @@
     "start": "next start -p 3000"
   },
   "dependencies": {
+    "@capacitor/core": "^8.5.3",
     "@tailwindcss/postcss": "^4.3.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "leaflet": "^1.9.4",
     "lucide-react": "^1.60.0",
     "motion": "^14.6.0",
     "next": "^16.4.2",
@@ -22,6 +24,7 @@
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
+    "@types/leaflet": "^1.9.22",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
