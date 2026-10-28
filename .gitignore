@@ -11,3 +11,6 @@ dist
 coverage
 backups
 *.tsbuildinfo
+
+/debug/
+*.apk
