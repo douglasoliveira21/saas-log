@@ -5,13 +5,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, EmptyState, PageHeader, Skeleton, useUi } from '@/components/ui';
 import { api } from '@/lib/api';
 import { dateBr } from '@/lib/format';
+import { pickingHtml, pickSummary, type PickList } from './picking-print';
 
 type Tab = 'separacao' | 'conferencia';
 interface PickOrder { id: string; number: number; status: string; dispatchDate: string | null; warehouse: string; customer: string; items: number; lastCheck: string | null }
-interface PickList {
-  warehouse: string; generatedAt: string; orders: { id: string; number: number; customer: string }[];
-  lines: { productId: string; sku: string; name: string; barcode: string | null; unit: string; quantity: number; shortage: number; picks: { lotCode: string | null; expiresAt: string | null; location: string | null; qty: number }[]; orders: { number: number; qty: number }[] }[];
-}
 interface CheckInfo { orderId: string; number: number; status: string; customer: string; items: { productId: string; sku: string; name: string; barcode: string | null; expected: number }[] }
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -50,10 +47,9 @@ function Picking({ orders }: { orders: PickOrder[] }) {
   }
   function print() {
     if (!list) return;
-    const w = window.open('', '_blank', 'width=900,height=1000');
+    const w = window.open('', '_blank', 'width=900,height=1100');
     if (!w) { ui.toast.error('Libere pop-ups para imprimir.'); return; }
-    const rows = list.lines.map((l) => l.picks.map((p, i) => `<tr><td>${esc(p.location ?? 'sem endereço')}</td><td>${i === 0 ? `${esc(l.sku)} — ${esc(l.name)}${l.barcode ? `<br><small>${esc(l.barcode)}</small>` : ''}` : ''}</td><td>${esc(p.lotCode ?? '')}${p.expiresAt ? ` · vence ${dateBr(p.expiresAt)}` : ''}</td><td class="n"><b>${p.qty}</b> ${esc(l.unit)}</td><td class="n">☐</td></tr>`).join('') + (l.shortage ? `<tr><td colspan="5" style="color:#b00">Faltam ${l.shortage} un. de ${esc(l.sku)} (sem saldo disponível)</td></tr>` : '')).join('');
-    w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Separação</title><style>body{font:13px system-ui,sans-serif;margin:24px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border-bottom:1px solid #ccc;padding:6px;text-align:left;vertical-align:top}.n{text-align:right}small{color:#555}</style></head><body><h2>Lista de separação — depósito ${esc(list.warehouse)}</h2><div>Pedidos: ${list.orders.map((o) => `#${o.number} (${esc(o.customer)})`).join(', ')}</div><table><thead><tr><th>Endereço</th><th>Produto</th><th>Lote</th><th class="n">Qtd.</th><th class="n">OK</th></tr></thead><tbody>${rows}</tbody></table><small>Gerada em ${new Date(list.generatedAt).toLocaleString('pt-BR')}. Lotes na ordem de validade; endereços na ordem de caminho.</small><script>window.onload=()=>window.print()</script></body></html>`);
+    w.document.write(pickingHtml(list).replace('</body>', '<script>window.onload=function(){setTimeout(function(){window.print()},350)}</script></body>'));
     w.document.close();
   }
   return (
@@ -75,18 +71,26 @@ function Picking({ orders }: { orders: PickOrder[] }) {
       {error && <Alert kind="error">{error}</Alert>}
       {list && (
         <section className="card">
-          <div className="card-head"><h2>2. Lista de separação — {list.warehouse}</h2><button className="btn" onClick={print}><Printer aria-hidden />Imprimir</button></div>
+          <div className="card-head"><h2>2. Lista de separação — depósito {list.warehouse}</h2><button className="btn primary" onClick={print}><Printer aria-hidden />Imprimir lista</button></div>
+          {(() => { const k = pickSummary(list); return (
+            <div className="mf-kpis">
+              <div><b>{k.products}</b><small>Produtos</small></div><div><b>{k.units}</b><small>Unidades</small></div><div><b>{k.places}</b><small>Endereços a visitar</small></div><div className={k.short ? 'bad' : ''}><b>{k.short}</b><small>Com falta</small></div>
+            </div>); })()}
+          <div className="pk-orders">{list.orders.map((o) => <span key={o.id} className="badge brand" title={o.customer}>#{o.number} · {o.customer}</span>)}</div>
           <div className="table-wrap"><table>
-            <thead><tr><th>Endereço</th><th>Produto</th><th>Lote</th><th className="num">Qtd.</th><th>Pedidos</th></tr></thead>
-            <tbody>{list.lines.flatMap((l) => l.picks.map((p, i) => (
-              <tr key={`${l.productId}-${i}`}>
-                <td className="mono">{p.location ?? <span className="badge warn">sem endereço</span>}</td>
-                <td>{i === 0 ? <><strong>{l.name}</strong><div className="muted mono" style={{ fontSize: '0.78rem' }}>{l.sku}{l.barcode ? ` · ${l.barcode}` : ''}</div></> : ''}</td>
-                <td>{p.lotCode ? <span className="mono">{p.lotCode}</span> : '—'}{p.expiresAt && <div className="muted" style={{ fontSize: '0.76rem' }}>vence {dateBr(p.expiresAt)}</div>}</td>
-                <td className="num"><strong>{p.qty}</strong> {l.unit}</td>
-                <td className="muted" style={{ fontSize: '0.8rem' }}>{i === 0 ? l.orders.map((o) => `#${o.number}: ${o.qty}`).join(' · ') : ''}</td>
-              </tr>
-            )))}</tbody>
+            <thead><tr><th>Endereço</th><th>Produto</th><th>Lote / validade</th><th className="num">Qtd.</th><th>Pedidos</th></tr></thead>
+            <tbody>{list.lines.flatMap((l) => l.picks.map((p, i) => {
+              const d = p.expiresAt ? Math.round((Date.parse(`${p.expiresAt}T00:00:00Z`) - Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`)) / 86_400_000) : null;
+              return (
+                <tr key={`${l.productId}-${i}`} className={i > 0 ? 'pk-cont' : ''}>
+                  <td>{p.location ? <span className="pk-loc">{p.location}</span> : <span className="pk-loc none">sem endereço</span>}</td>
+                  <td>{i === 0 ? <><strong>{l.name}</strong><div className="muted mono" style={{ fontSize: '0.78rem' }}>{l.sku}{l.barcode ? ` · ${l.barcode}` : ''}</div></> : ''}</td>
+                  <td>{p.lotCode ? <span className="mono">{p.lotCode}</span> : '—'}{p.expiresAt && <div className={`pk-exp ${d !== null && d < 0 ? 'over' : d !== null && d <= 30 ? 'soon' : ''}`}>vence {dateBr(p.expiresAt)}{d !== null && d >= 0 && d <= 30 ? ` (${d} d)` : ''}</div>}</td>
+                  <td className="num"><span className="pk-qty">{p.qty}</span> {l.unit}</td>
+                  <td className="muted" style={{ fontSize: '0.8rem' }}>{i === 0 ? l.orders.map((o) => `#${o.number}: ${o.qty}`).join(' · ') : ''}{i === l.picks.length - 1 && l.shortage > 0 && <div><span className="badge danger">faltam {l.shortage} {l.unit}</span></div>}</td>
+                </tr>
+              );
+            }))}</tbody>
           </table></div>
           {list.lines.some((l) => l.shortage > 0) && <Alert kind="warn">Algum produto não tem saldo válido suficiente (veja “Faltam” na impressão): confira o estoque e os lotes vencidos antes de separar.</Alert>}
         </section>

@@ -750,3 +750,11 @@ input.otp { text-align: center; letter-spacing: .35em; font-size: 1.3rem; font-v
 .mf-kpis b { font-size: 1.15rem; display: block; }
 .mf-seq { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--brand); color: #fff; font-weight: 700; font-size: .78rem; }
 @media (max-width: 760px) { .mf-cards { grid-template-columns: 1fr; } .mf-kpis { grid-template-columns: repeat(2, 1fr); } }
+
+/* ─────────── lista de separação ─────────── */
+.pk-orders { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.pk-loc { display: inline-block; min-width: 68px; text-align: center; padding: 3px 9px; border-radius: 6px; background: var(--text); color: var(--surface); font: 700 .9rem var(--mono, monospace); letter-spacing: .04em; }
+.pk-loc.none { background: transparent; color: var(--danger); border: 1px dashed var(--danger); font: 600 .72rem var(--font, sans-serif); }
+.pk-qty { font-size: 1.15rem; font-weight: 700; }
+.pk-exp { font-size: .76rem; color: var(--muted); } .pk-exp.soon { color: var(--warn); font-weight: 700; } .pk-exp.over { color: var(--danger); font-weight: 700; }
+tr.pk-cont td { border-top: 0; }

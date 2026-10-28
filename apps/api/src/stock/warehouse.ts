@@ -4,7 +4,9 @@ import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { AuditService } from '../audit/audit.service';
 import { AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
+import { BrandingService } from '../branding/branding.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SalesService } from '../sales/sales.service';
 import { localToday } from '../sales/cutoff';
 import { addToLocation } from './lots-core';
 
@@ -34,7 +36,7 @@ class CheckDto { @IsArray() @ArrayMaxSize(500) @ValidateNested({ each: true }) @
 /** Lotes e validade, endereços do depósito, lista de separação (com sugestão FEFO e caminho por endereço) e conferência. */
 @Injectable()
 export class WarehouseService {
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly sales: SalesService) {}
 
   // ───────────── lotes ─────────────
 
@@ -216,7 +218,8 @@ export class WarehouseService {
       }
       // caminho: ordena pelo primeiro endereço de cada linha (sem endereço por último)
       lines.sort((a, b) => (a.picks[0]?.location ?? '￿').localeCompare(b.picks[0]?.location ?? '￿') || a.sku.localeCompare(b.sku));
-      return { warehouse: orders[0].warehouse.code, generatedAt: new Date().toISOString(), orders: orders.map((o) => ({ id: o.id, number: o.number, customer: o.customer.name })), lines };
+      const company = await this.sales.companyOfWarehouse(tx, ctx.tenantId!, warehouseId);
+      return { warehouse: orders[0].warehouse.code, company, generatedAt: new Date().toISOString(), orders: orders.map((o) => ({ id: o.id, number: o.number, customer: o.customer.name, dispatchDate: o.dispatchDate ? o.dispatchDate.toISOString().slice(0, 10) : null, channel: o.channel })), lines };
     });
   }
 
@@ -250,7 +253,7 @@ export class WarehouseService {
 
 @Controller()
 export class WarehouseController {
-  constructor(private readonly svc: WarehouseService) {}
+  constructor(private readonly svc: WarehouseService, private readonly branding: BrandingService) {}
 
   @Get('stock/lots') @RequirePermissions('stock.view')
   lots(@CurrentAuth() ctx: AuthContext, @Query('productId') productId?: string, @Query('warehouseId') warehouseId?: string, @Query('status') status?: string, @Query('days') days?: string) {
@@ -275,7 +278,12 @@ export class WarehouseController {
   @Get('warehouse/picking/orders') @RequirePermissions('sales.fulfill')
   pickingOrders(@CurrentAuth() ctx: AuthContext) { return this.svc.pickingOrders(ctx); }
   @Get('warehouse/picking') @RequirePermissions('sales.fulfill')
-  pickingList(@CurrentAuth() ctx: AuthContext, @Query('orderIds') orderIds?: string) { return this.svc.pickingList(ctx, (orderIds ?? '').split(',').map((x) => x.trim()).filter(Boolean)); }
+  async pickingList(@CurrentAuth() ctx: AuthContext, @Query('orderIds') orderIds?: string) {
+    const data = await this.svc.pickingList(ctx, (orderIds ?? '').split(',').map((x) => x.trim()).filter(Boolean));
+    let logo: string | null = null;
+    try { const l = await this.branding.get(ctx); logo = `data:${l.contentType};base64,${l.content.toString('base64')}`; } catch { /* sem logotipo cadastrado */ }
+    return { ...data, logo };
+  }
 
   @Get('warehouse/check/:orderId') @RequirePermissions('sales.fulfill')
   checkInfo(@CurrentAuth() ctx: AuthContext, @Param('orderId', ParseUUIDPipe) id: string) { return this.svc.checkInfo(ctx, id); }
