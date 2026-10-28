@@ -684,3 +684,23 @@ input.otp { text-align: center; letter-spacing: .35em; font-size: 1.3rem; font-v
 .contact-cell { max-width: 260px; }
 .contact-cell .ct-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.45; }
 .contact-cell .ct-line + .ct-line { color: var(--muted); font-size: 0.86rem; }
+
+/* ─────────── expedição: quadro por etapa ─────────── */
+.kanban { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(262px, 1fr); gap: 12px; overflow-x: auto; padding-bottom: 8px; align-items: start; scroll-snap-type: x proximity; }
+.kb-col { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-lg); display: flex; flex-direction: column; min-width: 0; scroll-snap-align: start; max-height: calc(100vh - 230px); }
+.kb-col > header { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; padding: 10px 12px; border-top: 3px solid var(--brand); border-radius: var(--radius-lg) var(--radius-lg) 0 0; background: var(--surface); }
+.kb-col > header small { flex-basis: 100%; }
+.kb-list { padding: 10px; display: grid; gap: 10px; overflow-y: auto; }
+.kb-empty { margin: 4px 2px; font-size: .86rem; }
+.kb-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 11px; display: grid; gap: 4px; box-shadow: var(--shadow-sm); }
+.kb-card.warn { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); }
+.kb-card.bad { border-color: color-mix(in srgb, var(--danger) 60%, var(--border)); background: color-mix(in srgb, var(--danger-soft) 55%, var(--surface)); }
+.kb-cust { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-meta { font-size: .8rem; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.kb-meta svg, .kb-note svg { flex: none; }
+.kb-note { font-size: .8rem; background: var(--warn-soft); color: var(--warn); border-radius: 6px; padding: 3px 7px; display: flex; gap: 5px; align-items: flex-start; }
+.kb-actions { margin-top: 4px; gap: 6px; }
+.kb-actions .btn.on { color: var(--danger); background: var(--danger-soft); }
+.btn.sm svg { width: 14px; height: 14px; }
+.dispatch-alert { padding: 12px 14px; }
+@media (max-width: 860px) { .kanban { grid-auto-columns: minmax(240px, 86vw); } .kb-col { max-height: none; } }

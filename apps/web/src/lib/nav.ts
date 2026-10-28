@@ -39,7 +39,7 @@ export const NAV: NavItem[] = [
   { href: '/fornecedores', label: 'Fornecedores', icon: Handshake, group: 'Suprimentos', permission: 'suppliers.view', implemented: true },
 
   { href: '/integracoes', label: 'Marketplaces', icon: Plug, group: 'Canais e logística', permission: 'integrations.view', implemented: true },
-  { href: '/expedicao', label: 'Expedição', icon: Truck, group: 'Canais e logística', permission: 'logistics.view', implemented: true },
+  { href: '/expedicao', label: 'Expedição', icon: Truck, group: 'Canais e logística', permission: 'sales.fulfill', implemented: true },
   { href: '/frota', label: 'Frota e carga', icon: Container, group: 'Canais e logística', permission: 'routes.view', implemented: true },
   { href: '/rotas', label: 'Rotas e entregas', icon: Route, group: 'Canais e logística', permission: 'routes.view', implemented: true },
   { href: '/motorista', label: 'Minhas entregas', icon: Navigation, group: 'Canais e logística', permission: 'delivery.perform', implemented: true },

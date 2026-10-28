@@ -805,6 +805,14 @@ model SalesOrder {
   createdById    String?      @map("created_by_id") @db.Uuid
   approvedById   String?      @map("approved_by_id") @db.Uuid
   confirmedAt    DateTime?    @map("confirmed_at")
+  /// Expedição: quando e por quem a separação começou e o pedido foi embalado; urgência e observação da expedição.
+  pickingStartedAt DateTime?  @map("picking_started_at")
+  pickingById    String?      @map("picking_by_id") @db.Uuid
+  packedAt       DateTime?    @map("packed_at")
+  packedById     String?      @map("packed_by_id") @db.Uuid
+  rush           Boolean      @default(false)
+  rushReason     String?      @map("rush_reason")
+  fulfillmentNote String?     @map("fulfillment_note")
   shippedAt      DateTime?    @map("shipped_at")
   deliveredAt    DateTime?    @map("delivered_at")
   cancelledAt    DateTime?    @map("cancelled_at")

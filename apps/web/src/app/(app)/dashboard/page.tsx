@@ -8,6 +8,7 @@ import { BlurFade } from '@/components/magicui/blur-fade';
 import { AnimatedCircularProgressBar } from '@/components/magicui/animated-circular-progress-bar';
 import { Alert, Skeleton, StatCard } from '@/components/ui';
 import { DashboardHero } from './hero';
+import { DispatchAlerts } from './dispatch-alerts';
 import { api } from '@/lib/api';
 import { brl } from '@/lib/format';
 import { useSession } from '@/lib/session';
@@ -59,6 +60,7 @@ export default function DashboardPage() {
           </section></BlurFade>
 
           {can('sales.view') && <BlurFade delay={0.1} inView><OrdersPanel /></BlurFade>}
+          {can('sales.fulfill') && <BlurFade delay={0.1} inView><DispatchAlerts /></BlurFade>}
           {can('sales.view') && <BlurFade delay={0.1} inView><SalesCharts /></BlurFade>}
 
           {m && (

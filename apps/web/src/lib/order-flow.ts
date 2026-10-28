@@ -6,11 +6,11 @@ export const FLOW: string[] = ['DRAFT', 'CONFIRMED', 'PICKING', 'PACKED', 'SHIPP
 export const STATUS_INFO: Record<string, { tone: Tone; short: string; meaning: string; next: string }> = {
   DRAFT: { tone: '', short: 'Ainda em edição', meaning: 'O pedido está sendo montado. Nada foi reservado no estoque e nada foi cobrado.', next: 'Confira os itens e clique em “Confirmar pedido” para reservar o estoque.' },
   PENDING_APPROVAL: { tone: 'warn', short: 'Espera um aprovador', meaning: 'O pedido passou de uma regra (por exemplo, desconto acima do limite) e precisa da liberação de um gestor.', next: 'Quem tem permissão de aprovar deve “Aprovar” ou “Rejeitar” (volta a rascunho).' },
-  CONFIRMED: { tone: 'info', short: 'Estoque reservado', meaning: 'O estoque está reservado para este pedido. Ainda não saiu do depósito.', next: 'O depósito deve clicar em “Iniciar separação”.' },
-  PICKING: { tone: 'info', short: 'Sendo separado', meaning: 'O depósito está separando os produtos nas prateleiras.', next: 'Quando terminar de separar, clique em “Marcar embalado”.' },
-  PACKED: { tone: 'info', short: 'Pronto para sair', meaning: 'Os produtos estão embalados e esperando a saída.', next: 'Clique em “Expedir”: isso dá baixa no estoque físico. Emita a nota em Fiscal → Notas de saída.' },
-  SHIPPED: { tone: 'brand', short: 'A caminho do cliente', meaning: 'O pedido saiu do depósito e o estoque físico já foi baixado.', next: 'Quando o cliente receber, clique em “Confirmar entrega” (ou o motorista confirma pela rota, com a foto do canhoto).' },
-  DELIVERED: { tone: 'ok', short: 'Cliente recebeu', meaning: 'A entrega foi confirmada.', next: 'Encerre o pedido quando não houver mais nada pendente. Se algo voltou, registre a devolução.' },
+  CONFIRMED: { tone: 'info', short: 'Estoque reservado', meaning: 'O estoque está reservado para este pedido. Ele já está na fila da Expedição.', next: 'A Expedição inicia a separação. Você acompanha a situação aqui.' },
+  PICKING: { tone: 'info', short: 'Em separação na expedição', meaning: 'A Expedição está separando os produtos nas prateleiras.', next: 'Quando terminar de separar e embalar, o pedido fica pronto para sair.' },
+  PACKED: { tone: 'info', short: 'Pronto para sair', meaning: 'Os produtos estão embalados e esperando a saída na Expedição.', next: 'A Expedição expede e o estoque físico é baixado. A nota é emitida em Fiscal → Notas de saída.' },
+  SHIPPED: { tone: 'brand', short: 'A caminho do cliente', meaning: 'O pedido saiu do depósito e o estoque físico já foi baixado.', next: 'A entrega é confirmada pela Expedição ou pelo motorista, na rota, com a foto do canhoto.' },
+  DELIVERED: { tone: 'ok', short: 'Cliente recebeu', meaning: 'A entrega foi confirmada.', next: 'A Expedição encerra o pedido quando não houver mais nada pendente. Se algo voltou, registre a devolução.' },
   CLOSED: { tone: 'ok', short: 'Finalizado', meaning: 'Pedido encerrado. Só é possível registrar devolução.', next: 'Nada a fazer.' },
   CANCELLED: { tone: 'danger', short: 'Cancelado', meaning: 'O pedido foi cancelado: reservas liberadas e comissões estornadas.', next: 'Nada a fazer. O motivo aparece no detalhe.' },
 };

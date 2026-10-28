@@ -15,6 +15,8 @@ import { printOrder } from './print';
 interface OrderRow { paymentMethod?: string | null; id: string; number: number; status: string; channel: string; total: string; createdAt: string; customerType?: PurchaseType | null; dispatchDate?: string | null; dispatchDeferred?: boolean; customer: { name: string }; salesperson: { name: string } | null }
 interface Detail extends OrderRow {
   priceTable?: string;
+  confirmedAt?: string | null; pickingStartedAt?: string | null; packedAt?: string | null; shippedAt?: string | null; deliveredAt?: string | null; fulfillmentNote?: string | null;
+  fulfillment?: { pickingBy: string | null; packedBy: string | null };
   fiscalDocuments?: { id: string; model: string; number: number | null; series: number | null; status: string; accessKey: string | null; environment: string }[];
   customerId: string; warehouseId: string; fiscalDocType: FiscalChoice; installmentCount: number; firstDueDate: string | null; installmentIntervalDays: number; installments: { id: string; installmentNo: number; installmentTotal: number; dueDate: string; amount: string; status: string }[]; notes?: string | null; subtotal: string; discountTotal: string; shipping: string; approvalReason: string | null; cancelReason: string | null; warehouse: { code: string };
   items: { id: string; productId: string; quantity: number; unitPrice: string; discountPct: string; total: string; returnedQty: number; costSnapshot?: string | null; product: { sku: string; name: string } }[];
@@ -26,7 +28,6 @@ interface Warehouse { id: string; code: string; name: string; active: boolean }
 interface Line { productId: string; quantity: string; unitPrice: string; discountPct: string }
 
 const CHANNELS: [string, string][] = [['DIRECT', 'Atendimento comercial'], ['WHATSAPP', 'WhatsApp'], ['PHONE', 'Telefone'], ['EMAIL', 'E-mail'], ['STORE', 'Loja física'], ['WEB', 'Loja virtual'], ['REPRESENTATIVE', 'Representante']];
-const NEXT: Record<string, [string, string]> = { CONFIRMED: ['PICKING', 'Iniciar separação'], PICKING: ['PACKED', 'Marcar embalado'], PACKED: ['SHIPPED', 'Expedir (baixa estoque)'], SHIPPED: ['DELIVERED', 'Confirmar entrega'], DELIVERED: ['CLOSED', 'Encerrar'] };
 const suggestFiscal = (c?: Customer): FiscalChoice | undefined => (c?.document ? (c.document.replace(/\D/g, '').length === 14 ? 'NFE' : 'NFCE') : undefined);
 const STEPS = ['Cliente', 'Produtos', 'Pagamento', 'Entrega e nota'];
 const num = (v: string) => (v.trim() === '' ? undefined : Number(v.replace(',', '.')));
@@ -332,7 +333,6 @@ export default function VendasPage() {
                   <button className="btn primary" onClick={() => act(() => api(`/sales/orders/${detail.id}/approve`, 'POST'), 'Pedido aprovado e confirmado.')}>Aprovar</button>
                   <button className="btn" onClick={async () => { const r = await ui.prompt({ title: 'Rejeitar pedido', label: 'Motivo da rejeição', multiline: true, confirmLabel: 'Rejeitar' }); if (r) void act(() => api(`/sales/orders/${detail.id}/reject`, 'POST', { reason: r }), 'Pedido devolvido a rascunho.'); }}>Rejeitar</button>
                 </>}
-                {NEXT[detail.status] && can('sales.fulfill') && <button className="btn primary" onClick={() => act(() => api(`/sales/orders/${detail.id}/advance`, 'POST', { to: NEXT[detail.status][0] }), 'Situação atualizada.')}>{NEXT[detail.status][1]}</button>}
                 <button className="btn" onClick={async () => { try { if (!(await printOrder(detail.id))) setError('Libere pop-ups para imprimir.'); } catch (e) { setError((e as Error).message); } }}><Printer aria-hidden />Imprimir venda</button>
                 {['DRAFT', 'PENDING_APPROVAL', 'CONFIRMED', 'PICKING', 'PACKED'].includes(detail.status) && can('sales.create') && <button className="btn" onClick={() => cancel(detail)}>Cancelar pedido</button>}
                 {['SHIPPED', 'DELIVERED', 'CLOSED'].includes(detail.status) && can('sales.return') && <button className="btn" onClick={() => doReturn(detail)}>Registrar devolução</button>}
@@ -345,6 +345,19 @@ export default function VendasPage() {
               </ol>
             )}
             {info && <div className="next-box"><div><strong>{detail.status === 'CANCELLED' || detail.status === 'CLOSED' ? 'Situação' : 'Próximo passo'}</strong><p>{info.meaning} {info.next}</p></div></div>}
+            {['CONFIRMED', 'PICKING', 'PACKED', 'SHIPPED', 'DELIVERED'].includes(detail.status) && (
+              <div className="card" style={{ marginBottom: 12, background: 'var(--surface-2)' }} aria-label="Andamento na expedição">
+                <div className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
+                  <div><strong>Na Expedição</strong>
+                    <div className="muted" style={{ fontSize: '0.86rem' }}>
+                      {[detail.confirmedAt && `Confirmado ${new Date(detail.confirmedAt).toLocaleString('pt-BR')}`, detail.pickingStartedAt && `separação iniciada ${new Date(detail.pickingStartedAt).toLocaleString('pt-BR')}${detail.fulfillment?.pickingBy ? ` por ${detail.fulfillment.pickingBy}` : ''}`, detail.packedAt && `embalado ${new Date(detail.packedAt).toLocaleString('pt-BR')}${detail.fulfillment?.packedBy ? ` por ${detail.fulfillment.packedBy}` : ''}`, detail.shippedAt && `expedido ${new Date(detail.shippedAt).toLocaleString('pt-BR')}`, detail.deliveredAt && `entregue ${new Date(detail.deliveredAt).toLocaleString('pt-BR')}`].filter(Boolean).join(' · ')}
+                    </div>
+                  </div>
+                  {can('sales.fulfill') && <a className="btn sm" href="/expedicao#fila">Abrir na Expedição</a>}
+                </div>
+                {detail.fulfillmentNote && <p className="muted" style={{ margin: '6px 0 0', fontSize: '0.84rem' }}>Observação da expedição: {detail.fulfillmentNote}</p>}
+              </div>
+            )}
 
             <div className="meta" style={{ marginBottom: 12 }}>
               <span><b>Cliente:</b> {detail.customer.name}</span><span><b>Depósito:</b> {detail.warehouse.code}</span><span><b>Vendedor:</b> {detail.salesperson?.name ?? '—'}</span><span><b>Data:</b> {dateBr(detail.createdAt)}</span>

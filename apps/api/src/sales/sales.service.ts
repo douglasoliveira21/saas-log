@@ -93,7 +93,10 @@ export class SalesService {
       if (!order) throw new NotFoundException('Pedido não encontrado.');
       const titles = await tx.financialTitle.findMany({ where: { tenantId: ctx.tenantId!, origin: 'SALES_ORDER', originRef: { startsWith: `${id}:` } }, orderBy: { installmentNo: 'asc' }, select: { id: true, installmentNo: true, installmentTotal: true, dueDate: true, amount: true, status: true } });
       const fiscalDocuments = await tx.fiscalDocument.findMany({ where: { tenantId: ctx.tenantId!, salesOrderId: id, direction: 'EXIT' }, orderBy: { createdAt: 'asc' }, select: { id: true, model: true, number: true, series: true, status: true, accessKey: true, environment: true, authProtocol: true, purpose: true } });
-      return { ...order, installments: titles, fiscalDocuments, items: order.items.map(({ returnItems, ...i }) => ({ ...i, returnedQty: returnItems.reduce((s, r) => s + r.quantity, 0) })) };
+      const uids = [order.pickingById, order.packedById].filter((x): x is string => !!x);
+      const unames = uids.length ? new Map((await tx.user.findMany({ where: { id: { in: uids } }, select: { id: true, name: true } })).map((u) => [u.id, u.name])) : new Map<string, string>();
+      const fulfillment = { pickingBy: order.pickingById ? unames.get(order.pickingById) ?? null : null, packedBy: order.packedById ? unames.get(order.packedById) ?? null : null };
+      return { ...order, fulfillment, installments: titles, fiscalDocuments, items: order.items.map(({ returnItems, ...i }) => ({ ...i, returnedQty: returnItems.reduce((s, r) => s + r.quantity, 0) })) };
     });
   }
 
@@ -265,6 +268,9 @@ export class SalesService {
         if (last?.status !== 'OK') throw new ConflictException(last ? 'A última conferência do pedido teve divergência: confira de novo (Armazém → Conferência) antes de embalar.' : 'Este pedido ainda não foi conferido: faça a conferência (Armazém → Conferência) antes de embalar.');
       }
       const data: Prisma.SalesOrderUpdateInput = { status: to };
+      // Expedição: quem começou a separação / embalou e quando (alimenta o painel e os alertas de "parado na etapa")
+      if (to === 'PICKING') { data.pickingStartedAt = new Date(); data.pickingById = ctx.userId; }
+      if (to === 'PACKED') { data.packedAt = new Date(); data.packedById = ctx.userId; }
       if (to === 'SHIPPED') {
         // Efetiva a venda: consome as reservas (baixa o físico e grava SALE_EXIT no razão).
         for (const i of order.items) if (i.reservationId) await this.stock.resolveReservationTx(tx, ctx, i.reservationId, 'CONSUMED');
