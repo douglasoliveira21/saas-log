@@ -1,4 +1,4 @@
-# DistribuiHub Motorista — aplicativo Android
+# DistribuiHub — aplicativo Android
 
 Casca [Capacitor](https://capacitorjs.com) que abre o **mesmo sistema** (mesmo servidor e banco) e mantém o GPS enviando a posição do motorista com a tela apagada. Detalhes do recurso: [`docs/DRIVER-TRACKING.md`](../docs/DRIVER-TRACKING.md).
 
@@ -8,7 +8,7 @@ Esta pasta fica **fora** dos workspaces do monorepo de propósito: não interfer
 
 1. No GitHub: **Settings → Secrets and variables → Actions → Variables** → crie `APP_URL` com o endereço https do sistema (ex.: `https://erp.suaempresa.com.br`).
 2. **Actions → Aplicativo Android (APK) → Run workflow**. (Ou informe o endereço no campo ao executar.)
-3. Ao terminar (uns 6–10 min), baixe o artefato **distribuihub-motorista-apk**.
+3. Ao terminar (uns 6–10 min), baixe o artefato **distribuihub-apk**.
    - Sem chave cadastrada sai um APK **debug** (instala direto, serve para teste e uso interno).
    - Para APK **assinado**: cadastre os secrets `ANDROID_KEYSTORE_BASE64` (o `.jks` em base64), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` e `ANDROID_KEY_PASSWORD`. **Guarde essa chave**: sem ela não dá para publicar atualizações do mesmo app.
 4. No celular: permita instalar de “fontes desconhecidas”, instale, abra e entre com a conta de motorista. Na pergunta de localização escolha **Permitir o tempo todo** e libere as notificações.

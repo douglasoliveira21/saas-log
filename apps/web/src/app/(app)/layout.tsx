@@ -6,10 +6,12 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Avatar } from '@/components/avatar';
 import { api } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
 import { GpsGate } from '@/components/gps-gate';
 import { BRAND } from '@/lib/brand';
 import { NAV, NAV_GROUP_ICONS, NAV_GROUPS } from '@/lib/nav';
 import { SessionProvider, useSession } from '@/lib/session';
+import { useAppMode } from '@/lib/app-mode';
 import { clearTrackerBuffer } from '@/lib/tracking';
 
 
@@ -197,9 +199,10 @@ function Shell({ children }: { children: ReactNode }) {
 }
 
 export default function AppLayout({ children }: { children: ReactNode }) {
+  const app = useAppMode();
   return (
     <SessionProvider>
-      <Shell>{children}</Shell>
+      {app ? <AppShell>{children}</AppShell> : <Shell>{children}</Shell>}
     </SessionProvider>
   );
 }

@@ -1,8 +1,8 @@
 {
-  "name": "distribuihub-motorista",
+  "name": "distribuihub-app",
   "private": true,
   "version": "1.0.0",
-  "description": "Aplicativo Android do DistribuiHub (casca Capacitor que abre o sistema e mantém o GPS do motorista em segundo plano).",
+  "description": "Aplicativo Android do DistribuiHub (casca Capacitor que abre o sistema; mantém o GPS do motorista em segundo plano).",
   "scripts": {
     "android:add": "cap add android",
     "android:prepare": "node scripts/patch-android.mjs",
@@ -16,6 +16,7 @@
     "@capacitor/core": "8.5.3"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "8.5.3",
     "typescript": "^5.6.0"
   }

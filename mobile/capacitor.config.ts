@@ -12,8 +12,8 @@ if (!url.startsWith('https://') && process.env.APP_ALLOW_HTTP !== '1') {
 const host = url.replace(/^https?:\/\//, '').split('/')[0];
 
 const config: CapacitorConfig = {
-  appId: process.env.APP_ID ?? 'br.com.vgon.distribuihub.motorista',
-  appName: process.env.APP_NAME ?? 'DistribuiHub Motorista',
+  appId: process.env.APP_ID ?? 'br.com.vgon.distribuihub',
+  appName: process.env.APP_NAME ?? 'DistribuiHub',
   webDir: 'www',
   server: {
     url,

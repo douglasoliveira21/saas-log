@@ -7,10 +7,10 @@ import './tailwind.css';
 import './globals.css';
 
 export const metadata: Metadata = { title: BRAND.name, description: 'ERP SaaS para distribuidoras' };
-export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: [{ media: '(prefers-color-scheme: light)', color: '#ffffff' }, { media: '(prefers-color-scheme: dark)', color: '#0b0f17' }] };
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover', themeColor: [{ media: '(prefers-color-scheme: light)', color: '#ffffff' }, { media: '(prefers-color-scheme: dark)', color: '#0b0f17' }] };
 
 // Aplica o tema salvo (ou o do sistema) antes da pintura, evitando o "flash" claro → escuro.
-const THEME_SCRIPT = `try{var t=localStorage.getItem('dh-theme');if(t!=='light'&&t!=='dark'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}document.documentElement.dataset.theme=t}catch(e){}`;
+const THEME_SCRIPT = `try{var t=localStorage.getItem('dh-theme');if(t!=='light'&&t!=='dark'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}document.documentElement.dataset.theme=t;var a=(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform())||/[?&]app=1/.test(location.search)||localStorage.getItem('dh-app')==='1';if(/[?&]app=0/.test(location.search))a=false;if(a){document.documentElement.dataset.app='1';document.documentElement.dataset.theme='dark'}else{delete document.documentElement.dataset.app}}catch(e){}`;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { NAV, NAV_GROUPS } from '@/lib/nav';
+import { AppHome } from './app-home';
+import { useAppMode } from '@/lib/app-mode';
 import { useSession } from '@/lib/session';
 
 /** Cor do bloco por menu (texto branco em todas, contraste ≥ 4,5:1). */
@@ -13,7 +15,7 @@ const TONE: Record<(typeof NAV_GROUPS)[number], string> = { Geral: 't-slate', Co
  * Início em blocos (estilo "launcher"): um bloco por módulo, agrupados pelos menus. Quem usa o menu lateral clássico não vê esta tela:
  * é levado ao painel de sempre.
  */
-export default function InicioPage() {
+function LauncherHome() {
   const { me, can } = useSession();
   const router = useRouter();
   const launcher = me.user.navStyle === 'LAUNCHER';
@@ -53,4 +55,9 @@ export default function InicioPage() {
       ))}
     </>
   );
+}
+
+export default function InicioPage() {
+  const app = useAppMode();
+  return app ? <AppHome /> : <LauncherHome />;
 }
