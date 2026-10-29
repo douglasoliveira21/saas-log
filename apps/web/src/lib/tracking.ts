@@ -30,6 +30,8 @@ export interface TrackerState {
   battery: 'unknown' | 'ok' | 'restricted';
   /** Quantas vezes o motorista já foi levado aos ajustes de bateria nesta sessão. */
   batteryAsks: number;
+  /** Opção do usuário: manter o GPS e a localização funcionando em segundo plano (serviço contínuo, com notificação fixa). */
+  background: boolean;
 }
 
 interface Pt { lat: number; lng: number; accuracyM?: number; speedMps?: number; heading?: number; recordedAt: string }
@@ -42,6 +44,9 @@ interface BackgroundGeolocationPlugin {
 }
 
 const BUF_KEY = 'dh-track-buf';
+const BG_KEY = 'dh-track-bg';
+/** Padrão: ligado (um motorista que não escolheu nada fica acompanhado em segundo plano). */
+const readBackground = () => { try { return localStorage.getItem(BG_KEY) !== '0'; } catch { return true; } };
 const MAX_BUFFER = 500;
 const KEEP_EVERY_MS = 5_000; // um ponto a cada 5 s no máximo
 const HEARTBEAT_MS = 30_000;
@@ -57,7 +62,7 @@ function store(op: 'get' | 'set' | 'del', value?: string): string | null {
 }
 
 class Tracker {
-  state: TrackerState = { status: 'idle', native: false, last: null, routeActive: null, routeNumber: null, pending: 0, lastSentAt: null, sendError: false, battery: 'unknown', batteryAsks: 0 };
+  state: TrackerState = { status: 'idle', native: false, last: null, routeActive: null, routeNumber: null, pending: 0, lastSentAt: null, sendError: false, battery: 'unknown', batteryAsks: 0, background: true };
   private listeners = new Set<() => void>();
   private started = false;
   private watchId: number | null = null;
@@ -77,7 +82,7 @@ class Tracker {
     if (this.started || typeof window === 'undefined') return;
     this.started = true;
     try { this.buffer = (JSON.parse(store('get') ?? '[]') as Pt[]).slice(-MAX_BUFFER); } catch { this.buffer = []; }
-    this.set({ native: isNative() });
+    this.set({ native: isNative(), background: readBackground() });
     this.watch();
     void this.checkBattery();
     this.timers.push(setInterval(() => void this.flush(true), HEARTBEAT_MS));
@@ -111,6 +116,16 @@ class Tracker {
   /** Lista de apps do Android, para escolher "Sem restrições" manualmente. */
   async openBatterySettings() { if (isNative()) { this.set({ batteryAsks: this.state.batteryAsks + 1 }); try { await power().openBatterySettings(); } catch { /* idem */ } } }
 
+  /**
+   * Liga/desliga o funcionamento em segundo plano (app). Ligado: serviço contínuo do Android com notificação fixa (o GPS segue com a tela
+   * bloqueada ou com outro app aberto). Desligado: o GPS só funciona com o app na tela. A escolha fica neste aparelho.
+   */
+  setBackground(on: boolean) {
+    try { localStorage.setItem(BG_KEY, on ? '1' : '0'); } catch { /* sem armazenamento: vale até fechar */ }
+    this.set({ background: on });
+    if (this.started) this.retry(); // recria o observador com/sem o serviço em primeiro plano
+  }
+
   /** Encerra o rastreio (usado ao fechar o aplicativo de propósito). */
   shutdown() { this.stop(); }
 
@@ -125,7 +140,7 @@ class Tracker {
     this.set({ status: 'asking' });
     if (isNative()) {
       native().addWatcher(
-        { backgroundTitle: 'DistribuiHub em funcionamento', backgroundMessage: 'GPS ativo. Mantenha o aplicativo aberto em segundo plano; a localização só é registrada com rota em andamento.', requestPermissions: true, stale: false, distanceFilter: 15 },
+        { ...(this.state.background ? { backgroundTitle: 'DistribuiHub em funcionamento', backgroundMessage: 'GPS ativo. Mantenha o aplicativo aberto em segundo plano; a localização só é registrada com rota em andamento.' } : {}), requestPermissions: true, stale: false, distanceFilter: 15 },
         (p, err) => {
           if (err) { this.set({ status: err.code === 'NOT_AUTHORIZED' ? 'denied' : 'weak' }); return; }
           if (p) this.onPoint({ lat: p.latitude, lng: p.longitude, accuracyM: p.accuracy, speedMps: p.speed ?? undefined, heading: p.bearing ?? undefined, t: p.time ?? Date.now() });
@@ -175,6 +190,7 @@ class Tracker {
 }
 
 export const tracker = new Tracker();
+if (typeof window !== 'undefined') tracker.state = { ...tracker.state, background: readBackground() };
 export const useTracker = () => useSyncExternalStore(tracker.subscribe, tracker.getSnapshot, tracker.getSnapshot);
 
 /** Apaga o que ficou guardado no aparelho (ao sair da conta). */

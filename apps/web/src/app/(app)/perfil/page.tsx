@@ -9,10 +9,11 @@ import { api } from '@/lib/api';
 import { formatPhone } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { PasswordInput } from '@/components/password-input';
+import { BackgroundGpsCard } from '@/components/background-gps-card';
 
 /** Meu perfil: foto, nome e telefone, troca de senha e atalho para o segundo fator. */
 export default function PerfilPage() {
-  const { me, reload } = useSession();
+  const { me, can, reload } = useSession();
   const ui = useUi();
   const file = useRef<HTMLInputElement>(null);
   const [error, setError] = useState('');
@@ -78,6 +79,8 @@ export default function PerfilPage() {
           </div>
         </div>
       </section>
+
+      {can('delivery.perform') && <BackgroundGpsCard />}
 
       <section className="card" style={{ marginBottom: 16 }} aria-label="Aparência">
         <h2>Estilo do sistema</h2>

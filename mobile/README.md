@@ -37,6 +37,8 @@ cd android && ./gradlew assembleDebug
 
 Para o GPS continuar com a tela bloqueada ou com outro app aberto: permissão de localização **o tempo todo**, notificações liberadas e, quando o app pedir, **“Permitir sem restrição de bateria”**. Em Xiaomi, Huawei, Samsung e Motorola também pode ser preciso ativar “Início automático” / tirar o app da economia de bateria nos ajustes do fabricante.
 
+**Opção no app:** em **Perfil → GPS e localização em segundo plano** há uma chave para ligar/desligar o serviço contínuo (padrão: ligado), com o estado da localização, da bateria e da notificação fixa. Desligada, o GPS só funciona com o app na tela.
+
 ## Fechar o aplicativo
 
 O botão **voltar** do Android não fecha o app por engano: volta de tela normalmente; na tela inicial, o primeiro toque avisa e o segundo (em até 3 s) pergunta “Encerrar o aplicativo?”. Só confirmando o app fecha e o GPS para. O botão **início** apenas manda o app para segundo plano, onde o GPS continua (notificação fixa). No aplicativo, a conta de motorista só abre depois de liberar a localização e a bateria (há uma saída “continuar mesmo assim” após duas tentativas, para ninguém ficar travado).
