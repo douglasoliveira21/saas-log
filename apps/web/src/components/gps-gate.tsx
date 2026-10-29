@@ -14,9 +14,34 @@ export function GpsGate({ children }: { children: ReactNode }) {
   const t = useTracker();
   const { logout } = useSession();
   const [slow, setSlow] = useState(false);
+  const [skipBattery, setSkipBattery] = useState(false);
   useEffect(() => { tracker.start(); return () => tracker.stop(); }, []);
   // se o aparelho nem chega a perguntar, mostra o botão para pedir de novo
   useEffect(() => { if (t.status !== 'asking') { setSlow(false); return; } const id = setTimeout(() => setSlow(true), 4000); return () => clearTimeout(id); }, [t.status]);
+
+  const batteryBlocked = t.native && t.battery === 'restricted' && !skipBattery && (t.status === 'ok' || t.status === 'weak');
+  if (batteryBlocked) {
+    return (
+      <div className="gps-gate card" role="alertdialog" aria-labelledby="bat-title">
+        <span className="gps-icon" aria-hidden><BatteryWarning size={28} /></span>
+        <h1 id="bat-title">Libere a bateria para o GPS não parar</h1>
+        <p className="muted">O Android pausa aplicativos para economizar bateria. Para o rastreio da rota continuar com a tela bloqueada ou com outro aplicativo aberto, o DistribuiHub precisa ficar <strong>sem restrição de bateria</strong>.</p>
+        <ol className="gps-steps">
+          <li>Toque em <strong>Permitir sem restrição</strong> e confirme.</li>
+          <li>Se a janela não aparecer, use <strong>Abrir lista de apps</strong>, procure “DistribuiHub” e escolha <strong>Sem restrições</strong> (ou “Não otimizar”).</li>
+          <li>Em Xiaomi, Samsung, Motorola e Huawei, ative também <strong>Início automático</strong> nos ajustes do aplicativo.</li>
+          <li>Volte aqui e toque em <strong>Já liberei</strong>.</li>
+        </ol>
+        <div className="gps-actions">
+          <button className="btn primary" onClick={() => void tracker.requestBattery()}><BatteryWarning aria-hidden />Permitir sem restrição</button>
+          <button className="btn" onClick={() => void tracker.openBatterySettings()}><Settings aria-hidden />Abrir lista de apps</button>
+          <button className="btn" onClick={() => void tracker.checkBattery()}>Já liberei</button>
+        </div>
+        {t.batteryAsks >= 2 && <button className="btn ghost sm" onClick={() => setSkipBattery(true)}>Continuar mesmo assim (o GPS pode parar com a tela bloqueada)</button>}
+        <div className="gps-foot"><button className="btn ghost sm" onClick={() => { clearTrackerBuffer(); void logout(); }}><LogOut aria-hidden />Sair da conta</button></div>
+      </div>
+    );
+  }
 
   if (t.status === 'ok' || t.status === 'weak') {
     return (

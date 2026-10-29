@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { BRAND } from '@/lib/brand';
+import { NativeBackGuard } from '@/components/native-back-guard';
 import { UiProvider } from '@/components/ui';
 import './tailwind.css';
 import './globals.css';
@@ -15,7 +16,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} /></head>
-      <body><UiProvider>{children}</UiProvider></body>
+      <body><UiProvider><NativeBackGuard />{children}</UiProvider></body>
     </html>
   );
 }

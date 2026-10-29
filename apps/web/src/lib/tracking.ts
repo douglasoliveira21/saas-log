@@ -28,11 +28,13 @@ export interface TrackerState {
   sendError: boolean;
   /** Só no aplicativo: o Android está (restricted) ou não (ok) limitando a bateria do app, o que pode parar o GPS com a tela bloqueada. */
   battery: 'unknown' | 'ok' | 'restricted';
+  /** Quantas vezes o motorista já foi levado aos ajustes de bateria nesta sessão. */
+  batteryAsks: number;
 }
 
 interface Pt { lat: number; lng: number; accuracyM?: number; speedMps?: number; heading?: number; recordedAt: string }
 interface NativeLocation { latitude: number; longitude: number; accuracy: number; speed: number | null; bearing: number | null; time: number | null }
-interface PowerSettingsPlugin { status(): Promise<{ ignoring: boolean }>; request(): Promise<void> }
+interface PowerSettingsPlugin { status(): Promise<{ ignoring: boolean }>; request(): Promise<void>; openBatterySettings(): Promise<void>; openAppSettings(): Promise<void> }
 interface BackgroundGeolocationPlugin {
   addWatcher(options: { backgroundMessage?: string; backgroundTitle?: string; requestPermissions?: boolean; stale?: boolean; distanceFilter?: number }, callback: (position?: NativeLocation, error?: { code?: string; message?: string }) => void): Promise<string>;
   removeWatcher(options: { id: string }): Promise<void>;
@@ -55,7 +57,7 @@ function store(op: 'get' | 'set' | 'del', value?: string): string | null {
 }
 
 class Tracker {
-  state: TrackerState = { status: 'idle', native: false, last: null, routeActive: null, routeNumber: null, pending: 0, lastSentAt: null, sendError: false, battery: 'unknown' };
+  state: TrackerState = { status: 'idle', native: false, last: null, routeActive: null, routeNumber: null, pending: 0, lastSentAt: null, sendError: false, battery: 'unknown', batteryAsks: 0 };
   private listeners = new Set<() => void>();
   private started = false;
   private watchId: number | null = null;
@@ -104,7 +106,13 @@ class Tracker {
   }
 
   /** Abre a tela do Android que libera o app das restrições de bateria. */
-  async requestBattery() { if (isNative()) { try { await power().request(); } catch { /* o aviso na tela continua orientando */ } } }
+  async requestBattery() { if (isNative()) { this.set({ batteryAsks: this.state.batteryAsks + 1 }); try { await power().request(); } catch { /* o aviso na tela continua orientando */ } } }
+
+  /** Lista de apps do Android, para escolher "Sem restrições" manualmente. */
+  async openBatterySettings() { if (isNative()) { this.set({ batteryAsks: this.state.batteryAsks + 1 }); try { await power().openBatterySettings(); } catch { /* idem */ } } }
+
+  /** Encerra o rastreio (usado ao fechar o aplicativo de propósito). */
+  shutdown() { this.stop(); }
 
   async openSettings() { if (isNative()) { try { await native().openSettings(); } catch { /* sem tela de ajustes: o aviso já orienta */ } } }
 
@@ -117,7 +125,7 @@ class Tracker {
     this.set({ status: 'asking' });
     if (isNative()) {
       native().addWatcher(
-        { backgroundTitle: 'DistribuiHub — rota em andamento', backgroundMessage: 'Sua localização é compartilhada com a empresa enquanto a rota estiver em andamento.', requestPermissions: true, stale: false, distanceFilter: 15 },
+        { backgroundTitle: 'DistribuiHub em funcionamento', backgroundMessage: 'GPS ativo. Mantenha o aplicativo aberto em segundo plano; a localização só é registrada com rota em andamento.', requestPermissions: true, stale: false, distanceFilter: 15 },
         (p, err) => {
           if (err) { this.set({ status: err.code === 'NOT_AUTHORIZED' ? 'denied' : 'weak' }); return; }
           if (p) this.onPoint({ lat: p.latitude, lng: p.longitude, accuracyM: p.accuracy, speedMps: p.speed ?? undefined, heading: p.bearing ?? undefined, t: p.time ?? Date.now() });
