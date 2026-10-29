@@ -10,7 +10,7 @@ type ToastKind = 'ok' | 'error' | 'info';
 interface ToastItem { id: number; kind: ToastKind; message: string }
 
 export interface FormField {
-  name: string; label: string; type?: 'text' | 'number' | 'textarea' | 'select'; defaultValue?: string | number; required?: boolean;
+  name: string; label: string; type?: 'text' | 'number' | 'textarea' | 'select' | 'password'; defaultValue?: string | number; required?: boolean;
   hint?: string; min?: number; max?: number; step?: string; options?: { value: string; label: string }[];
 }
 interface DialogOpts { title: string; message?: ReactNode; confirmLabel?: string; cancelLabel?: string; danger?: boolean }
@@ -125,7 +125,7 @@ function Modal({ pending, onClose }: { pending: Pending; onClose: (r: boolean | 
                   <label htmlFor={`${titleId}-${fd.name}`} className={fd.required ? 'req' : ''}>{fd.label}</label>
                   {fd.type === 'textarea' ? <textarea id={`${titleId}-${fd.name}`} name={fd.name} defaultValue={fd.defaultValue} required={fd.required} />
                     : fd.type === 'select' ? <select id={`${titleId}-${fd.name}`} name={fd.name} defaultValue={fd.defaultValue} required={fd.required}>{fd.options?.map((op) => <option key={op.value} value={op.value}>{op.label}</option>)}</select>
-                    : <input id={`${titleId}-${fd.name}`} name={fd.name} type={fd.type ?? 'text'} defaultValue={fd.defaultValue} required={fd.required} min={fd.min} max={fd.max} step={fd.step} />}
+                    : <input id={`${titleId}-${fd.name}`} name={fd.name} type={fd.type ?? 'text'} defaultValue={fd.defaultValue} required={fd.required} min={fd.min} max={fd.max} step={fd.step} autoComplete={fd.type === 'password' ? 'off' : undefined} />}
                   {fd.hint && <div className="hint muted" style={{ fontSize: '0.78rem', marginTop: 4 }}>{fd.hint}</div>}
                 </div>
               ))}

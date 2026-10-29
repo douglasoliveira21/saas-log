@@ -93,31 +93,31 @@ describe('Fase 4 — central de integrações, fila, webhooks e credenciais', ()
   describe('catálogo de canais e honestidade dos conectores', () => {
     it('lista os canais com matriz de capacidades "planejada" (nada é anunciado como suportado sem implementação)', async () => {
       const list = (await A.owner.get('/api/integrations/providers').expect(200)).body as any[];
-      for (const p of ['AMAZON', 'SHOPEE']) {
+      for (const p of ['SHOPEE', 'TIKTOK_SHOP']) {
         const c = list.find((x) => x.provider === p);
         expect(c).toBeDefined();
         expect(Object.values(c.capabilities)).toEqual(Array(8).fill('PLANNED'));
         expect(c.docsUrl).toMatch(/^https:/);
       }
-      // catálogo ampliado: todos os canais além do Mercado Livre e do Magalu (e do sandbox) são PLANEJADOS e não podem se passar por disponíveis
+      // catálogo ampliado: todos os canais além do Mercado Livre, do Magalu e da Amazon (e do sandbox) são PLANEJADOS e não podem se passar por disponíveis
       const real = list.filter((x) => !x.sandbox);
       expect(real.length).toBeGreaterThanOrEqual(20);
       expect(new Set(real.map((x) => x.provider)).size).toBe(real.length);
       expect(new Set(real.map((x) => x.category))).toEqual(new Set(['MARKETPLACE', 'STORE_PLATFORM', 'HUB']));
-      for (const c of real.filter((x) => !['MERCADO_LIVRE', 'MAGALU'].includes(x.provider))) {
+      for (const c of real.filter((x) => !['MERCADO_LIVRE', 'MAGALU', 'AMAZON'].includes(x.provider))) {
         expect(Object.values(c.capabilities)).toEqual(Array(8).fill('PLANNED'));
         expect(c.docsUrl === '' || /^https:/.test(c.docsUrl)).toBe(true);
         expect(c.notes).toBeTruthy();
       }
-      for (const p of ['MAGALU', 'TIKTOK_SHOP', 'ALIEXPRESS', 'SHOPIFY', 'VTEX', 'WOOCOMMERCE', 'BLING', 'ANYMARKET']) expect(list.find((x) => x.provider === p)).toBeDefined();
+      for (const p of ['MAGALU', 'AMAZON', 'TIKTOK_SHOP', 'ALIEXPRESS', 'SHOPIFY', 'VTEX', 'WOOCOMMERCE', 'BLING', 'ANYMARKET']) expect(list.find((x) => x.provider === p)).toBeDefined();
       const ml = list.find((x) => x.provider === 'MERCADO_LIVRE');
       expect(ml.capabilities).toMatchObject({ authorization: 'IMPLEMENTED_UNVERIFIED', orders: 'IMPLEMENTED_UNVERIFIED', webhooks: 'IMPLEMENTED_UNVERIFIED', publishing: 'PLANNED', price: 'PLANNED', inventory: 'PLANNED' });
       expect(Object.values(ml.capabilities)).not.toContain('SUPPORTED'); // nada validado com conta real
       expect(list.find((x) => x.provider === 'SANDBOX')?.sandbox).toBe(true);
     });
 
-    it('conector sem implementação (Amazon) devolve 501 explícito em autorizar/testar e impede a ativação', async () => {
-      const c = (await A.owner.post('/api/integrations/connections').set(H).send({ provider: 'AMAZON', label: 'Amazon principal' }).expect(201)).body;
+    it('conector sem implementação (Shopee) devolve 501 explícito em autorizar/testar e impede a ativação', async () => {
+      const c = (await A.owner.post('/api/integrations/connections').set(H).send({ provider: 'SHOPEE', label: 'Shopee principal' }).expect(201)).body;
       expect(c.status).toBe('NOT_CONNECTED');
       const a = await A.owner.post(`/api/integrations/connections/${c.id}/authorize`).set(H).expect(501);
       expect(a.body.code).toBe('NOT_IMPLEMENTED');

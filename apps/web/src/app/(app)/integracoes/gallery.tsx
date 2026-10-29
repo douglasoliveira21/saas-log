@@ -9,6 +9,8 @@ export type Support = 'SUPPORTED' | 'IMPLEMENTED_UNVERIFIED' | 'PLANNED' | 'UNSU
 export interface Provider {
   provider: string; displayName: string; docsUrl: string; authType: string; sandbox?: boolean; notes?: string; category: 'MARKETPLACE' | 'STORE_PLATFORM' | 'HUB'; region: 'BR' | 'GLOBAL';
   capabilities: Record<string, Support>;
+  /** Canais com autorização própria: campos que o usuário informa (sem redirecionamento). */
+  credentialFields?: { name: string; label: string; secret?: boolean; hint?: string }[];
 }
 interface Warehouse { id: string; code: string; name: string }
 
@@ -21,7 +23,7 @@ export const isConnectable = (p: Provider) => ['SUPPORTED', 'IMPLEMENTED_UNVERIF
 
 /** Galeria de canais: o que já conecta fica em destaque com um clique; o restante mostra o que falta, sem prometer o que não existe. */
 export function ChannelGallery({ providers, warehouses, manage, onConnect }: {
-  providers: Provider[]; warehouses: Warehouse[]; manage: boolean; onConnect: (p: Provider, label: string, warehouseId: string) => Promise<void>;
+  providers: Provider[]; warehouses: Warehouse[]; manage: boolean; onConnect: (p: Provider, label: string, warehouseId: string, credentials?: Record<string, string>) => Promise<void>;
 }) {
   const ui = useUi();
   const [cat, setCat] = useState('ALL');
@@ -38,15 +40,19 @@ export function ChannelGallery({ providers, warehouses, manage, onConnect }: {
 
   async function connect(p: Provider) {
     if (!warehouses.length) { ui.toast.error('Cadastre um depósito em Empresa antes de conectar um canal: ele define de onde sai o estoque.'); return; }
+    const own = p.credentialFields ?? [];
     const r = await ui.form({
-      title: `Conectar ${p.displayName}`, confirmLabel: 'Continuar para o canal',
-      message: <>Você será levado ao {p.displayName} para autorizar o acesso à sua conta. Depois volta aqui e o teste de conexão roda sozinho.</>,
+      title: `Conectar ${p.displayName}`, confirmLabel: own.length ? 'Conectar e testar' : 'Continuar para o canal',
+      message: own.length
+        ? <>O {p.displayName} usa <strong>autorização própria</strong>: crie um aplicativo privado na sua conta do canal e informe as credenciais dele. Elas ficam guardadas cifradas e nunca voltam para a tela. Veja os passos em “Ver detalhes”.</>
+        : <>Você será levado ao {p.displayName} para autorizar o acesso à sua conta. Depois volta aqui e o teste de conexão roda sozinho.</>,
       fields: [
         { name: 'label', label: 'Nome da conexão', required: true, defaultValue: p.displayName, hint: 'Aparece na lista de conexões (ex.: Loja principal).' },
         { name: 'warehouseId', label: 'Depósito de origem do estoque', type: 'select', required: true, defaultValue: warehouses[0]?.id, options: warehouses.map((w) => ({ value: w.id, label: `${w.code} — ${w.name}` })) },
+        ...own.map((f) => ({ name: `cred_${f.name}`, label: f.label, required: true, type: (f.secret ? 'password' : 'text') as 'password' | 'text', hint: f.hint })),
       ],
     });
-    if (r) await onConnect(p, r.label, r.warehouseId);
+    if (r) await onConnect(p, r.label, r.warehouseId, own.length ? Object.fromEntries(own.map((f) => [f.name, (r[`cred_${f.name}`] ?? '').trim()])) : undefined);
   }
 
   return (

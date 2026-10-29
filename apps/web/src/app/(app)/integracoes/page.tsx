@@ -98,13 +98,20 @@ export default function IntegracoesPage() {
   const post = (id: string, action: string) => api(`/integrations/connections/${id}/${action}`, 'POST');
 
   /** Um passo: cria a conexão, grava o depósito e leva o usuário à autorização no canal (o teste roda ao voltar). */
-  async function connect(p: Provider, label: string, warehouseId: string) {
+  async function connect(p: Provider, label: string, warehouseId: string, credentials?: Record<string, string>) {
     setError(''); setOk('');
     let created: (Connection & { webhook: { path: string; secret: string } }) | null = null;
     try {
       created = await api<Connection & { webhook: { path: string; secret: string } }>('/integrations/connections', 'POST', { provider: p.provider, label });
       setSel(created.id); load();
       await api(`/integrations/connections/${created.id}/config`, 'PUT', { warehouseId });
+      if (credentials) {
+        // autorização própria: grava as credenciais (a Amazon as confere) e já testa a conexão; sem redirecionamento
+        await api(`/integrations/connections/${created.id}/credentials`, 'POST', { fields: credentials });
+        await api(`/integrations/connections/${created.id}/test`, 'POST');
+        setOk(`${p.displayName} conectado e testado. Revise a conexão e ative quando quiser começar a importar pedidos.`); load(); loadDetail(created.id);
+        return;
+      }
       const r = await api<{ authorizationUrl: string }>(`/integrations/connections/${created.id}/authorize`, 'POST');
       window.location.href = r.authorizationUrl;
     } catch (e) {
@@ -116,6 +123,19 @@ export default function IntegracoesPage() {
 
   async function authorize(c: Connection) {
     setError('');
+    const own = providers.find((p) => p.provider === c.provider)?.credentialFields;
+    if (own?.length) {
+      // autorização própria: pede as credenciais de novo (não há redirecionamento)
+      const r = await ui.form({ title: `Credenciais — ${c.label}`, confirmLabel: 'Conectar e testar', message: <>Informe as credenciais do aplicativo privado. Ficam guardadas cifradas e nunca voltam para a tela.</>, fields: own.map((f) => ({ name: f.name, label: f.label, required: true, type: (f.secret ? 'password' : 'text') as 'password' | 'text', hint: f.hint })) });
+      if (!r) return;
+      try {
+        await api(`/integrations/connections/${c.id}/credentials`, 'POST', { fields: Object.fromEntries(own.map((f) => [f.name, (r[f.name] ?? '').trim()])) });
+        await api(`/integrations/connections/${c.id}/test`, 'POST');
+        setOk('Credenciais aceitas e conexão testada. Clique em “Ativar” para começar a importar pedidos.');
+      } catch (e) { setError((e as Error).message); }
+      load(); loadDetail(c.id);
+      return;
+    }
     try { const r = await api<{ authorizationUrl: string }>(`/integrations/connections/${c.id}/authorize`, 'POST'); window.location.href = r.authorizationUrl; }
     catch (e) { setError((e as Error).message); load(); }
   }

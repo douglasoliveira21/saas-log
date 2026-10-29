@@ -211,6 +211,34 @@ export class ConnectionsService {
     return { authorizationUrl: r.data.authorizationUrl };
   }
 
+  /**
+   * Autorização própria (ex.: Amazon): o usuário informa as credenciais do aplicativo dele; o conector as confere no canal e guardamos
+   * cifradas. Nada volta ao navegador. A conexão fica "teste pendente" e segue o fluxo normal (testar e ativar).
+   */
+  async saveCredentials(ctx: AuthContext, id: string, fields: Record<string, string>) {
+    const conn = await this.get(ctx, id);
+    if (['ACTIVE', 'PAUSED'].includes(conn.status)) throw new ConflictException('Pause a conexão antes de trocar as credenciais.');
+    const connector = this.connector(conn.provider);
+    if (!connector.authorizeWithCredentials) throw new BadRequestException('Este canal usa autorização por login, não por credenciais.');
+    const started = Date.now();
+    const r = await connector.authorizeWithCredentials(this.context(ctx.tenantId!, conn as unknown as MarketplaceConnection, null), fields);
+    await this.writeLog(ctx.tenantId!, id, 'authorizeWithCredentials', r, Date.now() - started);
+    if (!r.ok) throwFor(r);
+    try {
+      await this.prisma.withContext(ctx, async (tx) => {
+        await tx.marketplaceConnection.update({
+          where: { id },
+          data: { credentialsEnc: this.crypto.encrypt(ctx.tenantId!, `cred:${id}`, r.data.credentials), tokenExpiresAt: r.data.expiresAt ?? null, externalAccountId: r.data.externalAccountId ?? conn.externalAccountId, testedAt: null, lastError: null, status: 'TEST_PENDING' },
+        });
+        await this.audit.record(tx, ctx, { action: 'integration.authorized', entity: 'marketplace_connection', entityId: id, metadata: { provider: conn.provider, mode: 'credentials' } });
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('Esta conta do canal já está conectada em outra conexão desta empresa. Desconecte a outra conexão antes.');
+      throw e;
+    }
+    return { id, status: 'TEST_PENDING' };
+  }
+
   /** Retorno do provedor (rota pública protegida por `state` assinado, expirável e de uso único). */
   async callback(code: string, state: string): Promise<{ connectionId: string }> {
     let p: { purpose: string; tid: string; cid: string; uid: string; nonce: string };

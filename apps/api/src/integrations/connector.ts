@@ -52,6 +52,8 @@ export interface ConnectorInfo {
   notes?: string;
   /** Domínios (sufixos) de onde as fotos do canal podem ser baixadas na importação. Vazio = não baixa fotos. */
   imageHosts?: string[];
+  /** Canais com autorização própria (sem tela de redirecionamento): campos que o usuário informa. `secret` = campo de senha. */
+  credentialFields?: { name: string; label: string; secret?: boolean; hint?: string }[];
 }
 
 export interface ConnectionContext {
@@ -140,6 +142,8 @@ export interface Connector {
   // autorização
   authorizeConnection(ctx: ConnectionContext, p: { redirectUri: string; state: string }): Promise<OpResult<{ authorizationUrl: string }>>;
   completeAuthorization(ctx: ConnectionContext, p: { code: string; redirectUri: string; state: string }): Promise<OpResult<Credentials>>;
+  /** Autorização própria (opcional): confere as credenciais informadas pelo usuário e devolve o que será guardado cifrado. */
+  authorizeWithCredentials?(ctx: ConnectionContext, fields: Record<string, string>): Promise<OpResult<Credentials>>;
   validateConnection(ctx: ConnectionContext): Promise<OpResult<{ externalAccountId?: string }>>;
   refreshAuthorization(ctx: ConnectionContext): Promise<OpResult<Credentials>>;
   revokeAuthorization(ctx: ConnectionContext): Promise<OpResult<null>>;

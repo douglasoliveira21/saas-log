@@ -116,3 +116,25 @@ Notificações ao usuário (e-mail/in-app) para token expirado e falhas; mapeame
 - Sem endereço de revogação confirmado: desconectar descarta as credenciais localmente.
 
 **Como o aplicativo é criado:** não há formulário web; usa-se a ferramenta de linha de comando **idm** (`idm login`, `idm client create --name … --redirect-uris https://SEU-DOMINIO/api/integrations/callback --scopes "…" --audience …`). O Client Secret **não pode ser recuperado depois**. Webhooks do Magalu (assinatura `X-Signature-256`, HMAC de `timestamp.corpo`) exigem assinatura em `/v1/onboarding/signup` e **não foram implementados**: os pedidos entram pela reconciliação periódica.
+
+
+## Amazon (SP-API) — autorização própria e pedidos
+
+**Estado:** autorização própria, validação, renovação do token e leitura de pedidos implementadas e testadas **só com servidor simulado** (`IMPLEMENTED_UNVERIFIED`; `apps/api/test/amazon.e2e-spec.ts`). Catálogo, publicação, preço, estoque e envios: **planejados**. Notificações: a Amazon entrega por SQS/EventBridge (não por HTTP): o sistema consulta por varredura.
+
+**Custo:** o acesso à SP-API para quem integra a **própria conta** não tem cobrança. Em 2026 a Amazon anunciou uma taxa anual (US$ 1.400) e uso por volume para *desenvolvedores terceiros* (quem cria apps para outros vendedores); relatos de 12/05/2026 dizem que ela desistiu "por ora", mas **não confirmei na página oficial** — confira em developer.amazonservices.com. O vendedor que usa só a sua conta não foi alvo da cobrança.
+
+**Como o vendedor conecta (sem tela de login):**
+1. Seller Central → *Aplicativos e serviços → Desenvolver aplicativos* → registre-se como desenvolvedor privado e **crie um aplicativo** (com a função de pedidos/Orders).
+2. Em *Gerenciar aplicativos* → **Autorizar** (autorização própria): gera o **Refresh Token** (`Atzr|…`). Anote também o **Client ID** (`amzn1.application-oa2-client…`) e o **Client Secret** (Login with Amazon).
+3. Anote o **ID do vendedor** (Configurações → Informações da conta → ID do comerciante).
+4. No sistema: *Marketplaces → Amazon → Conectar* e preencha os quatro campos. Eles são conferidos na hora, guardados cifrados e nunca voltam para a tela.
+
+**O que o conector faz:** troca o refresh token por access token (Login with Amazon, 1 h), chama `GET /sellers/v1/marketplaceParticipations` (precisa participar do marketplace do Brasil, `A2Q3Y263D00KWC`) e lê `GET /orders/v0/orders` (por data de atualização, páginas de 20, `NextToken`) e `.../{id}/orderItems`. Cabeçalho `x-amz-access-token`; sem assinatura AWS.
+- Status: `Unshipped`/`PartiallyShipped`/`Shipped` → pago; `Canceled` → cancelado; `Pending` → aguardando pagamento; o resto segue como veio e fica aguardando.
+- **Pedidos FBA** (a Amazon separa e envia) **ficam de fora**: não saem do seu estoque.
+- Os itens só são lidos dos pedidos pagos (limite da API ≈ 1 requisição a cada 2 s); a primeira leitura traz os últimos 30 dias.
+- `ItemPrice` da Amazon é o total da linha: o preço unitário é calculado (total ÷ quantidade).
+- **Dados do comprador:** sem endereço/CPF (exigiria o *Restricted Data Token*, não usado). O comprador aparece pelo e-mail mascarado da Amazon.
+
+**A validar com conta real:** limites de taxa, vocabulário de status, formato de `BuyerInfo`, o endereço regional (`sellingpartnerapi-na.amazon.com` para o Brasil) e o ID do marketplace. Variáveis de teste: `AMAZON_LWA_URL`, `AMAZON_SPAPI_BASE`, `AMAZON_MARKETPLACE_ID`, `AMAZON_ITEM_GAP_MS`.

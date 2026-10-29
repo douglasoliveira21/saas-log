@@ -78,6 +78,9 @@ class MappingDto {
 class LedgerQuery {
   @IsOptional() @IsIn(['AWAITING_PAYMENT', 'IMPORTED', 'NEEDS_ATTENTION', 'CANCELLED']) status?: string;
 }
+class CredentialsDto {
+  @IsObject() fields: Record<string, string>;
+}
 class RetryDto {
   @IsOptional() @IsBoolean() confirm?: boolean;
 }
@@ -108,6 +111,9 @@ export class IntegrationsController {
 
   @Post('connections/:id/authorize') @HttpCode(200) @RequirePermissions('integrations.manage')
   authorize(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.svc.authorize(ctx, id); }
+
+  @Post('connections/:id/credentials') @HttpCode(200) @RequirePermissions('integrations.manage')
+  credentials(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CredentialsDto) { return this.svc.saveCredentials(ctx, id, dto.fields); }
 
   @Post('connections/:id/test') @HttpCode(200) @RequirePermissions('integrations.manage')
   test(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.svc.test(ctx, id); }

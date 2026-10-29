@@ -16,8 +16,6 @@ const AUTH_NOTE = 'Forma de autenticação conforme a documentação pública; c
  * Endereços de documentação foram conferidos como acessíveis em 20/10/2026; vazio = não localizado publicamente.
  */
 export const PLANNED_CHANNELS: ConnectorInfo[] = [
-  { provider: 'AMAZON', displayName: 'Amazon', category: 'MARKETPLACE', region: 'GLOBAL', authType: 'OAUTH2', docsUrl: 'https://developer-docs.amazon.com/sp-api/lang-pt_BR/docs/sp-api-endpoints',
-    notes: 'Requer registro como desenvolvedor na SP-API, aplicativo aprovado e autorização do vendedor no Seller Central.' },
   { provider: 'SHOPEE', displayName: 'Shopee', category: 'MARKETPLACE', region: 'GLOBAL', authType: 'SIGNED_OAUTH2', docsUrl: 'https://open.shopee.com/',
     notes: 'Requer conta no Shopee Open Platform e aplicativo aprovado; a documentação vigente deve ser confirmada antes da implementação.' },
   { provider: 'AMERICANAS', displayName: 'Americanas', category: 'MARKETPLACE', region: 'BR', authType: 'API_KEY', docsUrl: '',
