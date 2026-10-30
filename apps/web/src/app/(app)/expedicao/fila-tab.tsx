@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, useUi } from '@/components/ui';
 import { api } from '@/lib/api';
 import { dateBr } from '@/lib/format';
+import { ColetaDialog } from './coleta-dialog';
 
 type Stage = 'WAITING' | 'PICKING' | 'PACKED' | 'SHIPPED' | 'DELIVERED';
 type Flag = 'LATE' | 'DUE_TODAY' | 'STUCK' | 'DIVERGENT' | 'RUSH';
@@ -36,6 +37,7 @@ export function FilaTab({ initialFilter, initialSearch, onRegisterShipment }: { 
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
+  const [coletaId, setColetaId] = useState<string | null>(null);
   useEffect(() => { setFilter(initialFilter); setQ(initialSearch); }, [initialFilter, initialSearch]);
 
   const load = useCallback(() => { api<Item[]>('/dispatch/queue').then((r) => { setItems(r); setError(''); }).catch((e) => setError(e.message)); }, []);
@@ -50,11 +52,16 @@ export function FilaTab({ initialFilter, initialSearch, onRegisterShipment }: { 
     });
   }, [items, filter, q]);
 
-  async function advance(i: Item, to: string, done: string, confirm?: { title: string; message: string; label: string }) {
-    if (confirm && !(await ui.confirm({ title: confirm.title, message: confirm.message, confirmLabel: confirm.label }))) return;
+  async function advance(i: Item, to: string, done: string, confirm?: { title: string; message: string; label: string }): Promise<boolean> {
+    if (confirm && !(await ui.confirm({ title: confirm.title, message: confirm.message, confirmLabel: confirm.label }))) return false;
+    let success = false;
     setBusy(i.id); setError(''); setOk('');
-    try { await api(`/sales/orders/${i.id}/advance`, 'POST', { to }); setOk(`Pedido #${i.number}: ${done}`); load(); } catch (e) { setError(`Pedido #${i.number}: ${(e as Error).message}`); }
+    try { await api(`/sales/orders/${i.id}/advance`, 'POST', { to }); setOk(`Pedido #${i.number}: ${done}`); load(); success = true; } catch (e) { setError(`Pedido #${i.number}: ${(e as Error).message}`); }
     setBusy(null);
+    return success;
+  }
+  async function startPicking(i: Item) {
+    if (await advance(i, 'PICKING', 'separação iniciada.')) setColetaId(i.id);
   }
   async function toggleRush(i: Item) {
     let reason: string | null = '';
@@ -72,12 +79,12 @@ export function FilaTab({ initialFilter, initialSearch, onRegisterShipment }: { 
     const disabled = busy === i.id;
     switch (i.stage) {
       case 'WAITING': return <>
-        <button className="btn sm primary" disabled={disabled} onClick={() => advance(i, 'PICKING', 'separação iniciada.')}><Package aria-hidden />Iniciar separação</button>
+        <button className="btn sm primary" disabled={disabled} onClick={() => startPicking(i)}><Package aria-hidden />Iniciar separação</button>
         <Link className="btn sm" href="/armazem"><ClipboardList aria-hidden />Lista</Link>
       </>;
       case 'PICKING': return <>
         <button className="btn sm primary" disabled={disabled} onClick={() => advance(i, 'PACKED', 'embalado e pronto para expedir.')}><Package aria-hidden />Marcar embalado</button>
-        <Link className="btn sm" href="/armazem"><ScanBarcode aria-hidden />Conferir</Link>
+        <button className="btn sm" onClick={() => setColetaId(i.id)}><ScanBarcode aria-hidden />Coletar</button>
       </>;
       case 'PACKED': return <>
         <button className="btn sm primary" disabled={disabled} onClick={() => advance(i, 'SHIPPED', 'expedido (estoque baixado).', { title: `Expedir o pedido #${i.number}?`, message: 'O pedido sai do depósito e o estoque físico é baixado. Isso não pode ser desfeito (só por devolução).', label: 'Expedir' })}><Truck aria-hidden />Expedir</button>
@@ -101,6 +108,8 @@ export function FilaTab({ initialFilter, initialSearch, onRegisterShipment }: { 
           <button className="btn icon ghost" onClick={load} aria-label="Atualizar" title="Atualiza sozinho a cada 30 s"><RefreshCw /></button>
         </div>
       </div>
+
+      {coletaId && <ColetaDialog orderId={coletaId} onClose={() => setColetaId(null)} onDone={load} />}
 
       {!items && !error && <div className="card"><span className="skeleton" style={{ height: 160, width: '100%' }} /></div>}
       {items && (
