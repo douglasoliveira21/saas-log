@@ -8,6 +8,8 @@ export interface AuthContext {
   roleKey: string | null;
   permissions: Set<string>;
   ip?: string;
+  supportSessionId?: string;
+  supportAllowWrite?: boolean;
 }
 
 export type AuthedRequest = Request & { auth?: AuthContext };

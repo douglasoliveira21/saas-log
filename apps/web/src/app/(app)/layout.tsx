@@ -13,6 +13,7 @@ import { NAV, NAV_GROUP_ICONS, NAV_GROUPS } from '@/lib/nav';
 import { SessionProvider, useSession } from '@/lib/session';
 import { useAppMode } from '@/lib/app-mode';
 import { clearTrackerBuffer } from '@/lib/tracking';
+import { GlobalSearch } from '@/components/global-search';
 
 
 function safeStorage(op: 'get' | 'set', key: string, value?: string): string | null {
@@ -156,6 +157,7 @@ function Shell({ children }: { children: ReactNode }) {
             {current && <><span className="hide-sm" aria-hidden>/</span><span className="hide-sm">{current.group}</span><span className="hide-sm" aria-hidden>/</span><strong>{current.label}</strong></>}
           </nav>
           <span className="spacer" />
+          <GlobalSearch />
           {trialLeft !== null && (
             <Link href="/plano" className={`badge ${trialLeft <= 3 ? 'warn' : 'brand'} hide-sm`} style={{ textDecoration: 'none' }}>
               {trialLeft > 0 ? `Avaliação: ${trialLeft} dia(s)` : 'Avaliação encerrada'}
@@ -192,6 +194,7 @@ function Shell({ children }: { children: ReactNode }) {
             )}
           </div>
         </header>
+        {me.support && <div className="support-banner"><strong>Modo suporte {me.support.allowWrite ? 'com escrita autorizada' : 'somente leitura'}</strong><span>Todo acesso está sendo auditado e expira automaticamente.</span><button className="btn sm" onClick={async () => { await api('/platform/support/exit', 'POST'); location.href = '/plataforma'; }}>Encerrar acesso</button></div>}
         <main className="content" id="conteudo">{driverOnly ? <GpsGate>{children}</GpsGate> : children}</main>
       </div>
     </div>

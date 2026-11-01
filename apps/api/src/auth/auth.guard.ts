@@ -11,10 +11,12 @@ import {
   REQUIRED_PERMISSIONS,
 } from '../common/auth';
 import { PrismaService } from '../prisma/prisma.service';
+import { ALL_PERMISSIONS } from '../access/permissions';
 
 interface AccessPayload {
   sub: string;
   tid?: string | null;
+  sid?: string;
 }
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -75,6 +77,26 @@ export class AuthGuard implements CanActivate {
       return true;
     }
 
+    // Um token de suporte nunca pode herdar uma eventual membership do agente no tenant:
+    // a autorização temporária e o modo somente leitura prevalecem durante toda a sessão.
+    if (payload.sid) {
+      const support = await this.prisma.withContext({ tenantId: payload.tid, userId: payload.sub }, (tx) =>
+        tx.$queryRaw<{ ok: boolean; allow_write: boolean }[]>`SELECT * FROM support_validate(${payload.sid}::uuid, ${payload.sub}::uuid, ${payload.tid}::uuid)`,
+      );
+      if (support[0]?.ok) {
+        const allowWrite = support[0].allow_write;
+        const exitingSupport = req.method === 'POST' && req.originalUrl.startsWith('/api/platform/support/exit');
+        if (!allowWrite && !SAFE_METHODS.has(req.method) && !exitingSupport) throw new ForbiddenException('Este acesso de suporte foi autorizado somente para leitura.');
+        const user = await this.prisma.user.findUnique({ where: { id: payload.sub }, select: { status: true } });
+        if (!user || user.status !== 'ACTIVE') throw new UnauthorizedException('Sessão ausente ou expirada.');
+        const permissions = new Set<string>(allowWrite ? ALL_PERMISSIONS : ALL_PERMISSIONS.filter((p) => p.endsWith('.view') || p === 'sales.view_all'));
+        for (const perm of required) if (!permissions.has(perm)) throw new ForbiddenException('O acesso de suporte não inclui esta permissão.');
+        req.auth = { ...base, tenantId: payload.tid, roleKey: 'support', permissions, supportSessionId: payload.sid, supportAllowWrite: allowWrite };
+        return true;
+      }
+      throw new ForbiddenException('A autorização de suporte está inativa ou expirada.');
+    }
+
     const membership = await this.prisma.withContext({ tenantId: payload.tid, userId: payload.sub }, (tx) =>
       tx.membership.findFirst({
         where: { tenantId: payload.tid!, userId: payload.sub, status: 'ACTIVE' },
@@ -85,9 +107,7 @@ export class AuthGuard implements CanActivate {
         },
       }),
     );
-    if (!membership || membership.user.status !== 'ACTIVE') {
-      throw new ForbiddenException('Você não tem acesso a esta empresa.');
-    }
+    if (!membership || membership.user.status !== 'ACTIVE') throw new ForbiddenException('Você não tem acesso a esta empresa.');
     if (membership.tenant.status === 'SUSPENDED') {
       throw new ForbiddenException('Assinatura suspensa. Entre em contato com o suporte.');
     }

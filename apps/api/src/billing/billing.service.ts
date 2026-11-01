@@ -1,7 +1,10 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpException, HttpStatus, Injectable, NotFoundException, Param, Post, Put, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, HttpException, HttpStatus, Injectable, NotFoundException, Param, Post, Put, Query, Res } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { Type } from 'class-transformer';
 import { IsBoolean, IsDateString, IsInt, IsObject, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
-import { AllowNoTenant, AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
+import type { Response } from 'express';
+import { AllowNoTenant, AuthContext, COOKIE_ACCESS, CurrentAuth, RequirePermissions } from '../common/auth';
+import { getConfig } from '../config/app.config';
 import { PrismaService } from '../prisma/prisma.service';
 import { LIMIT_LABEL, LimitKey, limitsOf, usageOf } from './limits';
 
@@ -50,10 +53,12 @@ class PlanDto {
   @IsOptional() @IsInt() sortOrder?: number;
 }
 class AuditQuery { @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(500) limit?: number; }
+class SupportRequestDto { @IsString() @Length(10, 500) reason: string; @Type(() => Number) @IsInt() @Min(5) @Max(120) minutes: number }
+class SupportDecisionDto { @IsBoolean() approve: boolean; @Type(() => Number) @IsInt() @Min(5) @Max(120) minutes: number; @IsBoolean() allowWrite: boolean }
 
 @Injectable()
 export class PlatformService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly jwt: JwtService) {}
 
   /** Executa com a identidade do usuário e sem tenant; o banco recusa quem não é administrador da plataforma. */
   private async run<T>(ctx: AuthContext, fn: (tx: Parameters<Parameters<PrismaService['withContext']>[1]>[0]) => Promise<T>): Promise<T> {
@@ -112,6 +117,49 @@ export class PlatformService {
     await this.requireAdmin(ctx);
     return this.prisma.withContext({ tenantId: null, userId: ctx.userId }, async (tx) => (await tx.$queryRaw<{ status: string; jobs: bigint; oldest_ready: Date | null }[]>`SELECT * FROM platform_queue_stats()`).map((r) => ({ status: r.status, jobs: Number(r.jobs), oldestReady: r.oldest_ready })));
   }
+
+  requestSupport(ctx: AuthContext, tenantId: string, dto: SupportRequestDto) {
+    return this.run(ctx, async (tx) => {
+      const [{ id }] = await tx.$queryRaw<{ id: string }[]>`SELECT platform_support_request(${tenantId}::uuid, ${dto.reason}, ${dto.minutes}::int) AS id`;
+      return { id };
+    });
+  }
+
+  supportSessions(ctx: AuthContext) {
+    return this.run(ctx, (tx) => tx.$queryRaw<Record<string, unknown>[]>`SELECT * FROM platform_support_sessions()`);
+  }
+
+  tenantSupportSessions(ctx: AuthContext) {
+    return this.prisma.withContext(ctx, (tx) => tx.$queryRaw<Record<string, unknown>[]>`SELECT * FROM tenant_support_sessions()`);
+  }
+
+  decideSupport(ctx: AuthContext, id: string, dto: SupportDecisionDto) {
+    return this.prisma.withContext(ctx, async (tx) => { await tx.$executeRaw`SELECT tenant_support_decide(${id}::uuid, ${dto.approve}, ${dto.minutes}::int, ${dto.allowWrite})`; return { ok: true }; });
+  }
+
+  revokeSupport(ctx: AuthContext, id: string) {
+    return this.prisma.withContext(ctx, async (tx) => { await tx.$executeRaw`SELECT tenant_support_revoke(${id}::uuid)`; return { ok: true }; });
+  }
+
+  async enterSupport(ctx: AuthContext, id: string, res: Response) {
+    const rows = await this.run(ctx, (tx) => tx.$queryRaw<{ tenant_id: string; allow_write: boolean; expires_at: Date }[]>`SELECT * FROM platform_support_enter(${id}::uuid)`);
+    if (!rows.length) throw new ForbiddenException('A autorização está inativa ou expirada.');
+    const cfg = getConfig(); const ttl = Math.max(30, Math.min(cfg.accessTtlSeconds, Math.floor((rows[0].expires_at.getTime() - Date.now()) / 1000)));
+    const token = await this.jwt.signAsync({ sub: ctx.userId, tid: rows[0].tenant_id, sid: id }, { expiresIn: ttl });
+    res.cookie(COOKIE_ACCESS, token, { httpOnly: true, sameSite: 'lax', secure: cfg.cookieSecure, path: '/', maxAge: ttl * 1000 });
+    return { tenantId: rows[0].tenant_id, allowWrite: rows[0].allow_write, expiresAt: rows[0].expires_at };
+  }
+
+  async exitSupport(ctx: AuthContext, res: Response) {
+    await this.requireAdmin(ctx);
+    const cfg = getConfig(); const token = await this.jwt.signAsync({ sub: ctx.userId, tid: null }, { expiresIn: cfg.accessTtlSeconds });
+    res.cookie(COOKIE_ACCESS, token, { httpOnly: true, sameSite: 'lax', secure: cfg.cookieSecure, path: '/', maxAge: cfg.accessTtlSeconds * 1000 });
+    return { ok: true };
+  }
+
+  operations(ctx: AuthContext) {
+    return this.run(ctx, async (tx) => (await tx.$queryRaw<{ data: unknown }[]>`SELECT platform_operations_overview() AS data`)[0].data);
+  }
 }
 
 @Controller('billing')
@@ -140,4 +188,22 @@ export class PlatformController {
   audit(@CurrentAuth() ctx: AuthContext, @Query() q: AuditQuery) { return this.svc.audit(ctx, q.limit); }
   @Get('queue') @AllowNoTenant()
   queue(@CurrentAuth() ctx: AuthContext) { return this.svc.queue(ctx); }
+  @Get('operations') @AllowNoTenant()
+  operations(@CurrentAuth() ctx: AuthContext) { return this.svc.operations(ctx); }
+  @Get('support') @AllowNoTenant()
+  support(@CurrentAuth() ctx: AuthContext) { return this.svc.supportSessions(ctx); }
+  @Post('tenants/:id/support') @AllowNoTenant()
+  requestSupport(@CurrentAuth() ctx: AuthContext, @Param('id') id: string, @Body() dto: SupportRequestDto) { return this.svc.requestSupport(ctx, id, dto); }
+  @Post('support/:id/enter') @AllowNoTenant() @HttpCode(200)
+  enterSupport(@CurrentAuth() ctx: AuthContext, @Param('id') id: string, @Res({ passthrough: true }) res: Response) { return this.svc.enterSupport(ctx, id, res); }
+  @Post('support/exit') @AllowNoTenant() @HttpCode(200)
+  exitSupport(@CurrentAuth() ctx: AuthContext, @Res({ passthrough: true }) res: Response) { return this.svc.exitSupport(ctx, res); }
+}
+
+@Controller('support')
+export class TenantSupportController {
+  constructor(private readonly svc: PlatformService) {}
+  @Get() @RequirePermissions('tenant.manage') list(@CurrentAuth() ctx: AuthContext) { return this.svc.tenantSupportSessions(ctx); }
+  @Post(':id/decision') @HttpCode(200) @RequirePermissions('tenant.manage') decide(@CurrentAuth() ctx: AuthContext, @Param('id') id: string, @Body() dto: SupportDecisionDto) { return this.svc.decideSupport(ctx, id, dto); }
+  @Post(':id/revoke') @HttpCode(200) @RequirePermissions('tenant.manage') revoke(@CurrentAuth() ctx: AuthContext, @Param('id') id: string) { return this.svc.revokeSupport(ctx, id); }
 }

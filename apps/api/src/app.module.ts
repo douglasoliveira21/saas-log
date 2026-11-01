@@ -52,7 +52,7 @@ import { FISCAL_PROVIDER } from './fiscal/fiscal-provider';
 import { FiscalProviderRouter, ProviderContextService } from './fiscal/fiscal-provider.router';
 import { IbgeService } from './fiscal/sefaz/ibge';
 import { TaxRulesService } from './fiscal/tax-rules.service';
-import { BillingController, BillingService, PlatformController, PlatformService } from './billing/billing.service';
+import { BillingController, BillingService, PlatformController, PlatformService, TenantSupportController } from './billing/billing.service';
 import { AllExceptionsFilter, ObservabilityController, requestObserver } from './observability/observability';
 import { LookupController, LookupService } from './lookup/lookup.service';
 import { BrandingController, BrandingService } from './branding/branding.service';
@@ -80,6 +80,7 @@ import { DeliveryService } from './delivery/delivery.service';
 import { ReportsController } from './reports/reports.controller';
 import { ReportsService } from './reports/reports.service';
 import { UsersController, UsersService } from './users/users.service';
+import { WorkspaceController, WorkspaceService } from './workspace/workspace.service';
 
 @Controller('health')
 class HealthController {
@@ -102,7 +103,7 @@ class HealthController {
       skipIf: () => process.env.NODE_ENV === 'test',
     }),
   ],
-  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, SmartPurchasingController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, MdfeController, InvitesController, NotificationsController, PortfolioController, FederalTaxController, DispatchController, GoalBonusController, FinanceController, ReportsController, DeliveryController, DriverTrackingController, DelinquencyController, NegotiationsController, ManagementController, CreditController, QuotesController, WarehouseController, FleetController, OrdersDashboardController, LogisticsController, BillingController, PlatformController, ObservabilityController, LookupController, BrandingController, ProductImagesController, MediaController, ProductQualityController, ChannelProductsController],
+  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, SmartPurchasingController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, MdfeController, InvitesController, NotificationsController, PortfolioController, FederalTaxController, DispatchController, GoalBonusController, FinanceController, ReportsController, DeliveryController, DriverTrackingController, DelinquencyController, NegotiationsController, ManagementController, CreditController, QuotesController, WarehouseController, FleetController, OrdersDashboardController, LogisticsController, BillingController, PlatformController, TenantSupportController, ObservabilityController, LookupController, BrandingController, ProductImagesController, MediaController, ProductQualityController, ChannelProductsController, WorkspaceController],
   providers: [
     AuthService,
     StructureService,
@@ -165,6 +166,7 @@ class HealthController {
     ProductQualityService,
     ChannelProductsService,
     PlatformService,
+    WorkspaceService,
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     // Provedor de transmissão: enquanto não houver implementação real, nenhuma emissão é simulada.
     // O provedor é escolhido por estabelecimento (cada empresa usa a própria conta); sem credencial, nada é transmitido nem simulado.

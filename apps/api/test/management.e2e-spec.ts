@@ -124,7 +124,8 @@ describe('Gestão: metas, margem, giro/ruptura/previsão, orçamento e pacote do
 
   it('orçamento: orça por categoria e mês e compara com o realizado', async () => {
     const cat = (await owner.post('/api/finance/categories').set(H).send({ name: `Aluguel ${uid()}`, kind: 'OPERATING_EXPENSE' }).expect(201)).body.id;
-    await owner.post('/api/finance/titles').set(H).send({ direction: 'PAYABLE', description: 'Aluguel', amount: 1200, dueDate: `${thisMonth}-15`, categoryId: cat }).expect(201);
+    // Usa hoje para que o título esteja tanto no mês do orçamento quanto na janela dinâmica do pacote do contador.
+    await owner.post('/api/finance/titles').set(H).send({ direction: 'PAYABLE', description: 'Aluguel', amount: 1200, dueDate: day(0), categoryId: cat }).expect(201);
     await owner.put('/api/management/budget').set(H).send({ lines: [{ lineKey: cat, period: thisMonth, amount: 1000 }, { lineKey: 'SALES', period: thisMonth, amount: 5000 }] }).expect(200);
     const b = (await owner.get(`/api/management/budget?year=${thisMonth.slice(0, 4)}`).expect(200)).body;
     const m = (row: any) => row.months.find((x: any) => x.period === thisMonth);

@@ -93,6 +93,27 @@ model User {
   @@map("users")
 }
 
+/// Solicitação temporária de suporte. Tabela global sem acesso direto do papel de runtime;
+/// toda leitura/escrita passa pelas funções SECURITY DEFINER da migração correspondente.
+model SupportAccessSession {
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  requestedById    String    @map("requested_by_id") @db.Uuid
+  approvedById     String?   @map("approved_by_id") @db.Uuid
+  reason           String
+  status           String    @default("REQUESTED")
+  allowWrite       Boolean   @default(false) @map("allow_write")
+  requestedMinutes Int       @default(30) @map("requested_minutes")
+  expiresAt        DateTime? @map("expires_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  decidedAt        DateTime? @map("decided_at")
+  revokedAt        DateTime? @map("revoked_at")
+
+  @@index([tenantId, status])
+  @@index([requestedById, status])
+  @@map("support_access_sessions")
+}
+
 // Sessões de refresh: guardamos somente o hash do token opaco.
 model RefreshSession {
   id         String    @id @default(uuid()) @db.Uuid
@@ -144,8 +165,53 @@ model Tenant {
   backgroundJobs         BackgroundJob[]
   subscriptions          Subscription[]
   branding               TenantBranding?
+  migrationRuns          MigrationRun[]
+  legacyImportRecords    LegacyImportRecord[]
 
   @@map("tenants")
+}
+
+/// Uma execução de migração. Guarda somente resumo e erros; o CSV original não é persistido.
+model MigrationRun {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  entity     String
+  fileName   String?  @map("file_name")
+  dryRun     Boolean  @default(true) @map("dry_run")
+  status     String
+  totalRows  Int      @default(0) @map("total_rows")
+  created    Int      @default(0)
+  updated    Int      @default(0)
+  rejected   Int      @default(0)
+  errors     Json     @default("[]")
+  createdById String? @map("created_by_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, id])
+  @@index([tenantId, createdAt])
+  @@map("migration_runs")
+}
+
+/// Histórico vindo de outro ERP que não pode ser convertido com segurança em lançamentos vivos.
+/// Mantém a origem consultável sem alterar estoque, fiscal ou financeiro atual.
+model LegacyImportRecord {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  externalId String   @map("external_id")
+  kind       String
+  occurredAt DateTime? @map("occurred_at")
+  description String?
+  amount     Decimal? @db.Decimal(14, 2)
+  payload    Json
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, kind, externalId])
+  @@index([tenantId, occurredAt])
+  @@map("legacy_import_records")
 }
 
 model Role {

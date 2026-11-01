@@ -26,8 +26,9 @@ Ao alterar o código do API durante o desenvolvimento, reinicie `dev:api` (ou ro
 ```bash
 npm test            # unitários (sem banco)
 npm run test:e2e    # e2e contra o banco distribuihub_test (criado/migrado automaticamente)
+npm run test:load   # carga autenticada; requer LOAD_EMAIL e LOAD_PASSWORD
 ```
-Detalhes em `docs/TESTING.md`.
+Detalhes em `docs/TESTING.md` e `docs/WORKSPACE-OPERATIONS.md`.
 
 ## Documentação
-`docs/ARCHITECTURE.md`, `docs/COMMERCIAL.md`, `docs/MARKETPLACE-INTEGRATIONS.md`, `docs/FISCAL-BRAZIL.md`, `docs/MULTITENANCY.md`, `docs/DATABASE.md`, `docs/SECURITY.md`, `docs/TESTING.md`, `docs/ROADMAP.md`, `docs/decisions/`. Documentos de módulos futuros (`INVENTORY`, `FISCAL-BRAZIL`, `FINANCE`, `MARKETPLACE-INTEGRATIONS`, `DEPLOYMENT`) existem como marcadores com premissas e pendências.
+`docs/ARCHITECTURE.md`, `docs/COMMERCIAL.md`, `docs/MARKETPLACE-INTEGRATIONS.md`, `docs/FISCAL-BRAZIL.md`, `docs/MULTITENANCY.md`, `docs/DATABASE.md`, `docs/SECURITY.md`, `docs/TESTING.md`, `docs/WORKSPACE-OPERATIONS.md`, `docs/ROADMAP.md`, `docs/decisions/`. Documentos de módulos futuros (`INVENTORY`, `FISCAL-BRAZIL`, `FINANCE`, `MARKETPLACE-INTEGRATIONS`, `DEPLOYMENT`) existem como marcadores com premissas e pendências.

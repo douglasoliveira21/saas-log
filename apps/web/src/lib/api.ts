@@ -38,6 +38,7 @@ export interface Me {
   role: { key: string; name: string } | null;
   permissions: string[];
   platformAdmin: boolean;
+  support?: { sessionId: string; allowWrite: boolean } | null;
   tenants: { id: string; name: string; slug: string; role: { key: string; name: string } }[];
   appName: string;
 }

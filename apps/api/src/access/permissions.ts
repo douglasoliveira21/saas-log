@@ -58,6 +58,7 @@ export const PERMISSIONS = {
   'delivery.perform': 'Motorista: ver as próprias rotas e confirmar entregas com a foto do canhoto',
   'integrations.manage': 'Conectar, configurar, ativar, pausar e desconectar canais; reprocessar jobs',
   'notifications.manage': 'Configurar os avisos por e-mail e WhatsApp, conectar o WhatsApp e ver o histórico de envios',
+  'migration.manage': 'Validar e executar migrações de dados do sistema anterior',
 } as const;
 
 export type PermissionCode = keyof typeof PERMISSIONS;

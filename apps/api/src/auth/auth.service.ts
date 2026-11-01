@@ -348,10 +348,10 @@ export class AuthService {
         tx.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId! }, include: { plan: true, branding: { select: { updatedAt: true } } } }),
       );
       tenant = { id: t.id, name: t.name, slug: t.slug, status: t.status, plan: t.plan?.name ?? null, trialEndsAt: t.trialEndsAt, logoVersion: t.branding?.updatedAt.getTime() ?? null };
-      role = tenants.find((x) => x.id === ctx.tenantId)?.role ?? null;
+      role = ctx.supportSessionId ? { key: 'support', name: 'Suporte temporário' } : tenants.find((x) => x.id === ctx.tenantId)?.role ?? null;
     }
     const [{ is_admin: platformAdmin }] = await this.prisma.withContext({ tenantId: null, userId: ctx.userId }, (tx) => tx.$queryRaw<{ is_admin: boolean }[]>`SELECT platform_is_admin() AS is_admin`);
-    return { user: { id: user.id, name: user.name, email: user.email, phone: user.phone, navStyle: user.navStyle, mfaEnabled: !!user.totpEnabledAt, avatarVersion: user.avatar?.updatedAt.getTime() ?? null }, tenant, role, permissions: [...ctx.permissions].sort(), tenants, platformAdmin, appName: getConfig().appName };
+    return { user: { id: user.id, name: user.name, email: user.email, phone: user.phone, navStyle: user.navStyle, mfaEnabled: !!user.totpEnabledAt, avatarVersion: user.avatar?.updatedAt.getTime() ?? null }, tenant, role, permissions: [...ctx.permissions].sort(), tenants, platformAdmin, support: ctx.supportSessionId ? { sessionId: ctx.supportSessionId, allowWrite: !!ctx.supportAllowWrite } : null, appName: getConfig().appName };
   }
 
   private async listTenants(userId: string): Promise<TenantSummary[]> {

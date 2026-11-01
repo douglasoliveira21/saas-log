@@ -1,6 +1,6 @@
 import {
   BarChart3, Bell, Boxes, Briefcase, ShoppingBag, Building2, ClipboardList, Container, FileText, Gauge, CreditCard, Landmark, Handshake, LayoutDashboard, type LucideIcon, Package, PackageSearch,
-  MapPinned, Navigation, Percent, Plug, ReceiptText, Route, ScrollText, Settings2, ShieldCheck, ShoppingCart, Store, Truck, Users, Wallet, Warehouse,
+  MapPinned, Navigation, Percent, Plug, ReceiptText, Route, ScrollText, Settings2, ShieldCheck, ShoppingCart, Store, Truck, Users, Wallet, Warehouse, ListChecks, DatabaseZap, LifeBuoy,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -52,7 +52,10 @@ export const NAV: NavItem[] = [
   { href: '/relatorios', label: 'Relatórios', icon: BarChart3, group: 'Financeiro e fiscal', permission: 'reports.view', implemented: true },
 
   { href: '/empresa', label: 'Empresa e estrutura', icon: Building2, group: 'Administração', permission: 'company.view', implemented: true },
+  { href: '/onboarding', label: 'Configuração inicial', icon: ListChecks, group: 'Administração', permission: 'tenant.manage', implemented: true },
+  { href: '/migracao', label: 'Migração de dados', icon: DatabaseZap, group: 'Administração', permission: 'migration.manage', implemented: true },
   { href: '/usuarios', label: 'Usuários e papéis', icon: ShieldCheck, group: 'Administração', permission: 'users.view', implemented: true },
+  { href: '/suporte', label: 'Acesso do suporte', icon: LifeBuoy, group: 'Administração', permission: 'tenant.manage', implemented: true },
   { href: '/avisos', label: 'Avisos ao cliente', icon: Bell, group: 'Administração', permission: 'notifications.manage', implemented: true },
   { href: '/configuracoes', label: 'Políticas comerciais', icon: Settings2, group: 'Administração', permission: 'tenant.manage', implemented: true },
   { href: '/plano', label: 'Plano e uso', icon: CreditCard, group: 'Administração', permission: 'tenant.manage', implemented: true },
