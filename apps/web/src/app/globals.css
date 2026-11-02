@@ -89,7 +89,7 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
 .shell { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); min-height: 100vh; transition: grid-template-columns 0.18s ease; }
 .shell.collapsed { grid-template-columns: var(--sidebar-w-collapsed) minmax(0, 1fr); }
 .sidebar { background: var(--sidebar); color: var(--sidebar-text); border-right: 1px solid var(--sidebar-border); position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; z-index: var(--z-sidebar); }
-.sidebar-head { display: flex; align-items: center; gap: 10px; padding: 14px 14px 10px; min-height: var(--topbar-h); }
+.sidebar-head { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 14px 14px 10px; min-height: var(--topbar-h); }
 .logo { width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(135deg, var(--brand), color-mix(in srgb, var(--brand) 55%, #7c3aed)); color: #fff; display: grid; place-items: center; flex: none; font-weight: 700; font-size: 0.9rem; }
 .brand { color: var(--text); font-weight: 650; font-size: 0.98rem; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidebar-scroll { flex: 1; overflow-y: auto; padding: 4px 10px 12px; }
@@ -351,7 +351,7 @@ th[aria-sort] .sort { opacity: 1; color: var(--brand); }
 .logo-preview { width: 220px; height: 84px; border: 1px dashed var(--border-strong); border-radius: var(--radius); display: grid; place-items: center; background: #fff; padding: 8px; flex: none; }
 .logo-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .logo-preview.empty-logo { background: var(--surface-2); color: var(--muted); font-size: 0.82rem; text-align: center; }
-.sys-logo { display: block; object-fit: contain; object-position: left center; }
+.sys-logo { display: block; object-fit: contain; object-position: center; }
 .sys-logo.full { height: 30px; width: auto; max-width: 100%; }
 .sys-logo.mini { display: none; height: 32px; width: 32px; object-position: center; }
 .collapsed .sys-logo.full { display: none; }
@@ -359,7 +359,7 @@ th[aria-sort] .sort { opacity: 1; color: var(--brand); }
 :root[data-theme='dark'] .sys-logo { filter: invert(1); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .sys-logo { filter: invert(1); } }
 .sys-logo.on-dark { filter: invert(1) !important; height: 34px; }
-.tenant-logo { display: block; max-width: 100%; max-height: 44px; object-fit: contain; object-position: left center; }
+.tenant-logo { display: block; max-width: 100%; max-height: 44px; object-fit: contain; object-position: center; }
 .collapsed .tenant-logo { max-width: 38px; max-height: 38px; object-position: center; }
 
 /* ─────────── editor de produto (padrão marketplace) ─────────── */
