@@ -1,5 +1,5 @@
 import {
-  CancelResult, ConsultResult, FiscalEnvironment, FiscalModel, FiscalProvider, OutgoingDocument, ProviderCtx, RemoteDoc, TransmitInput, TransmitResult, ValidationIssue,
+  CancelResult, ConsultResult, EventInput, EventResult, FiscalEnvironment, FiscalModel, FiscalProvider, InutInput, OutgoingDocument, ProviderCtx, RemoteDoc, TransmitInput, TransmitResult, ValidationIssue,
 } from './fiscal-provider';
 
 /**
@@ -12,9 +12,8 @@ import {
  *               (15 a 255 caracteres); status autorizado / processando_autorizacao / erro_autorizacao / cancelado; códigos de erro
  *               (requisicao_invalida, erro_validacao_schema, pending_operation, already_processed, nao_encontrado, permissao_negada…);
  *               campos listados nos métodos de montagem abaixo.
- *  [A VALIDAR]  o que as páginas lidas NÃO trazem: bloco de pagamentos da NF-e (usamos `formas_pagamento`, como na NFC-e), campos de BASE/VALOR
- *               de ICMS, PIS e COFINS (por isso notas com tributo > 0 são bloqueadas na validação, em vez de enviadas incompletas), e o formato do
- *               link de XML/DANFE. Tudo isso só se confirma com uma conta de homologação real.
+ * Os campos de tributos, IBS/CBS, pagamentos, devolução, CC-e e inutilização seguem a referência oficial da API. A autorização final ainda depende
+ * do cadastro fiscal do emitente e deve ser homologada com as credenciais reais antes da produção.
  * O provedor numera a nota (não enviamos numero/serie) e devolve a chave ao autorizar. A referência (`ref`) é o id do nosso documento: reenvio
  * com a mesma referência não cria nota nova.
  */
@@ -45,13 +44,44 @@ const PRESENCE_NFCE = { COUNTER: 1, DELIVERY: 4, INTERNET: 4, PHONE: 4, OTHER: 4
 export const PAYMENT_CODE: Record<string, string> = { CASH: '01', CHECK: '02', CREDIT: '03', DEBIT: '04', BOLETO: '15', PIX: '17', OTHER: '99' };
 
 function itemsOf(doc: OutgoingDocument): Json[] {
-  return doc.items.map((i) => ({
-    numero_item: i.line, codigo_produto: i.sku, descricao: i.description, codigo_ncm: i.ncm, cfop: i.cfop,
-    unidade_comercial: i.unit, unidade_tributavel: i.unit, quantidade_comercial: qty(i.quantity), quantidade_tributavel: qty(i.quantity),
-    valor_unitario_comercial: Number(i.unitValue.toFixed(6)), valor_unitario_tributavel: Number(i.unitValue.toFixed(6)), valor_bruto: money(i.total),
-    icms_origem: i.origin ?? 0, icms_situacao_tributaria: i.icmsCode,
-    ...(doc.model === '55' ? { pis_situacao_tributaria: i.pisCst, cofins_situacao_tributaria: i.cofinsCst, inclui_no_total: 1 } : {}),
-  }));
+  return doc.items.map((i) => {
+    const icms = i.tax?.icms;
+    const pis = i.tax?.pis;
+    const cofins = i.tax?.cofins;
+    const ibsUf = i.taxes?.IBS_UF;
+    const ibsMun = i.taxes?.IBS_MUN;
+    const cbs = i.taxes?.CBS;
+    const ipi = i.taxes?.IPI;
+    const selective = i.taxes?.IS;
+    const rtc = ibsUf ?? ibsMun ?? cbs;
+    return {
+      numero_item: i.line, codigo_produto: i.sku, descricao: i.description, codigo_ncm: i.ncm, cfop: i.cfop,
+      unidade_comercial: i.unit, unidade_tributavel: i.unit, quantidade_comercial: qty(i.quantity), quantidade_tributavel: qty(i.quantity),
+      valor_unitario_comercial: Number(i.unitValue.toFixed(6)), valor_unitario_tributavel: Number(i.unitValue.toFixed(6)), valor_bruto: money(i.total),
+      icms_origem: i.origin ?? 0, icms_situacao_tributaria: i.icmsCode,
+      ...(icms && (icms.base || icms.rate || icms.amount) ? { icms_modalidade_base_calculo: 3, icms_base_calculo: money(icms.base), icms_aliquota: icms.rate, icms_valor: money(icms.amount) } : {}),
+      ...(doc.model === '55' ? {
+        pis_situacao_tributaria: i.pisCst, cofins_situacao_tributaria: i.cofinsCst, inclui_no_total: 1,
+        ...(pis && (pis.base || pis.rate || pis.amount) ? { pis_base_calculo: money(pis.base), pis_aliquota_porcentual: pis.rate, pis_valor: money(pis.amount) } : {}),
+        ...(cofins && (cofins.base || cofins.rate || cofins.amount) ? { cofins_base_calculo: money(cofins.base), cofins_aliquota_porcentual: cofins.rate, cofins_valor: money(cofins.amount) } : {}),
+      } : {}),
+      ...(rtc?.cst && rtc.classCode ? {
+        ibs_cbs_situacao_tributaria: rtc.cst, ibs_cbs_classificacao_tributaria: rtc.classCode,
+        ibs_cbs_base_calculo: money(Math.max(ibsUf?.base ?? 0, ibsMun?.base ?? 0, cbs?.base ?? 0)),
+        ibs_uf_aliquota: ibsUf?.ratePct ?? 0, ibs_uf_valor: money(ibsUf?.amount ?? 0),
+        ibs_mun_aliquota: ibsMun?.ratePct ?? 0, ibs_mun_valor: money(ibsMun?.amount ?? 0),
+        ibs_valor_total: money((ibsUf?.amount ?? 0) + (ibsMun?.amount ?? 0)), cbs_aliquota: cbs?.ratePct ?? 0, cbs_valor: money(cbs?.amount ?? 0),
+      } : {}),
+      ...(ipi?.cst ? {
+        ipi_situacao_tributaria: ipi.cst, ipi_codigo_enquadramento_legal: 999,
+        ...(ipi.base || ipi.ratePct || ipi.amount ? { ipi_base_calculo: money(ipi.base), ipi_aliquota: ipi.ratePct, ipi_valor: money(ipi.amount) } : {}),
+      } : {}),
+      ...(selective?.cst && selective.classCode ? {
+        is_situacao_tributaria: selective.cst, is_classificacao_tributaria: selective.classCode,
+        is_base_calculo: money(selective.base), is_aliquota: selective.ratePct, is_valor: money(selective.amount),
+      } : {}),
+    };
+  });
 }
 
 /** Corpo do POST /v2/nfe ou /v2/nfce. Só campos documentados; o que não está documentado fica de fora (ver cabeçalho do arquivo). */
@@ -68,8 +98,10 @@ export function buildFocusPayload(doc: OutgoingDocument): Json {
       items: itemsOf(doc), formas_pagamento: payments,
     };
   }
+  const isReturn = !!doc.returnOf?.length;
   return {
-    natureza_operacao: 'VENDA DE MERCADORIA', data_emissao: brtIso(doc.issuedAt), data_entrada_saida: brtIso(doc.issuedAt), tipo_documento: 1, finalidade_emissao: 1,
+    natureza_operacao: isReturn ? 'DEVOLUCAO DE VENDA' : 'VENDA DE MERCADORIA', data_emissao: brtIso(doc.issuedAt), data_entrada_saida: brtIso(doc.issuedAt),
+    tipo_documento: isReturn ? 0 : 1, finalidade_emissao: isReturn ? 4 : 1, ...(isReturn ? { notas_referenciadas: doc.returnOf } : {}),
     local_destino: doc.destination, consumidor_final: doc.finalConsumer ? 1 : 0, presenca_comprador: PRESENCE_NFE[doc.presence],
     cnpj_emitente: doc.emitter.cnpj, nome_emitente: doc.emitter.name, ...(doc.emitter.tradeName ? { nome_fantasia_emitente: doc.emitter.tradeName } : {}),
     logradouro_emitente: doc.emitter.street, numero_emitente: doc.emitter.number, bairro_emitente: doc.emitter.district, municipio_emitente: doc.emitter.city, uf_emitente: doc.emitter.uf,
@@ -81,7 +113,7 @@ export function buildFocusPayload(doc: OutgoingDocument): Json {
     valor_frete: money(doc.totals.freight), valor_seguro: 0, valor_desconto: 0, valor_outras_despesas: 0, valor_produtos: money(doc.totals.products), valor_total: money(doc.totals.total),
     modalidade_frete: doc.totals.freight > 0 ? 0 : 9,
     ...(doc.additionalInfo ? { informacoes_adicionais_contribuinte: doc.additionalInfo } : {}),
-    items: itemsOf(doc), formas_pagamento: payments, // [A VALIDAR] nome do bloco de pagamentos na NF-e
+    items: itemsOf(doc), formas_pagamento: payments,
   };
 }
 
@@ -133,8 +165,15 @@ export class FocusNfeProvider implements FiscalProvider {
       const noPis = doc.items.filter((i) => !i.pisCst || !i.cofinsCst).map((i) => i.line);
       if (noPis.length) out.push({ code: 'FOCUS_PIS_COFINS', message: `Item(ns) ${noPis.join(', ')}: a regra não define o CST de PIS e COFINS (obrigatório na NF-e).` });
     }
-    const taxed = doc.items.filter((i) => i.taxAmounts.icms > 0 || i.taxAmounts.pis > 0 || i.taxAmounts.cofins > 0).map((i) => i.line);
-    if (taxed.length) out.push({ code: 'FOCUS_TAX_AMOUNTS', message: `Item(ns) ${taxed.join(', ')} têm tributo com valor (base/alíquota). Este conector ainda não envia base e valor de ICMS/PIS/COFINS: use regras sem tributo destacado (ex.: Simples Nacional sem crédito) ou aguarde o mapeamento validado em homologação.` });
+    const rtcMissing = doc.items.filter((i) => ['IBS_UF', 'IBS_MUN', 'CBS'].some((k) => i.taxes?.[k]) && !Object.values(i.taxes ?? {}).find((t) => t.classCode)?.classCode).map((i) => i.line);
+    if (rtcMissing.length) out.push({ code: 'FOCUS_IBSCBS_CLASS', message: `Item(ns) ${rtcMissing.join(', ')}: informe CST e classificação tributária de 6 dígitos para IBS/CBS.` });
+    const isMissing = doc.items.filter((i) => i.taxes?.IS && (!i.taxes.IS.cst || !i.taxes.IS.classCode)).map((i) => i.line);
+    if (isMissing.length) out.push({ code: 'FOCUS_IS_CLASS', message: `Item(ns) ${isMissing.join(', ')}: informe CST e classificação tributária de 6 dígitos para o Imposto Seletivo.` });
+    const ipiMissing = doc.items.filter((i) => i.taxes?.IPI && !i.taxes.IPI.cst).map((i) => i.line);
+    if (ipiMissing.length) out.push({ code: 'FOCUS_IPI_CST', message: `Item(ns) ${ipiMissing.join(', ')}: informe o CST do IPI.` });
+    const supported = new Set(['ICMS', 'PIS', 'COFINS', 'IPI', 'IBS_UF', 'IBS_MUN', 'CBS', 'IS']);
+    const unknown = doc.items.flatMap((i) => Object.entries(i.taxes ?? {}).filter(([code, tax]) => !supported.has(code) && tax.amount !== 0).map(([code]) => `item ${i.line}: ${code}`));
+    if (unknown.length) out.push({ code: 'FOCUS_TAX_UNMAPPED', message: `Tributos sem mapeamento no conector (${unknown.join(', ')}). A nota não será enviada incompleta.` });
     if (!doc.items.every((i) => /^\d{8}$/.test(i.ncm) && i.cfop)) out.push({ code: 'FOCUS_NCM_CFOP', message: 'Todos os itens precisam de NCM (8 dígitos) e CFOP.' });
     if (doc.model === '65' && !doc.payments.length) out.push({ code: 'FOCUS_PAYMENT', message: 'NFC-e exige a forma de pagamento.' });
     return out;
@@ -200,6 +239,25 @@ export class FocusNfeProvider implements FiscalProvider {
     const b = r.body;
     if (r.status === 200 && str(b?.status) === 'cancelado') return { kind: 'CANCELLED', statusCode: str(b?.status_sefaz) ?? '135', xmlPath: str(b?.caminho_xml_cancelamento) };
     return { kind: 'REJECTED', statusCode: str(b?.status_sefaz) ?? str(b?.codigo) ?? String(r.status), reason: reasonOf(b) };
+  }
+
+  async sendEvent(p: EventInput, ctx: ProviderCtx): Promise<EventResult> {
+    if (p.kind !== 'CCE') return { kind: 'UNAVAILABLE', reason: 'Manifestação do destinatário exige emissão direta no Ambiente Nacional.' };
+    if (!ctx.token) return { kind: 'UNAVAILABLE', reason: 'Token do Focus NFe não configurado.' };
+    if (!p.ref) return { kind: 'UNAVAILABLE', reason: 'Referência interna da NF-e não informada.' };
+    const r = await call('POST', `${FOCUS.baseUrl(ctx.environment)}/v2/nfe/${encodeURIComponent(p.ref)}/carta_correcao`, ctx.token, { correcao: p.text, data_evento: brtIso(new Date()) });
+    if (r === 'NETWORK' || r.status >= 500) return { kind: 'UNAVAILABLE', reason: 'Sem resposta do Focus NFe ao registrar a carta de correção.' };
+    if (r.status === 200 && str(r.body?.status) === 'autorizado') return { kind: 'REGISTERED', statusCode: str(r.body?.status_sefaz) ?? '135', protocol: str(r.body?.numero_protocolo) ?? str(rec(r.body?.protocolo_carta_correcao).numero_protocolo) ?? str(r.body?.protocolo_sefaz) ?? String(r.body?.numero_carta_correcao ?? p.seq) };
+    return { kind: 'REJECTED', statusCode: str(r.body?.status_sefaz) ?? str(r.body?.codigo) ?? String(r.status), reason: reasonOf(r.body) };
+  }
+
+  async inutilize(p: InutInput, ctx: ProviderCtx) {
+    if (!ctx.token) return { kind: 'UNAVAILABLE' as const, reason: 'Token do Focus NFe não configurado.' };
+    if (!p.cnpj) return { kind: 'UNAVAILABLE' as const, reason: 'CNPJ do emitente não informado.' };
+    const r = await call('POST', `${FOCUS.baseUrl(ctx.environment)}/v2/${path(p.model)}/inutilizacao`, ctx.token, { cnpj: p.cnpj, serie: String(p.series), numero_inicial: p.from, numero_final: p.to, justificativa: p.reason });
+    if (r === 'NETWORK' || r.status >= 500) return { kind: 'UNAVAILABLE' as const, reason: 'Sem resposta do Focus NFe ao inutilizar a faixa.' };
+    if (r.status === 200 && str(r.body?.status) === 'autorizado') return { kind: 'OK' as const, protocol: str(r.body?.protocolo_sefaz) ?? '', statusCode: str(r.body?.status_sefaz) ?? '102' };
+    return { kind: 'REJECTED' as const, statusCode: str(r.body?.status_sefaz) ?? str(r.body?.codigo) ?? String(r.status), reason: reasonOf(r.body) };
   }
 
   async download(p: string, ctx: ProviderCtx): Promise<{ content: Buffer; contentType: string }> {

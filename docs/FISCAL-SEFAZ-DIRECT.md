@@ -51,7 +51,7 @@ Fontes oficiais consultadas em 22/10/2026: SPED MG — `portalsped.fazenda.mg.go
 
 ## NF-e de devolução e MDF-e
 
-**NF-e de devolução de venda** (aba Notas de saída → “Devoluções de venda sem NF-e”): a partir da devolução registrada em Vendas, gera NF-e de entrada própria (finNFe 4, tpNF 0, `NFref/refNFe`, CFOP de devolução 1201/1202/1411/2201/…, `tPag 90`). Só na emissão direta e só com a nota original autorizada. A tributação replica a da venda: o contador deve conferir. Validada no XSD e na assinatura contra o servidor de teste; nunca contra a SEFAZ real.
+**NF-e de devolução de venda** (aba Notas de saída → “Devoluções de venda sem NF-e”): a partir da devolução registrada em Vendas, gera NF-e de entrada própria (finNFe 4, tpNF 0, `NFref/refNFe`, CFOP de devolução 1201/1202/1411/2201/…, `tPag 90`). Funciona na emissão direta e no Focus NFe, exige a nota original autorizada e regra fiscal aprovada para `RETURN_SALE`. Validada no XSD e na assinatura contra o servidor de teste; a emissão direta nunca foi exercitada contra a SEFAZ real.
 
 **MDF-e rodoviário (carga própria)** (aba Fiscal → MDF-e; código em `apps/api/src/fiscal/mdfe/`): prepara a partir da viagem (veículo, motorista, NF-e autorizadas dos pedidos), transmite pelo serviço síncrono da SVRS com o certificado A1, consulta, encerra (110112) e cancela (110111). Exige no cadastro: tara e UF da placa do veículo, CPF do motorista, peso dos produtos.
 - Só `tpEmit 2` (prestador de serviço de transporte e CT-e **não** estão cobertos); só NF-e (modelo 55), não NFC-e; sem seguro/CIOT/vale-pedágio.

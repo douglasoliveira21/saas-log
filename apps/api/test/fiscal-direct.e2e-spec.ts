@@ -64,8 +64,8 @@ describe('Emissão direta na SEFAZ (MG) com servidor de teste: NF-e, NFC-e, canc
     return { owner, tenantId: reg.body.tenantId, est: est.body.id, wh, fiscal: await user('fiscal'), accountant: await user('accountant') };
   }
 
-  async function approveRule(t: T, origin: string, dest: string, taxes: object = { ICMS: { csosn: '102', ratePct: 0 }, PIS: { cst: '49', ratePct: 0 }, COFINS: { cst: '49', ratePct: 0 } }) {
-    const c = (await t.fiscal.post('/api/fiscal/rules').set(H).send({ rule: { name: `Venda ${origin}→${dest} ${uid()}`, operation: 'SALE', originUf: origin, destUf: dest }, version: { validFrom: '2026-01-01T00:00:00Z', sourceReference: 'Parecer contábil 12/2026 – simulado', config: { cfop: origin === dest ? '5102' : '6102', taxes } } }).expect(201)).body;
+  async function approveRule(t: T, origin: string, dest: string, taxes: object = { ICMS: { csosn: '102', ratePct: 0 }, PIS: { cst: '49', ratePct: 0 }, COFINS: { cst: '49', ratePct: 0 } }, operation = 'SALE') {
+    const c = (await t.fiscal.post('/api/fiscal/rules').set(H).send({ rule: { name: `${operation} ${origin}→${dest} ${uid()}`, operation, originUf: origin, destUf: dest }, version: { validFrom: '2026-01-01T00:00:00Z', sourceReference: 'Parecer contábil 12/2026 – simulado', config: { cfop: origin === dest ? '5102' : '6102', taxes } } }).expect(201)).body;
     await t.fiscal.post(`/api/fiscal/rules/versions/${c.versionId}/submit`).set(H).expect(200);
     await t.accountant.post(`/api/fiscal/rules/versions/${c.versionId}/approve`).set(H).expect(200);
   }
@@ -108,6 +108,7 @@ describe('Emissão direta na SEFAZ (MG) com servidor de teste: NF-e, NFC-e, canc
     A = await setup('sdA');
     await approveRule(A, 'MG', 'RJ');
     await approveRule(A, 'MG', 'MG');
+    await approveRule(A, 'MG', 'RJ', undefined, 'RETURN_SALE');
   }, 60_000);
   afterAll(async () => {
     for (const k of ['FISCAL_SEFAZ_URL_OVERRIDE', 'FISCAL_SEFAZ_CA_FILE', 'IBGE_API_BASE', 'FISCAL_SEFAZ_POLL_ATTEMPTS', 'FISCAL_SEFAZ_POLL_DELAY_MS']) delete process.env[k];

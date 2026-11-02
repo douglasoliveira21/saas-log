@@ -165,8 +165,7 @@ export class MdfeService {
 
     // certificado e provedor
     const pc = await this.pctx.resolve(tx, ctx.tenantId!, est.id, '55', environment);
-    if (pc.providerName !== 'SEFAZ_DIRECT') block('PROVIDER', 'O MDF-e exige a emissão direta na SEFAZ configurada para o estabelecimento (certificado A1).');
-    else if (!pc.certificate) block('CERTIFICATE', 'Certificado digital A1 não cadastrado ou ilegível para o estabelecimento.');
+    if (!pc.certificate) block('CERTIFICATE', 'Certificado digital A1 não cadastrado ou ilegível para o estabelecimento. O MDF-e é transmitido diretamente à SVRS, mesmo quando NF-e/NFC-e usam provedor gerenciado.');
 
     const ufIni = (est.state ?? '').toUpperCase();
     const ufFim = states[states.length - 1] ?? ufIni;
@@ -274,7 +273,7 @@ export class MdfeService {
       if (!ok(d.status)) throw new ConflictException(why);
       if (!d.accessKey) throw new ConflictException('MDF-e sem chave de acesso.');
       const pc = await this.pctx.resolve(tx, ctx.tenantId!, d.establishmentId, '55', d.environment as FiscalEnvironment);
-      if (pc.providerName !== 'SEFAZ_DIRECT' || !pc.certificate) throw new HttpException({ message: 'Certificado A1 / emissão direta não disponível para este estabelecimento.', code: 'NOT_CONFIGURED' }, HttpStatus.FAILED_DEPENDENCY);
+      if (!pc.certificate) throw new HttpException({ message: 'Certificado A1 local não disponível para transmitir o MDF-e diretamente à SVRS.', code: 'NOT_CONFIGURED' }, HttpStatus.FAILED_DEPENDENCY);
       return { d, pc };
     });
   }

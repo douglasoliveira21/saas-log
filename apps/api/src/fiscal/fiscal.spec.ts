@@ -87,6 +87,11 @@ describe('motor fiscal', () => {
     expect(calculate({ ...input, items: [{ key: 'a', ncm: '73181500', value: 200, freight: 20 }] }, [withFreight]).items[0].taxes.ICMS.amount).toBe(22);
   });
 
+  it('preserva a classificação tributária de IBS/CBS para a emissão', () => {
+    const r = calculate(input, [rule({ extra: { CBS: { cst: '000', classCode: '000001', ratePct: 0.9 } } })]);
+    expect(r.items[0].taxes.CBS).toMatchObject({ cst: '000', classCode: '000001', base: 200, ratePct: 0.9, amount: 1.8 });
+  });
+
   it('escolhe por prioridade e especificidade (NCM mais longo vence); empate exato é ambíguo', () => {
     const general = rule({ ruleId: 'g', name: 'Geral', rate: 5 });
     const ncm = rule({ ruleId: 'n', name: 'NCM 7318', ncmPrefix: '7318', rate: 7 });

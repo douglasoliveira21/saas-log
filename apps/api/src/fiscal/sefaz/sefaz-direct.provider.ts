@@ -73,6 +73,8 @@ export class SefazDirectProvider implements FiscalProvider {
       if (!ctx.csc) out.push({ code: 'SEFAZ_CSC', message: 'CSC da NFC-e não configurado para este ambiente (código e identificador, obtidos no portal da SEFAZ).' });
     }
     if (!doc.payments.length && !doc.returnOf?.length) out.push({ code: 'SEFAZ_PAYMENT', message: 'Informe a forma de pagamento.' });
+    const unsupported = doc.items.flatMap((i) => Object.entries(i.taxes ?? {}).filter(([code, tax]) => !['ICMS', 'PIS', 'COFINS'].includes(code) && tax.amount !== 0).map(([code]) => `item ${i.line}: ${code}`));
+    if (unsupported.length) out.push({ code: 'SEFAZ_TAX_UNMAPPED', message: `A emissão direta ainda não monta estes grupos tributários (${unsupported.join(', ')}). Use o provedor nacional; a nota não será enviada incompleta.` });
     if (out.length) return out;
     // Ensaio completo: monta, assina e valida no XSD com um número de teste (nada é enviado).
     try {

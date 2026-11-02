@@ -59,7 +59,7 @@ export default function FiscalPage() {
   return (
     <>
       <PageHeader title="Fiscal" />
-      <div className="alert">O sistema <strong>não traz alíquotas nem regras tributárias prontas</strong>: tudo é cadastrado e validado pelo seu contador. A <strong>transmissão para a SEFAZ ainda não está disponível</strong> (provedor pendente) e a autenticidade dos XML recebidos <strong>não é verificada</strong> por este sistema.</div>
+      <div className="alert info">O sistema <strong>não presume alíquotas nem regras tributárias</strong>: elas são cadastradas e aprovadas com o contador. NF-e/NFC-e são transmitidas pelo provedor configurado e o MDF-e diretamente à SVRS; faça a homologação completa antes de ativar produção. XML recebido passa por validação estrutural, mas sua situação atual deve ser confirmada na SEFAZ.</div>
       {error && <Alert kind="error">{error}</Alert>}
       {ok && <Alert kind="ok">{ok}</Alert>}
       <div className="tabs" role="tablist" aria-label="Seções do fiscal">
@@ -384,7 +384,7 @@ function RulesTab({ act, can }: TabProps) {
 }
 
 interface VoidRow { id: string; model: string; series: number; fromNumber: number; toNumber: number; environment: string; protocol: string; reason: string; createdAt: string }
-/** Inutilização de faixa de numeração (emissão direta na SEFAZ): só numeração que nunca virou nota. */
+/** Inutilização de faixa de numeração: só numeração que nunca virou nota. */
 function VoidCard({ act }: Pick<TabProps, 'act'>) {
   const [ests, setEsts] = useState<Est[]>([]);
   const [rows, setRows] = useState<VoidRow[]>([]);
@@ -396,7 +396,7 @@ function VoidCard({ act }: Pick<TabProps, 'act'>) {
       <div className="card-head"><h2>Inutilizar numeração</h2><button className="btn sm" onClick={() => setOpen(!open)} aria-expanded={open}>{open ? 'Fechar' : 'Abrir'}</button></div>
       {open && (
         <>
-          <p className="muted" style={{ marginTop: 0 }}>Use quando um número foi pulado e não vai virar nota. Só vale para a emissão direta na SEFAZ e a SEFAZ precisa confirmar. Não dá para inutilizar número de nota já emitida.</p>
+          <p className="muted" style={{ marginTop: 0 }}>Use quando um número foi pulado e não vai virar nota. O provedor configurado envia o pedido e a SEFAZ precisa confirmar. Não dá para inutilizar número de nota já emitida.</p>
           <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); void act(async () => { await api('/fiscal/inutilizacao', 'POST', { establishmentId: f.get('est'), model: f.get('model'), series: Number(f.get('series')), from: Number(f.get('from')), to: Number(f.get('to')), reason: f.get('reason') }); }, 'Numeração inutilizada e registrada.', load); }}>
             <div className="form-grid">
               <div><label htmlFor="ve">Estabelecimento</label><select id="ve" name="est" required>{ests.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</select></div>

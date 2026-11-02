@@ -154,7 +154,7 @@ export class FiscalOutgoingService {
 
   /**
    * Prepara a NF-e de DEVOLUÇÃO DE VENDA (entrada própria: tpNF 0, finNFe 4, CFOP 1.xxx/2.xxx, referenciando a nota autorizada do pedido) a partir de uma
-   * devolução registrada. Tributação: replica a da venda original (regras aprovadas); confira com o contador. Só na emissão direta.
+   * devolução registrada. Tributação: recalculada pelas regras aprovadas; confira com o contador.
    */
   async prepareReturn(ctx: AuthContext, returnId: string) {
     await this.warmCities(ctx, {});
@@ -170,8 +170,6 @@ export class FiscalOutgoingService {
       const est = await tx.establishment.findFirst({ where: { id: orig.establishmentId!, tenantId: ctx.tenantId!, active: true }, include: { company: true } });
       if (!est) throw new BadRequestException('Estabelecimento emissor não encontrado.');
       const cfg = await tx.fiscalConfiguration.upsert({ where: { tenantId_establishmentId: { tenantId: ctx.tenantId!, establishmentId: est.id } }, create: { tenantId: ctx.tenantId!, establishmentId: est.id }, update: {} });
-      const pc = await this.pctx.resolve(tx, ctx.tenantId!, est.id, '55', cfg.environment as FiscalEnvironment);
-      if (pc.providerName !== 'SEFAZ_DIRECT') throw new HttpException({ message: 'A NF-e de devolução só é emitida pela emissão direta na SEFAZ. Com provedor, emita pelo painel dele.', code: 'NOT_SUPPORTED' }, HttpStatus.FAILED_DEPENDENCY);
       const lines: { src: (typeof orig.items)[number]; qty: number; cfop: string }[] = [];
       const qtyBy = new Map<string, number>();
       for (const i of ret.items) qtyBy.set(i.orderItem.productId, (qtyBy.get(i.orderItem.productId) ?? 0) + i.quantity);
@@ -247,8 +245,9 @@ export class FiscalOutgoingService {
     if (!this.provider.isConfigured(pc)) add('INFO', 'PROVIDER_NOT_CONFIGURED', 'Nenhum provedor de transmissão está configurado para este estabelecimento: o documento pode ser validado, mas não transmitido.');
 
     // NFC-e sem endereço do consumidor = operação interna (destino = UF do emitente)
+    const operation = doc.purpose === 'RETURN_SALE' ? 'RETURN_SALE' : 'SALE';
     const out: EngineOutput = await this.rules.compute(tx, ctx.tenantId!, {
-      operation: 'SALE', date: new Date(), originUf: est.state, destUf: cust.state ?? (model === '65' ? est.state : null), regime: est.company.taxRegime, recipientKind: null,
+      operation, date: new Date(), originUf: est.state, destUf: cust.state ?? (model === '65' ? est.state : null), regime: est.company.taxRegime, recipientKind: null,
       items: doc.items.map((i) => ({ key: String(i.line), ncm: i.ncm, productOrigin: i.product?.taxOrigin ?? null, value: Number(i.totalValue) })),
     });
     for (const p of out.pendencies) add('BLOCKING', `TAX_${p.code}`, p.itemKey ? `Item ${p.itemKey}: ${p.message}` : p.message);
@@ -265,7 +264,7 @@ export class FiscalOutgoingService {
     }
     const calc = await tx.taxCalculation.create({
       data: {
-        tenantId: ctx.tenantId!, operation: 'SALE', engineVersion: ENGINE_VERSION, inputs: { documentId: docId, salesOrderId: doc.salesOrderId, originUf: est.state, destUf: cust.state ?? (model === '65' ? est.state : null), regime: est.company.taxRegime } as Prisma.InputJsonValue,
+        tenantId: ctx.tenantId!, operation, engineVersion: ENGINE_VERSION, inputs: { documentId: docId, salesOrderId: doc.salesOrderId, originUf: est.state, destUf: cust.state ?? (model === '65' ? est.state : null), regime: est.company.taxRegime } as Prisma.InputJsonValue,
         outputs: JSON.parse(JSON.stringify(out)) as Prisma.InputJsonValue, ruleVersionIds: out.rulesUsed.map((r) => r.versionId), pendencies: out.pendencies as unknown as Prisma.InputJsonValue, createdById: ctx.userId,
       },
     });
@@ -352,7 +351,8 @@ export class FiscalOutgoingService {
     cust: Prisma.CustomerGetPayload<object>, model: FiscalModel, environment: FiscalEnvironment,
   ): OutgoingDocument {
     const channel = doc.salesOrder?.channel ?? 'DIRECT';
-    const taxOf = (i: (typeof doc.items)[number], code: string) => (((i.declaredTax as { taxes?: Record<string, { cst?: string; csosn?: string; amount?: number; base?: number; ratePct?: number }> } | null)?.taxes ?? {})[code]);
+    const taxesOf = (i: (typeof doc.items)[number]) => ((i.declaredTax as { taxes?: Record<string, { cst?: string; csosn?: string; classCode?: string; amount?: number; base?: number; ratePct?: number }> } | null)?.taxes ?? {});
+    const taxOf = (i: (typeof doc.items)[number], code: string) => taxesOf(i)[code];
     const det = (i: (typeof doc.items)[number], code: string) => ({ base: taxOf(i, code)?.base ?? 0, rate: taxOf(i, code)?.ratePct ?? 0, amount: taxOf(i, code)?.amount ?? 0 });
     const state = (doc.providerState ?? {}) as { paymentMethod?: string; returnOfKey?: string };
     const total = Number(doc.totalInvoice ?? 0);
@@ -374,6 +374,7 @@ export class FiscalOutgoingService {
         icmsCode: taxOf(i, 'ICMS')?.csosn ?? taxOf(i, 'ICMS')?.cst ?? null, pisCst: taxOf(i, 'PIS')?.cst ?? null, cofinsCst: taxOf(i, 'COFINS')?.cst ?? null,
         taxAmounts: { icms: taxOf(i, 'ICMS')?.amount ?? 0, pis: taxOf(i, 'PIS')?.amount ?? 0, cofins: taxOf(i, 'COFINS')?.amount ?? 0 },
         tax: { icms: det(i, 'ICMS'), pis: det(i, 'PIS'), cofins: det(i, 'COFINS') },
+        taxes: Object.fromEntries(Object.entries(taxesOf(i)).map(([code, t]) => [code, { ...t, base: t.base ?? 0, ratePct: t.ratePct ?? 0, amount: t.amount ?? 0 }])),
       })),
       totals: { products: Number(doc.totalProducts ?? 0), freight: Number(doc.totalFreight ?? 0), total },
       payments: state.paymentMethod ? [{ method: state.paymentMethod, amount: total }] : [],
@@ -468,21 +469,21 @@ export class FiscalOutgoingService {
 
   /** Inutiliza uma faixa de numeração não usada (emissão direta). Fica registrada com o protocolo; só se a SEFAZ confirmar. */
   async inutilize(ctx: AuthContext, dto: { establishmentId: string; model: FiscalModel; series: number; from: number; to: number; reason: string }) {
-    const pc = await this.prisma.withContext(ctx, async (tx) => {
+    const setup = await this.prisma.withContext(ctx, async (tx) => {
       const est = await tx.establishment.findFirst({ where: { id: dto.establishmentId, tenantId: ctx.tenantId! } });
       if (!est) throw new NotFoundException('Estabelecimento não encontrado.');
       const cfg = await tx.fiscalConfiguration.findFirst({ where: { tenantId: ctx.tenantId!, establishmentId: est.id } });
       const pc = await this.pctx.resolve(tx, ctx.tenantId!, est.id, dto.model, ((cfg?.environment as FiscalEnvironment) ?? 'HOMOLOGACAO'));
-      if (!this.provider.inutilize || !this.provider.isConfigured(pc)) throw new HttpException({ message: 'Inutilização só está disponível na emissão direta na SEFAZ, com certificado configurado.', code: 'NOT_SUPPORTED' }, HttpStatus.FAILED_DEPENDENCY);
+      if (!this.provider.inutilize || !this.provider.isConfigured(pc)) throw new HttpException({ message: 'O provedor fiscal configurado não oferece inutilização de numeração.', code: 'NOT_SUPPORTED' }, HttpStatus.FAILED_DEPENDENCY);
       // Não inutiliza número que já virou nota (nem a faixa que o sistema já consumiu além do último reservado).
       const used = await tx.fiscalDocument.count({ where: { tenantId: ctx.tenantId!, establishmentId: est.id, model: dto.model, series: dto.series, number: { gte: dto.from, lte: dto.to }, NOT: { status: 'CANCELLED' } } });
       if (used) throw new ConflictException('Há nota(s) emitida(s) ou em andamento nessa faixa: só numeração sem nota pode ser inutilizada.');
-      return pc;
+      return { pc, cnpj: onlyDigits(est.cnpj ?? '') };
     });
-    const r = await this.provider.inutilize!({ model: dto.model, series: dto.series, from: dto.from, to: dto.to, reason: dto.reason.trim() }, pc);
+    const r = await this.provider.inutilize!({ model: dto.model, series: dto.series, from: dto.from, to: dto.to, reason: dto.reason.trim(), cnpj: setup.cnpj }, setup.pc);
     if (r.kind !== 'OK') throw new ConflictException(r.kind === 'REJECTED' ? `Inutilização recusada (${r.statusCode}): ${r.reason}` : r.reason);
     return this.prisma.withContext(ctx, async (tx) => {
-      const row = await tx.fiscalVoid.create({ data: { tenantId: ctx.tenantId!, establishmentId: dto.establishmentId, model: dto.model, series: dto.series, fromNumber: dto.from, toNumber: dto.to, environment: pc.environment, reason: dto.reason.trim(), protocol: r.protocol, statusCode: r.statusCode, createdById: ctx.userId } });
+      const row = await tx.fiscalVoid.create({ data: { tenantId: ctx.tenantId!, establishmentId: dto.establishmentId, model: dto.model, series: dto.series, fromNumber: dto.from, toNumber: dto.to, environment: setup.pc.environment, reason: dto.reason.trim(), protocol: r.protocol, statusCode: r.statusCode, createdById: ctx.userId } });
       await this.audit.record(tx, ctx, { action: 'fiscal.numbering_voided', entity: 'fiscal_void', entityId: row.id, metadata: { model: dto.model, series: dto.series, from: dto.from, to: dto.to, protocol: r.protocol } });
       return row;
     });
@@ -533,7 +534,7 @@ export class FiscalOutgoingService {
       if (seq > 20) throw new ConflictException('Limite de 20 cartas de correção por nota atingido.');
       return { pc, accessKey: d.accessKey, seq, cnpj: onlyDigits(d.emitterDoc ?? d.accessKey.slice(6, 20)) };
     });
-    const r = await this.provider.sendEvent!({ kind: 'CCE', accessKey: ref.accessKey, seq: ref.seq, text: clean, cnpj: ref.cnpj }, ref.pc);
+    const r = await this.provider.sendEvent!({ kind: 'CCE', ref: id, accessKey: ref.accessKey, seq: ref.seq, text: clean, cnpj: ref.cnpj }, ref.pc);
     return this.prisma.withContext(ctx, async (tx) => {
       await this.lock(tx, ctx, id);
       const ok = r.kind === 'REGISTERED';

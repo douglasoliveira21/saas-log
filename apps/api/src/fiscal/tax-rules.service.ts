@@ -21,6 +21,7 @@ export function validateRuleConfig(cfg: unknown): RuleConfig {
     if (p.baseReductionPct !== undefined && !(typeof p.baseReductionPct === 'number' && p.baseReductionPct >= 0 && p.baseReductionPct <= 100)) throw new BadRequestException(`${code}: redução de base deve estar entre 0 e 100.`);
     if (p.cst !== undefined && !/^\d{2,3}$/.test(p.cst)) throw new BadRequestException(`${code}: CST deve ter 2 ou 3 dígitos.`);
     if (p.csosn !== undefined && !/^\d{3}$/.test(p.csosn)) throw new BadRequestException(`${code}: CSOSN deve ter 3 dígitos.`);
+    if (p.classCode !== undefined && !/^\d{6}$/.test(p.classCode)) throw new BadRequestException(`${code}: classificação tributária deve ter 6 dígitos.`);
     if ((p.kind ?? 'PERCENT') === 'PERCENT' && p.ratePct === undefined) throw new BadRequestException(`${code}: informe a alíquota (ou marque o tipo como ST/DIFAL/FCP para registrar a pendência).`);
   }
   return { cfop: c.cfop, includeFreightInBase: !!c.includeFreightInBase, taxes: c.taxes };

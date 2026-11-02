@@ -68,17 +68,15 @@ export class ProviderContextService {
       token = (environment === 'PRODUCAO' ? creds.producao : creds.homologacao) ?? null;
       csc = creds.csc?.[environment === 'PRODUCAO' ? 'producao' : 'homologacao'] ?? null;
     }
-    // Só a emissão direta usa o certificado do sistema (decifrado em memória, por chamada; nunca registrado).
+    // O certificado local também atende o MDF-e direto na SVRS quando NF-e/NFC-e usam um provedor gerenciado.
     let certificate: ProviderCtx['certificate'] = null;
-    if (row?.provider === 'SEFAZ_DIRECT') {
-      const c = await tx.fiscalCertificate.findFirst({ where: { tenantId, establishmentId, status: 'ACTIVE' } });
-      if (c && c.notAfter.getTime() > Date.now()) {
-        try {
-          const s = this.crypto.decrypt<{ pfx: string; password: string }>(tenantId, `fiscal-cert:${c.id}`, c.pfxEnc);
-          const p = pfxToPem(Buffer.from(s.pfx, 'base64'), s.password);
-          certificate = { keyPem: p.keyPem, certPem: p.certPem, certBase64: p.certBase64, cnpj: p.cnpj };
-        } catch { certificate = null; }
-      }
+    const c = await tx.fiscalCertificate.findFirst({ where: { tenantId, establishmentId, status: 'ACTIVE' } });
+    if (c && c.notAfter.getTime() > Date.now()) {
+      try {
+        const s = this.crypto.decrypt<{ pfx: string; password: string }>(tenantId, `fiscal-cert:${c.id}`, c.pfxEnc);
+        const p = pfxToPem(Buffer.from(s.pfx, 'base64'), s.password);
+        certificate = { keyPem: p.keyPem, certPem: p.certPem, certBase64: p.certBase64, cnpj: p.cnpj };
+      } catch { certificate = null; }
     }
     const est = await tx.establishment.findFirst({ where: { id: establishmentId, tenantId }, select: { state: true } });
     return { tenantId, establishmentId, uf: est?.state?.toUpperCase() ?? null, certificate, csc, providerName: row?.provider ?? null, token, model, environment };

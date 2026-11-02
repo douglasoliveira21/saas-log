@@ -9,6 +9,8 @@ export type Operation = 'PURCHASE' | 'SALE' | 'RETURN_SALE' | 'RETURN_PURCHASE' 
 export interface TaxParam {
   cst?: string;
   csosn?: string;
+  /** Classificação tributária oficial do IBS/CBS (cClassTrib, 6 dígitos). */
+  classCode?: string;
   ratePct?: number;
   baseReductionPct?: number;
   /** PERCENT (padrão) é calculado; ST/DIFAL/FCP exigem base específica e ainda não são calculados pelo motor. */
@@ -57,7 +59,7 @@ export interface EngineInput {
 
 export interface Pendency { code: 'NO_RULE' | 'AMBIGUOUS_RULE' | 'UNSUPPORTED_TAX' | 'MISSING_DATA'; itemKey?: string; message: string }
 
-export interface TaxAmount { cst?: string; csosn?: string; base: number; ratePct: number; amount: number }
+export interface TaxAmount { cst?: string; csosn?: string; classCode?: string; base: number; ratePct: number; amount: number }
 
 export interface ItemResult {
   key: string;
@@ -137,7 +139,7 @@ export function calculate(input: EngineInput, rules: RuleCandidate[]): EngineOut
       const base = round2(gross * (1 - (p.baseReductionPct ?? 0) / 100));
       const rate = p.ratePct ?? 0;
       const amount = round2((cents(base) * rate) / 10000);
-      res.taxes[code] = { ...(p.cst ? { cst: p.cst } : {}), ...(p.csosn ? { csosn: p.csosn } : {}), base, ratePct: rate, amount };
+      res.taxes[code] = { ...(p.cst ? { cst: p.cst } : {}), ...(p.csosn ? { csosn: p.csosn } : {}), ...(p.classCode ? { classCode: p.classCode } : {}), base, ratePct: rate, amount };
       res.totalTax = round2(res.totalTax + amount);
       totals[code] = round2((totals[code] ?? 0) + amount);
     }

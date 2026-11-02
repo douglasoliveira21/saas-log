@@ -334,15 +334,19 @@ describe('Emissão fiscal por provedor (Focus NFe simulado): NF-e e NFC-e', () =
       expect((await transmit(A, p.id).expect(200)).body.status).toBe('AUTHORIZED');
     });
 
-    it('tributo com valor (base/alíquota) é bloqueado na validação em vez de ser enviado incompleto', async () => {
+    it('envia base, alíquota e valor dos tributos destacados', async () => {
       const T = await setup('fpC'); await setToken(T);
       await approveRule(T, { ICMS: { cst: '00', ratePct: 12 }, PIS: { cst: '01', ratePct: 1.65 }, COFINS: { cst: '01', ratePct: 7.6 } });
       const p = (await prepare(T, await order(T, 'NFE')).expect(200)).body;
       const d = await doc(T, p.id);
-      expect(d.status).toBe('PENDING_VALIDATION');
-      expect(issues(d, 'BLOCKING')).toContain('FOCUS_TAX_AMOUNTS');
-      expect((await transmit(T, p.id).expect(409)).body.message).toBeDefined();
-      expect(focus.requests.filter((q) => q.method === 'POST')).toHaveLength(0);
+      expect(d.status).toBe('READY_TO_TRANSMIT');
+      expect(issues(d, 'BLOCKING')).toEqual([]);
+      expect((await transmit(T, p.id).expect(200)).body.status).toBe('AUTHORIZED');
+      expect(focus.requests.find((q) => q.method === 'POST')!.body.items[0]).toMatchObject({
+        icms_base_calculo: 100, icms_aliquota: 12, icms_valor: 12,
+        pis_base_calculo: 100, pis_aliquota_porcentual: 1.65, pis_valor: 1.65,
+        cofins_base_calculo: 100, cofins_aliquota_porcentual: 7.6, cofins_valor: 7.6,
+      });
     });
 
     it('regra sem CST de PIS/COFINS ou item sem NCM bloqueia a NF-e', async () => {

@@ -37,10 +37,12 @@ export interface OutgoingItem {
   icmsCode: string | null; // CSOSN (Simples) ou CST
   pisCst: string | null;
   cofinsCst: string | null;
-  /** Valores calculados pelo motor: o conector só envia o que consegue mapear; se algum for > 0, a nota é bloqueada na validação. */
+  /** Totais calculados pelo motor tributário. */
   taxAmounts: { icms: number; pis: number; cofins: number };
   /** Base, alíquota e valor de cada tributo (para provedores que montam o XML). */
   tax?: { icms: { base: number; rate: number; amount: number }; pis: { base: number; rate: number; amount: number }; cofins: { base: number; rate: number; amount: number } };
+  /** Retrato completo e aprovado do motor fiscal, inclusive IBS/CBS. */
+  taxes?: Record<string, { cst?: string; csosn?: string; classCode?: string; base: number; ratePct: number; amount: number }>;
 }
 
 /** Documento de saída neutro (não depende do provedor); cada provedor converte para o seu formato. */
@@ -93,7 +95,7 @@ export type ConsultResult =
 export type CancelResult = { kind: 'CANCELLED'; statusCode: string; xmlPath?: string } | { kind: 'REJECTED'; statusCode: string; reason: string } | { kind: 'UNAVAILABLE'; reason: string };
 
 /** Evento fiscal de uma nota: carta de correção (CC-e) ou manifestação do destinatário. */
-export interface EventInput { kind: 'CCE' | 'MANIFEST'; accessKey: string; seq: number; text?: string; action?: 'CIENCIA' | 'CONFIRMACAO' | 'DESCONHECIMENTO' | 'NAO_REALIZADA'; cnpj: string }
+export interface EventInput { kind: 'CCE' | 'MANIFEST'; accessKey: string; ref?: string; seq: number; text?: string; action?: 'CIENCIA' | 'CONFIRMACAO' | 'DESCONHECIMENTO' | 'NAO_REALIZADA'; cnpj: string }
 export type EventResult = { kind: 'REGISTERED'; statusCode: string; protocol: string } | { kind: 'REJECTED'; statusCode: string; reason: string } | { kind: 'UNAVAILABLE'; reason: string };
 
 export interface ValidationIssue { code: string; message: string }
@@ -123,7 +125,7 @@ export interface FiscalProvider {
   ping?(ctx: ProviderCtx): Promise<{ ok: boolean; message: string }>;
 }
 
-export interface InutInput { model: FiscalModel; series: number; from: number; to: number; reason: string }
+export interface InutInput { model: FiscalModel; series: number; from: number; to: number; reason: string; cnpj?: string }
 
 export class NullFiscalProvider implements FiscalProvider {
   readonly name = 'nenhum';

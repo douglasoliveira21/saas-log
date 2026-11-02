@@ -16,22 +16,19 @@ Cada estabelecimento usa o seu token; o ambiente (homologação/produção) é o
 - O token nunca é registrado em log nem na auditoria; a tabela guarda só o valor cifrado (AES-256-GCM, chave por empresa) com RLS.
 - Sem token, **Transmitir** responde 424 e **não consome nada**.
 
-## O que foi conferido contra a documentação oficial e o que NÃO foi
-**Confirmado** (páginas de doc.focusnfe.com.br lidas em 22/10/2026): autenticação HTTP Basic (token como usuário, senha vazia); URLs `https://homologacao.focusnfe.com.br` e `https://api.focusnfe.com.br` (`/v2`); `POST /v2/nfe?ref=` (assíncrono, 202) e `POST /v2/nfce?ref=` (síncrono); `GET`/`DELETE /v2/{nfe|nfce}/{ref}` (cancelamento com `justificativa` de 15 a 255 caracteres); status `autorizado`/`processando_autorizacao`/`erro_autorizacao`/`cancelado`; códigos de erro; nomes dos campos de cabeçalho, emitente, destinatário e itens usados. **Verificado de verdade:** uma chamada real à homologação com token falso devolve 401, que o sistema mostra como "Token recusado".
-
-**NÃO confirmado — exige conta de homologação real:**
-- O bloco de **pagamentos da NF-e** (usamos `formas_pagamento`, como na NFC-e; o nome não está nas páginas lidas).
-- Campos de **base e valor de ICMS/PIS/COFINS**: por isso **nota com tributo destacado (valor > 0) é BLOQUEADA** na validação em vez de enviada incompleta. Hoje funciona para operações **sem tributo destacado** (ex.: Simples Nacional, CSOSN 102 e PIS/COFINS CST 49 sem valor).
-- O formato do link de XML/DANFE e o comportamento exato de reenvio com a mesma referência (a doc não descreve; confirme com o suporte do provedor).
-- Se a SEFAZ autoriza de fato: só a homologação real mostra.
+## Conferência contra a documentação oficial
+Revisado em 02/11/2026 contra a referência oficial do Focus NFe: autenticação, ambientes, emissão/consulta/cancelamento, pagamentos, ICMS, PIS, COFINS, IPI, IBS/CBS, Imposto Seletivo, devolução referenciada, CC-e, inutilização e caminhos do XML/DANFE. Os payloads têm testes automatizados. A autorização real continua dependendo da conta, credenciamento, certificado e parametrização do cliente e deve ser comprovada no ambiente de homologação antes da produção.
 
 ## Limites conhecidos
-- **ST, DIFAL, FCP, benefício fiscal, monofásico, IBS/CBS**: o motor não calcula (pendência explícita) e o conector não envia.
-- Carta de correção, inutilização, contingência offline da NFC-e e eventos além do cancelamento **não** estão implementados.
+- O motor calcula tributos percentuais configurados pelo contador, inclusive IBS/CBS e Imposto Seletivo. **ST, DIFAL e FCP** continuam como pendência explícita por exigirem bases específicas.
+- O conector envia ICMS, PIS, COFINS, IPI, IBS/CBS e Imposto Seletivo. Tributo desconhecido com valor diferente de zero bloqueia a transmissão para impedir XML incompleto.
+- Cancelamento, CC-e e inutilização estão implementados. Contingência offline da NFC-e e eventos de entrega não estão.
+- Devolução de venda gera NF-e de entrada, finalidade 4, chave original referenciada e exige regra aprovada para `RETURN_SALE`.
 - Cancelamento: prazo e regras são do estado/provedor (a doc cita 24 h para NF-e e 30 min para NFC-e); o sistema repassa a recusa.
 - Webhook do provedor não é usado: o acompanhamento é por consulta (a emissão tenta algumas vezes antes de ficar "aguardando consulta").
 - O DANFE vem do provedor (PDF/HTML conforme ele devolver); o espelho de Vendas continua sendo só conferência.
-- Outros provedores: o ponto de encaixe é `FiscalProvider` (`fiscal-provider.ts`); só o Focus NFe está implementado.
+- A emissão direta na SEFAZ existe para a cobertura declarada no registro de UFs; o Focus NFe é o caminho nacional recomendado.
+- MDF-e é assinado com o A1 local e transmitido diretamente à SVRS, mesmo quando NF-e/NFC-e usam Focus NFe.
 - **Custos:** o provedor cobra pela emissão em produção (o ambiente de homologação costuma ser gratuito; confirme no site dele). O certificado A1 é custo do cliente.
 
 ## NFC-e acima do limite do cupom (divisão automática)
