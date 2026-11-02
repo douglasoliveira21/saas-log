@@ -142,6 +142,6 @@ export class SettingsController {
   @Get() @RequirePermissions('company.view')
   get(@CurrentAuth() ctx: AuthContext) { return this.svc.get(ctx); }
 
-  @Put() @RequirePermissions('tenant.manage')
+  @Put() @RequirePermissions('company.manage')
   update(@CurrentAuth() ctx: AuthContext, @Body() body: Record<string, unknown>) { return this.svc.update(ctx, body); }
 }

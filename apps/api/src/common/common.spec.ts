@@ -36,6 +36,7 @@ describe('papéis de sistema', () => {
     const owner = SYSTEM_ROLES.find((r) => r.key === 'owner')!;
     expect(owner.permissions).toHaveLength(ALL_PERMISSIONS.length);
     expect(SYSTEM_ROLES.find((r) => r.key === 'admin')!.permissions).not.toContain('tenant.manage');
+    expect('tenant.super_admin' in PERMISSIONS).toBe(false);
   });
   it('mantém 12 papéis operacionais, incluindo Motorista (somente confirma as próprias entregas)', () => {
     expect(SYSTEM_ROLES).toHaveLength(12);

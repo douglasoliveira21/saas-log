@@ -191,8 +191,8 @@ export class WorkspaceService {
 @Controller()
 export class WorkspaceController {
   constructor(private readonly svc: WorkspaceService) {}
-  @Get('onboarding') @RequirePermissions('tenant.manage') status(@CurrentAuth() ctx: AuthContext) { return this.svc.onboarding(ctx); }
-  @Post('onboarding/complete') @HttpCode(200) @RequirePermissions('tenant.manage') complete(@CurrentAuth() ctx: AuthContext) { return this.svc.completeOnboarding(ctx); }
+  @Get('onboarding') @RequirePermissions('company.manage') status(@CurrentAuth() ctx: AuthContext) { return this.svc.onboarding(ctx); }
+  @Post('onboarding/complete') @HttpCode(200) @RequirePermissions('company.manage') complete(@CurrentAuth() ctx: AuthContext) { return this.svc.completeOnboarding(ctx); }
   @Get('search') @RequirePermissions('company.view') search(@CurrentAuth() ctx: AuthContext, @Query() q: SearchQuery) { return this.svc.search(ctx, q.q, q.limit); }
   @Get('migration/runs') @RequirePermissions('migration.manage') runs(@CurrentAuth() ctx: AuthContext) { return this.svc.listRuns(ctx); }
   @Post('migration/import') @HttpCode(200) @RequirePermissions('migration.manage') migrate(@CurrentAuth() ctx: AuthContext, @Body() dto: ImportDto) { return this.svc.migrate(ctx, dto); }

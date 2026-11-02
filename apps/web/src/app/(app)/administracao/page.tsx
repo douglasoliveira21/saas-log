@@ -7,15 +7,16 @@ import { ADMIN_NAV } from '@/lib/nav';
 import { useSession } from '@/lib/session';
 
 export default function AdministrationPage() {
-  const { me } = useSession();
+  const { me, can } = useSession();
+  const items = ADMIN_NAV.filter((item) => can(item.permission));
   return <>
-    <PageHeader title="Administração do tenant" description="Área reservada ao super administrador. Configurações estruturais, acessos, plano e auditoria ficam separadas da operação diária." />
+    <PageHeader title="Administração do tenant" description="Configurações da empresa exibidas conforme as permissões do administrador responsável." />
     <div className="admin-hero card">
       <div className="admin-hero-icon"><ShieldCheck aria-hidden /></div>
-      <div><strong>Super administrador</strong><p className="muted">As ações realizadas nesta área são protegidas por permissão e registradas na auditoria.</p></div>
+      <div><strong>Administrador do tenant</strong><p className="muted">Cada função exige sua própria permissão e as alterações são registradas na auditoria.</p></div>
     </div>
     <div className="admin-grid">
-      {ADMIN_NAV.map((item) => { const Icon=item.icon; return <Link href={item.href} className="admin-card card" key={item.href}>
+      {items.map((item) => { const Icon=item.icon; return <Link href={item.href} className="admin-card card" key={item.href}>
         <span className="admin-card-icon"><Icon aria-hidden /></span><span><strong>{item.label}</strong><small>{adminDescription(item.href)}</small></span>
       </Link>; })}
     </div>

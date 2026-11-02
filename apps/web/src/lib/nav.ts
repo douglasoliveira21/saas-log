@@ -53,20 +53,19 @@ export const NAV: NavItem[] = [
 
 ];
 
-/** Módulos fora da navegação operacional, exclusivos do super administrador do tenant. */
+/** Módulos administrativos do tenant, exibidos conforme a permissão específica. */
 export const ADMIN_NAV: NavItem[] = [
-  { href: '/empresa', label: 'Empresa e estrutura', icon: Building2, group: 'Administração', permission: 'tenant.super_admin', implemented: true },
-  { href: '/onboarding', label: 'Configuração inicial', icon: ListChecks, group: 'Administração', permission: 'tenant.super_admin', implemented: true },
-  { href: '/migracao', label: 'Migração de dados', icon: DatabaseZap, group: 'Administração', permission: 'tenant.super_admin', implemented: true },
-  { href: '/usuarios', label: 'Usuários e papéis', icon: ShieldCheck, group: 'Administração', permission: 'tenant.super_admin', implemented: true },
-  { href: '/suporte', label: 'Acesso do suporte', icon: LifeBuoy, group: 'Administração', permission: 'tenant.super_admin', implemented: true },
-  { href: '/avisos', label: 'Avisos ao cliente', icon: Bell, group: 'Administração', permission: 'tenant.super_admin', implemented: true },
-  { href: '/configuracoes', label: 'Políticas comerciais', icon: Settings2, group: 'Administração', permission: 'tenant.super_admin', implemented: true },
-  { href: '/plano', label: 'Plano e uso', icon: CreditCard, group: 'Administração', permission: 'tenant.super_admin', implemented: true },
-  { href: '/auditoria', label: 'Auditoria', icon: ScrollText, group: 'Administração', permission: 'tenant.super_admin', implemented: true },
+  { href: '/empresa', label: 'Empresa e estrutura', icon: Building2, group: 'Administração', permission: 'company.manage', implemented: true },
+  { href: '/onboarding', label: 'Configuração inicial', icon: ListChecks, group: 'Administração', permission: 'company.manage', implemented: true },
+  { href: '/migracao', label: 'Migração de dados', icon: DatabaseZap, group: 'Administração', permission: 'migration.manage', implemented: true },
+  { href: '/usuarios', label: 'Usuários e papéis', icon: ShieldCheck, group: 'Administração', permission: 'users.manage', implemented: true },
+  { href: '/suporte', label: 'Acesso do suporte', icon: LifeBuoy, group: 'Administração', permission: 'tenant.manage', implemented: true },
+  { href: '/avisos', label: 'Avisos ao cliente', icon: Bell, group: 'Administração', permission: 'notifications.manage', implemented: true },
+  { href: '/configuracoes', label: 'Políticas comerciais', icon: Settings2, group: 'Administração', permission: 'company.manage', implemented: true },
+  { href: '/plano', label: 'Plano e uso', icon: CreditCard, group: 'Administração', permission: 'tenant.manage', implemented: true },
+  { href: '/auditoria', label: 'Auditoria', icon: ScrollText, group: 'Administração', permission: 'audit.view', implemented: true },
 ];
 
-export const TENANT_ADMIN_PATHS = ['/administracao', ...ADMIN_NAV.map((item) => item.href)];
 export const PLATFORM_ADMIN_PATHS = ['/plataforma'];
 
 export const findModule = (slug: string) => NAV.find((n) => n.href === `/m/${slug}`);

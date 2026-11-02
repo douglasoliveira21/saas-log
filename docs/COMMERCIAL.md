@@ -24,7 +24,7 @@
 - Pendências: cotações e comparação de fornecedores, solicitação de compra, conferência com NF-e/XML (Fase 6), contas a pagar (Fase 7), lotes/validade, substituição de produto, sazonalidade nas sugestões.
 
 ## Configurações (`tenant_settings`)
-`commission.event`, `sales.maxDiscountPct`, `purchases.approvalLimit` — apenas `tenant.manage`; mudanças gravam antes/depois na auditoria.
+`commission.event`, `sales.maxDiscountPct`, `purchases.approvalLimit` — exigem `company.manage`; mudanças gravam antes/depois na auditoria.
 
 ## Horário de corte das vendas (fora de marketplace)
 **Onde configurar:** Configurações → *Horário de corte das vendas* (`sales.cutoffTime`, formato HH:MM; vazio = sem corte, que é o padrão) e *Considerar só dias úteis* (`sales.cutoffBusinessDaysOnly`, ligado por padrão).

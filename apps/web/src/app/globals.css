@@ -848,7 +848,7 @@ tr.pk-cont td { border-top: 0; }
 .search-results a { display: flex; flex-direction: column; gap: 2px; padding: 9px 10px; border-radius: 9px; color: var(--text); text-decoration: none; } .search-results a:hover { background: var(--surface-2); } .search-results a span { color: var(--muted); font-size: .8rem; }
 .support-banner { display: flex; gap: 14px; align-items: center; padding: 9px 18px; background: #7c2d12; color: #fff; } .support-banner span { flex: 1; font-size: .82rem; } .support-banner .btn { background: #fff; color: #7c2d12; }
 
-/* Portal reservado ao super administrador do tenant */
+/* Portal administrativo do tenant */
 .admin-hero { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; border-color: color-mix(in srgb, var(--brand) 35%, var(--border)); }
 .admin-hero p { margin: 4px 0 0; }
 .admin-hero-icon, .admin-card-icon { flex: none; width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: var(--brand-soft); color: var(--brand); }

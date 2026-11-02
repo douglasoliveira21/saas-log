@@ -9,7 +9,7 @@ import { api } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
 import { GpsGate } from '@/components/gps-gate';
 import { BRAND } from '@/lib/brand';
-import { ADMIN_NAV, NAV, NAV_GROUP_ICONS, NAV_GROUPS, PLATFORM_ADMIN_PATHS, TENANT_ADMIN_PATHS } from '@/lib/nav';
+import { ADMIN_NAV, NAV, NAV_GROUP_ICONS, NAV_GROUPS, PLATFORM_ADMIN_PATHS } from '@/lib/nav';
 import { SessionProvider, useSession } from '@/lib/session';
 import { useAppMode } from '@/lib/app-mode';
 import { clearTrackerBuffer } from '@/lib/tracking';
@@ -67,6 +67,7 @@ function Shell({ children }: { children: ReactNode }) {
 
   // Só mostra o que o usuário pode acessar (o servidor reforça a mesma regra).
   const visible = NAV.filter((n) => can(n.permission));
+  const visibleAdmin = ADMIN_NAV.filter((n) => can(n.permission));
   const toggleGroup = (g: string, now: boolean) => { const next = { ...openGroups, [g]: !now }; setOpenGroups(next); safeStorage('set', 'dh-nav-open', JSON.stringify(next)); };
   // conta de motorista (só confirma entregas): o GPS do aparelho é obrigatório
   const driverOnly = can('delivery.perform') && !can('routes.view');
@@ -78,7 +79,7 @@ function Shell({ children }: { children: ReactNode }) {
   }
   const current = pathname === '/administracao'
     ? { href: '/administracao', label: 'Portal administrativo', group: 'Administração' }
-    : [...visible, ...(can('tenant.super_admin') ? ADMIN_NAV : [])].sort((a, b) => b.href.length - a.href.length).find((n) => pathname === n.href || pathname.startsWith(n.href + '/'));
+    : [...visible, ...visibleAdmin].sort((a, b) => b.href.length - a.href.length).find((n) => pathname === n.href || pathname.startsWith(n.href + '/'));
   const trialLeft = me.tenant?.status === 'TRIAL' && me.tenant.trialEndsAt ? Math.ceil((new Date(me.tenant.trialEndsAt).getTime() - Date.now()) / 86_400_000) : null;
 
   return (
@@ -160,7 +161,7 @@ function Shell({ children }: { children: ReactNode }) {
           </nav>
           <span className="spacer" />
           <GlobalSearch />
-          {trialLeft !== null && (can('tenant.super_admin') ? <Link href="/plano" className={`badge ${trialLeft <= 3 ? 'warn' : 'brand'} hide-sm`} style={{ textDecoration: 'none' }}>
+          {trialLeft !== null && (can('tenant.manage') ? <Link href="/plano" className={`badge ${trialLeft <= 3 ? 'warn' : 'brand'} hide-sm`} style={{ textDecoration: 'none' }}>
             {trialLeft > 0 ? `Avaliação: ${trialLeft} dia(s)` : 'Avaliação encerrada'}
           </Link> : <span className={`badge ${trialLeft <= 3 ? 'warn' : 'brand'} hide-sm`}>{trialLeft > 0 ? `Avaliação: ${trialLeft} dia(s)` : 'Avaliação encerrada'}</span>)}
           <div className="menu-wrap" ref={bellRef}>
@@ -188,7 +189,7 @@ function Shell({ children }: { children: ReactNode }) {
                 <button role="menuitem" onClick={() => router.push('/perfil')}><User />Meu perfil</button>
                 <button role="menuitem" onClick={changeStyle}>{launcher ? <PanelLeft /> : <LayoutGrid />}{launcher ? 'Usar menu lateral (clássico)' : 'Usar início em blocos'}</button>
                 <button role="menuitem" onClick={() => router.push('/seguranca')}><ShieldCheck />Segurança da conta</button>
-                {can('tenant.super_admin') && <button role="menuitem" onClick={() => router.push('/administracao')}><ShieldCheck />Administração do tenant</button>}
+                {visibleAdmin.length > 0 && <button role="menuitem" onClick={() => router.push('/administracao')}><ShieldCheck />Administração do tenant</button>}
                 {me.platformAdmin && <button role="menuitem" onClick={() => router.push('/plataforma')}><ShieldCheck />Administração global</button>}
                 {me.tenants.length > 1 && <button role="menuitem" onClick={() => router.push('/select-tenant')}><Repeat />Trocar empresa</button>}
                 <button role="menuitem" onClick={() => { clearTrackerBuffer(); void logout(); }}><LogOut />Sair</button>
@@ -211,11 +212,14 @@ function AccessBoundary({ children }: { children: ReactNode }) {
   const { can, me } = useSession();
   const pathname = usePathname();
   const router = useRouter();
-  const deniedTenantAdmin = matchesArea(pathname, TENANT_ADMIN_PATHS) && !can('tenant.super_admin');
+  const adminItem = ADMIN_NAV.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
+  const deniedTenantAdmin = pathname === '/administracao'
+    ? !ADMIN_NAV.some((item) => can(item.permission))
+    : !!adminItem && !can(adminItem.permission);
   const deniedPlatformAdmin = matchesArea(pathname, PLATFORM_ADMIN_PATHS) && !me.platformAdmin;
   const denied = deniedTenantAdmin || deniedPlatformAdmin;
   useEffect(() => { if (denied) router.replace('/dashboard'); }, [denied, router]);
-  if (denied) return <div className="center-screen muted">Acesso restrito ao super administrador.</div>;
+  if (denied) return <div className="center-screen muted">Você não tem permissão para acessar esta área.</div>;
   return children;
 }
 

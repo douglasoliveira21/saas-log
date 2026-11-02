@@ -20,23 +20,6 @@ interface AccessPayload {
 }
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-const TENANT_SUPER_ADMIN_PREFIXES = [
-  '/api/structure', '/api/companies', '/api/establishments', '/api/warehouses',
-  '/api/users', '/api/roles', '/api/permissions', '/api/settings', '/api/billing',
-  '/api/support', '/api/onboarding', '/api/migration', '/api/audit', '/api/notifications',
-];
-
-function requiresTenantSuperAdmin(method: string, url: string) {
-  const path = url.split('?')[0];
-  // A árvore estrutural é usada como contexto por telas operacionais; somente sua
-  // manutenção pertence ao portal administrativo.
-  if (SAFE_METHODS.has(method) && (path === '/api/structure' || path.startsWith('/api/companies/') || path.startsWith('/api/establishments/') || path.startsWith('/api/warehouses/'))) return false;
-  // Preferência de contato do próprio cliente é parte da operação comercial.
-  if (path.startsWith('/api/notifications/customers/')) return false;
-  if (TENANT_SUPER_ADMIN_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) return true;
-  return path.startsWith('/api/branding/') && !SAFE_METHODS.has(method);
-}
-
 /**
  * Guard global: autenticação + resolução do tenant + autorização por permissão.
  * O tenant do token NÃO é confiado: a membership ativa é relida do banco a cada requisição
@@ -106,7 +89,6 @@ export class AuthGuard implements CanActivate {
         const user = await this.prisma.user.findUnique({ where: { id: payload.sub }, select: { status: true } });
         if (!user || user.status !== 'ACTIVE') throw new UnauthorizedException('Sessão ausente ou expirada.');
         const permissions = new Set<string>(allowWrite ? ALL_PERMISSIONS : ALL_PERMISSIONS.filter((p) => p.endsWith('.view') || p === 'sales.view_all'));
-        if (requiresTenantSuperAdmin(req.method, req.originalUrl) && !permissions.has('tenant.super_admin')) throw new ForbiddenException('Área restrita ao super administrador do tenant.');
         for (const perm of required) if (!permissions.has(perm)) throw new ForbiddenException('O acesso de suporte não inclui esta permissão.');
         req.auth = { ...base, tenantId: payload.tid, roleKey: 'support', permissions, supportSessionId: payload.sid, supportAllowWrite: allowWrite };
         return true;
@@ -141,7 +123,6 @@ export class AuthGuard implements CanActivate {
       roleKey: membership.role.key,
       permissions: new Set(membership.role.permissions.map((p) => p.permission)),
     };
-    if (requiresTenantSuperAdmin(req.method, req.originalUrl) && !ctx.permissions.has('tenant.super_admin')) throw new ForbiddenException('Área restrita ao super administrador do tenant.');
     for (const perm of required) {
       if (!ctx.permissions.has(perm)) throw new ForbiddenException('Você não tem permissão para esta ação.');
     }

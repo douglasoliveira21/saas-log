@@ -4,9 +4,9 @@
 
 Configurações administrativas não aparecem na navegação operacional. O acesso é feito pelo menu do usuário em **Administração do tenant**, que abre `/administracao`.
 
-Somente usuários com `tenant.super_admin` entram no portal e nas APIs administrativas. A permissão é concedida automaticamente ao papel `owner`; o papel `admin` continua administrativo no contexto operacional, mas não recebe esse acesso. A área global `/plataforma` permanece independente e exige administrador da plataforma.
+O portal mostra cada função conforme sua permissão específica. O papel **Administrador do tenant** pode configurar empresa, onboarding, migração, usuários, políticas comerciais, auditoria e avisos/WhatsApp. Plano, assinatura e autorização de suporte permanecem exclusivos do proprietário por meio de `tenant.manage`. A área global `/plataforma` permanece independente e exige administrador da plataforma.
 
-Consultas estruturais necessárias à operação e o opt-out de comunicação do cliente continuam disponíveis conforme suas permissões específicas. Alterações de estrutura, usuários, migração, suporte, políticas, plano, auditoria e configuração de avisos exigem o super administrador.
+Papéis personalizados também seguem as permissões de cada módulo. A configuração global do servidor de WhatsApp continua sendo responsabilidade da plataforma; a conexão da instância e do número de cada empresa é administrada dentro do próprio tenant com `notifications.manage`.
 
 ## Onboarding
 
