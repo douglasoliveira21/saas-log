@@ -6,3 +6,4 @@ process.env.DH_APP_PASSWORD ??= 'dh_app_dev';
 process.env.CREDENTIALS_KEY ??= 'dGVzdC1rZXktdGVzdC1rZXktdGVzdC1rZXktMTIzNDU='; // 32 bytes, somente testes
 process.env.WORKER_ENABLED = 'false';
 process.env.ENABLE_SANDBOX_CONNECTOR = 'true';
+process.env.ALLOW_SELF_REGISTRATION = 'true';

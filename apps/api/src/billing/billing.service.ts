@@ -1,9 +1,13 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, HttpException, HttpStatus, Injectable, NotFoundException, Param, Post, Put, Query, Res } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, HttpException, HttpStatus, Injectable, NotFoundException, Param, Post, Put, Query, Res } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsDateString, IsInt, IsObject, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
+import { IsBoolean, IsDateString, IsEmail, IsIn, IsInt, IsObject, IsOptional, IsString, Length, Matches, Max, MaxLength, Min } from 'class-validator';
 import type { Response } from 'express';
+import { SYSTEM_ROLES } from '../access/permissions';
+import { AuditService } from '../audit/audit.service';
 import { AllowNoTenant, AuthContext, COOKIE_ACCESS, CurrentAuth, RequirePermissions } from '../common/auth';
+import { hashPassword, validatePasswordPolicy } from '../common/password';
 import { getConfig } from '../config/app.config';
 import { PrismaService } from '../prisma/prisma.service';
 import { LIMIT_LABEL, LimitKey, limitsOf, usageOf } from './limits';
@@ -44,6 +48,16 @@ class UpdateTenantDto {
   @IsOptional() @IsDateString() trialEndsAt?: string;
   @IsString() @Length(3, 300) note: string;
 }
+class CreateTenantDto {
+  @IsString() @Length(2, 120) companyName: string;
+  @IsString() @Length(2, 120) ownerName: string;
+  @IsEmail() @MaxLength(200) ownerEmail: string;
+  @IsString() @MaxLength(200) ownerPassword: string;
+  @IsString() @Length(2, 40) planCode: string;
+  @IsIn(['TRIAL', 'ACTIVE']) status: 'TRIAL' | 'ACTIVE';
+  @IsOptional() @IsDateString() trialEndsAt?: string;
+  @IsString() @Length(3, 300) note: string;
+}
 class PlanDto {
   @IsString() @Length(2, 80) name: string;
   @IsObject() limits: Record<string, number>;
@@ -58,7 +72,7 @@ class SupportDecisionDto { @IsBoolean() approve: boolean; @Type(() => Number) @I
 
 @Injectable()
 export class PlatformService {
-  constructor(private readonly prisma: PrismaService, private readonly jwt: JwtService) {}
+  constructor(private readonly prisma: PrismaService, private readonly jwt: JwtService, private readonly auditLog: AuditService) {}
 
   /** Executa com a identidade do usuário e sem tenant; o banco recusa quem não é administrador da plataforma. */
   private async run<T>(ctx: AuthContext, fn: (tx: Parameters<Parameters<PrismaService['withContext']>[1]>[0]) => Promise<T>): Promise<T> {
@@ -87,6 +101,39 @@ export class PlatformService {
         users: Number(r.users), products: Number(r.products), orders30d: Number(r.orders_30d), connections: Number(r.connections), lastActivity: r.last_activity,
       }));
     });
+  }
+
+  async createTenant(ctx: AuthContext, dto: CreateTenantDto) {
+    await this.requireAdmin(ctx);
+    const email = dto.ownerEmail.trim().toLowerCase();
+    const existing = await this.prisma.user.findUnique({ where: { email }, select: { id: true, status: true } });
+    if (existing?.status !== undefined && existing.status !== 'ACTIVE') throw new ConflictException('O usuário proprietário existe, mas está inativo.');
+    if (!existing) {
+      const policy = validatePasswordPolicy(dto.ownerPassword);
+      if (policy) throw new BadRequestException(policy);
+    }
+    const plan = await this.prisma.plan.findFirst({ where: { code: dto.planCode, active: true }, select: { id: true, code: true } });
+    if (!plan) throw new BadRequestException('Plano inválido ou inativo.');
+
+    const tenantId = randomUUID();
+    const base = dto.companyName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 45) || 'empresa';
+    const slug = `${base}-${tenantId.slice(0, 8)}`;
+    const trialEndsAt = dto.status === 'TRIAL' ? new Date(dto.trialEndsAt ?? Date.now() + 14 * 86_400_000) : null;
+    const passwordHash = existing ? null : await hashPassword(dto.ownerPassword);
+
+    await this.prisma.withContext({ tenantId, userId: ctx.userId }, async (tx) => {
+      const user = existing ?? await tx.user.create({ data: { email, name: dto.ownerName.trim(), passwordHash: passwordHash! } });
+      await tx.tenant.create({ data: { id: tenantId, name: dto.companyName.trim(), slug, status: dto.status, planId: plan.id, trialEndsAt } });
+      for (const def of SYSTEM_ROLES) {
+        const role = await tx.role.create({ data: { tenantId, key: def.key, name: def.name, isSystem: true } });
+        await tx.rolePermission.createMany({ data: def.permissions.map((permission) => ({ roleId: role.id, tenantId, permission })) });
+      }
+      const owner = await tx.role.findUniqueOrThrow({ where: { tenantId_key: { tenantId, key: 'owner' } } });
+      await tx.membership.create({ data: { tenantId, userId: user.id, roleId: owner.id } });
+      await this.auditLog.record(tx, { tenantId, userId: ctx.userId, ip: ctx.ip }, { action: 'platform.tenant_created', entity: 'tenant', entityId: tenantId, metadata: { name: dto.companyName.trim(), plan: plan.code, status: dto.status, ownerEmail: email, note: dto.note } });
+      await tx.$executeRaw`SELECT platform_record_tenant_created(${tenantId}::uuid, ${email}, ${dto.note})`;
+    });
+    return { id: tenantId, name: dto.companyName.trim(), slug, status: dto.status, plan: plan.code, ownerEmail: email, ownerExisting: !!existing };
   }
 
   update(ctx: AuthContext, tenantId: string, dto: UpdateTenantDto) {
@@ -175,6 +222,8 @@ export class PlatformController {
   constructor(private readonly svc: PlatformService) {}
   @Get('tenants') @AllowNoTenant()
   tenants(@CurrentAuth() ctx: AuthContext) { return this.svc.tenants(ctx); }
+  @Post('tenants') @AllowNoTenant()
+  createTenant(@CurrentAuth() ctx: AuthContext, @Body() dto: CreateTenantDto) { return this.svc.createTenant(ctx, dto); }
   @Put('tenants/:id') @AllowNoTenant()
   update(@CurrentAuth() ctx: AuthContext, @Param('id') id: string, @Body() dto: UpdateTenantDto) {
     if (!/^[0-9a-f-]{36}$/i.test(id)) throw new HttpException('Identificador inválido.', HttpStatus.BAD_REQUEST);

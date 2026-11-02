@@ -53,8 +53,9 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto, res: Response, meta: RequestMeta) {
-    // Em produção, depois de criada a primeira empresa, defina ALLOW_SELF_REGISTRATION=false: contas passam a nascer só por convite/administração.
-    if (process.env.ALLOW_SELF_REGISTRATION === 'false') throw new ForbiddenException('O cadastro aberto está desativado. Peça um convite ao administrador da sua empresa.');
+    // Fechado por padrão: novos tenants são provisionados pelo administrador global.
+    // O valor true serve apenas para o bootstrap controlado da primeira conta da plataforma.
+    if (process.env.ALLOW_SELF_REGISTRATION !== 'true') throw new ForbiddenException('O cadastro aberto está desativado. A licença deve ser criada pelo administrador da plataforma.');
     const policy = validatePasswordPolicy(dto.password);
     if (policy) throw new BadRequestException(policy);
     const email = dto.email.trim().toLowerCase();

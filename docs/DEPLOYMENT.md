@@ -21,7 +21,7 @@ O navegador só fala com a origem do web; `/api/*` é encaminhado ao backend (co
 | `CREDENTIALS_KEY` | sim | 32 bytes base64. Cifra credenciais de integrações e certificados. **Perder a chave = perder as credenciais.** Rotação: `CREDENTIALS_KEY_PREVIOUS`. |
 | `COOKIE_SECURE` | produção: `true` | Exige HTTPS. |
 | `WEB_ORIGIN` | sim | Origem pública (callbacks OAuth). |
-| `ALLOW_SELF_REGISTRATION` | produção: `false` | Fecha o cadastro público de empresas (`POST /api/auth/register` passa a responder 403). Crie a primeira empresa/conta de administrador antes de desligar; depois, contas nascem por convite. A tela de cadastro já foi removida do site. |
+| `ALLOW_SELF_REGISTRATION` | padrão e produção: `false` | O cadastro público de empresas fica fechado (`POST /api/auth/register` responde 403). Use `true` somente no bootstrap controlado da primeira conta, conceda a ela administração global pelo script e volte para `false`; depois, novas licenças são criadas em **Plataforma → Criar tenant**. |
 | `WORKER_ENABLED` | não (padrão `true`) | |
 | `ENABLE_SANDBOX_CONNECTOR` | **nunca em produção** | Ignorado quando `NODE_ENV=production`. |
 | `METRICS_TOKEN` | opcional | Liga `/api/metrics`. |

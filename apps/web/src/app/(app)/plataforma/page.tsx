@@ -18,6 +18,7 @@ export default function PlataformaPage() {
   const [audit, setAudit] = useState<Audit[]>([]);
   const [queue, setQueue] = useState<QueueRow[]>([]);
   const [edit, setEdit] = useState<Tenant | null>(null);
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [ops,setOps]=useState<Ops>(); const [support,setSupport]=useState<Support[]>([]); const [supportTenant,setSupportTenant]=useState<Tenant|null>(null);
@@ -41,14 +42,45 @@ export default function PlataformaPage() {
     setError(''); setOk('');
     try { await api(`/platform/tenants/${edit.id}`, 'PUT', body); setOk('Empresa atualizada.'); setEdit(null); load(); } catch (err) { setError((err as Error).message); }
   }
+  async function createTenant(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const body: Record<string, unknown> = {
+      companyName: f.get('companyName'), ownerName: f.get('ownerName'), ownerEmail: f.get('ownerEmail'), ownerPassword: f.get('ownerPassword'),
+      planCode: f.get('planCode'), status: f.get('status'), note: f.get('note'),
+    };
+    if (f.get('trialEndsAt')) body.trialEndsAt = f.get('trialEndsAt');
+    setError(''); setOk('');
+    try {
+      const created = await api<{ ownerExisting: boolean }>('/platform/tenants', 'POST', body);
+      setOk(created.ownerExisting ? 'Tenant criado e vinculado ao usuário proprietário existente.' : 'Tenant e usuário proprietário criados. Envie ao cliente o e-mail e a senha inicial informados.');
+      setCreating(false); load();
+    } catch (err) { setError((err as Error).message); }
+  }
   async function requestSupport(e: FormEvent<HTMLFormElement>) { e.preventDefault(); if(!supportTenant)return; const f=new FormData(e.currentTarget); try{await api(`/platform/tenants/${supportTenant.id}/support`,'POST',{reason:f.get('reason'),minutes:Number(f.get('minutes'))});setOk('Solicitação enviada ao proprietário do tenant.');setSupportTenant(null);load();}catch(err){setError((err as Error).message);} }
   async function enterSupport(id:string){try{await api(`/platform/support/${id}/enter`,'POST');location.href='/dashboard';}catch(err){setError((err as Error).message);}}
 
   return (
     <>
-      <PageHeader title="Plataforma" description={<>Visão de administrador global: somente metadados e contagens. Nenhum dado comercial, fiscal ou financeiro das empresas é exibido. Toda alteração fica registrada aqui e na auditoria da empresa.</>} />
+      <PageHeader title="Plataforma" description={<>Visão de administrador global: licenças, tenants, planos e saúde operacional. Nenhum dado comercial, fiscal ou financeiro das empresas é exibido.</>} actions={<button className="btn primary" onClick={() => setCreating(true)}>Criar tenant</button>} />
       {error && <Alert kind="error">{error}</Alert>}
       {ok && <Alert kind="ok">{ok}</Alert>}
+
+      {creating && <form className="card" style={{marginBottom:16}} onSubmit={createTenant}>
+        <h2>Nova licença / tenant</h2>
+        <p className="muted">Cria o ambiente isolado da empresa e o primeiro usuário proprietário. O cadastro público permanece fechado.</p>
+        <div className="form-grid">
+          <div><label htmlFor="cn">Empresa *</label><input id="cn" name="companyName" required minLength={2}/></div>
+          <div><label htmlFor="on">Nome do proprietário *</label><input id="on" name="ownerName" required minLength={2}/></div>
+          <div><label htmlFor="oe">E-mail do proprietário *</label><input id="oe" name="ownerEmail" type="email" required/></div>
+          <div><label htmlFor="opw">Senha inicial *</label><input id="opw" name="ownerPassword" type="password" required minLength={10} autoComplete="new-password"/><small className="muted">Mínimo de 10 caracteres, com letras e números.</small></div>
+          <div><label htmlFor="cp">Plano *</label><select id="cp" name="planCode" required defaultValue=""><option value="" disabled>Selecione</option>{plans.filter((p)=>p.active).map((p)=><option key={p.code} value={p.code}>{p.name}</option>)}</select></div>
+          <div><label htmlFor="cs">Situação inicial *</label><select id="cs" name="status" defaultValue="ACTIVE"><option value="ACTIVE">Licença ativa</option><option value="TRIAL">Avaliação</option></select></div>
+          <div><label htmlFor="ct">Fim da avaliação</label><input id="ct" name="trialEndsAt" type="date"/></div>
+          <div><label htmlFor="cno">Motivo/contrato *</label><input id="cno" name="note" required minLength={3} placeholder="Ex.: Licença contratada em 02/11/2026"/></div>
+        </div>
+        <div className="row" style={{marginTop:12}}><button className="btn primary">Criar tenant</button><button type="button" className="btn" onClick={()=>setCreating(false)}>Cancelar</button></div>
+      </form>}
 
       {supportTenant&&<form className="card" style={{marginBottom:16}} onSubmit={requestSupport}><h2>Solicitar acesso — {supportTenant.name}</h2><p className="muted">O proprietário precisa aprovar. Informe um motivo específico; leitura/escrita será decidida pelo tenant.</p><div className="form-grid"><div><label htmlFor="sr">Motivo *</label><input id="sr" name="reason" required minLength={10}/></div><div><label htmlFor="sm">Duração solicitada</label><select id="sm" name="minutes" defaultValue="30"><option value="15">15 minutos</option><option value="30">30 minutos</option><option value="60">60 minutos</option></select></div></div><div className="row" style={{marginTop:12}}><button className="btn primary">Enviar solicitação</button><button type="button" className="btn" onClick={()=>setSupportTenant(null)}>Cancelar</button></div></form>}
 

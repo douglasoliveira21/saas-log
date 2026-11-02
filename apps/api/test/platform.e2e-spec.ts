@@ -132,6 +132,24 @@ describe('Fase 8 — planos, plataforma, observabilidade, backup e revisão estr
       expect(list.map((t) => t.id)).toEqual(expect.arrayContaining([A.tenantId, B.tenantId]));
     });
 
+    it('provisiona uma nova licença com tenant isolado e usuário proprietário', async () => {
+      const email = `licenca-${run}@teste.local`;
+      const body = { companyName: `Cliente licenciado ${run}`, ownerName: 'Proprietário Cliente', ownerEmail: email, ownerPassword: PASSWORD, planCode: 'pro', status: 'ACTIVE', note: 'Contrato de licença aprovado' };
+      await A.owner.post('/api/platform/tenants').set(H).send(body).expect(403);
+      const created = (await root.owner.post('/api/platform/tenants').set(H).send(body).expect(201)).body;
+      expect(created).toMatchObject({ name: body.companyName, status: 'ACTIVE', plan: 'pro', ownerEmail: email, ownerExisting: false });
+
+      const licensed = agent();
+      await licensed.post('/api/auth/login').set(H).send({ email, password: PASSWORD }).expect(200);
+      const me = (await licensed.get('/api/auth/me').expect(200)).body;
+      expect(me).toMatchObject({ tenant: { id: created.id, name: body.companyName, status: 'ACTIVE', plan: 'Pro' }, role: { key: 'owner' }, platformAdmin: false });
+      await licensed.get('/api/platform/tenants').expect(403);
+      const listed = (await root.owner.get('/api/platform/tenants').expect(200)).body.find((t: any) => t.id === created.id);
+      expect(listed).toMatchObject({ users: 1, products: 0, status: 'ACTIVE', plan: 'pro' });
+      const audit = (await root.owner.get('/api/platform/audit?limit=30').expect(200)).body;
+      expect(audit.some((a: any) => a.tenantId === created.id && a.action === 'platform.tenant_created')).toBe(true);
+    });
+
     it('vê apenas metadados e contagens: nenhum dado de negócio, e-mail ou segredo', async () => {
       const C = await tenant('p8meta');
       await product(C).expect(201);
