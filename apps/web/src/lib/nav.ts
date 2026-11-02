@@ -1,6 +1,6 @@
 import {
   BarChart3, Bell, Boxes, Briefcase, ShoppingBag, Building2, ClipboardList, Container, FileText, Gauge, CreditCard, Landmark, Handshake, LayoutDashboard, type LucideIcon, Package, PackageSearch,
-  MapPinned, Navigation, Percent, Plug, ReceiptText, Route, ScrollText, Settings2, ShieldCheck, ShoppingCart, Store, Truck, Users, Wallet, Warehouse, ListChecks, DatabaseZap, LifeBuoy,
+  MapPinned, Navigation, Percent, Plug, ReceiptText, Route, ScrollText, Settings2, ShieldCheck, ShoppingCart, Truck, Users, Wallet, Warehouse, ListChecks, DatabaseZap, LifeBuoy,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -16,11 +16,11 @@ export interface NavItem {
 }
 
 /** Ordem dos menus. Cada grupo é um menu que abre e fecha, com os módulos dele como submenus. */
-export const NAV_GROUPS = ['Geral', 'Comercial', 'Suprimentos', 'Canais e logística', 'Financeiro e fiscal', 'Administração'] as const;
+export const NAV_GROUPS = ['Geral', 'Comercial', 'Suprimentos', 'Canais e logística', 'Financeiro e fiscal'] as const;
 
 /** Ícone de cada menu (o de "Geral" não aparece: ele tem um só item e vira link direto). */
 export const NAV_GROUP_ICONS: Record<(typeof NAV_GROUPS)[number], LucideIcon> = {
-  Geral: LayoutDashboard, Comercial: ShoppingBag, Suprimentos: Boxes, 'Canais e logística': Truck, 'Financeiro e fiscal': Wallet, Administração: Settings2,
+  Geral: LayoutDashboard, Comercial: ShoppingBag, Suprimentos: Boxes, 'Canais e logística': Truck, 'Financeiro e fiscal': Wallet,
 };
 
 export const NAV: NavItem[] = [
@@ -51,16 +51,22 @@ export const NAV: NavItem[] = [
   { href: '/gestao', label: 'Metas e indicadores', icon: Gauge, group: 'Financeiro e fiscal', permission: 'management.view', implemented: true },
   { href: '/relatorios', label: 'Relatórios', icon: BarChart3, group: 'Financeiro e fiscal', permission: 'reports.view', implemented: true },
 
-  { href: '/empresa', label: 'Empresa e estrutura', icon: Building2, group: 'Administração', permission: 'company.view', implemented: true },
-  { href: '/onboarding', label: 'Configuração inicial', icon: ListChecks, group: 'Administração', permission: 'tenant.manage', implemented: true },
-  { href: '/migracao', label: 'Migração de dados', icon: DatabaseZap, group: 'Administração', permission: 'migration.manage', implemented: true },
-  { href: '/usuarios', label: 'Usuários e papéis', icon: ShieldCheck, group: 'Administração', permission: 'users.view', implemented: true },
-  { href: '/suporte', label: 'Acesso do suporte', icon: LifeBuoy, group: 'Administração', permission: 'tenant.manage', implemented: true },
-  { href: '/avisos', label: 'Avisos ao cliente', icon: Bell, group: 'Administração', permission: 'notifications.manage', implemented: true },
-  { href: '/configuracoes', label: 'Políticas comerciais', icon: Settings2, group: 'Administração', permission: 'tenant.manage', implemented: true },
-  { href: '/plano', label: 'Plano e uso', icon: CreditCard, group: 'Administração', permission: 'tenant.manage', implemented: true },
-  { href: '/auditoria', label: 'Auditoria', icon: ScrollText, group: 'Administração', permission: 'audit.view', implemented: true },
-  { href: '/plataforma', label: 'Plataforma (admin global)', icon: Store, group: 'Administração', permission: 'platform.admin', implemented: true },
 ];
+
+/** Módulos fora da navegação operacional, exclusivos do super administrador do tenant. */
+export const ADMIN_NAV: NavItem[] = [
+  { href: '/empresa', label: 'Empresa e estrutura', icon: Building2, group: 'Administração', permission: 'tenant.super_admin', implemented: true },
+  { href: '/onboarding', label: 'Configuração inicial', icon: ListChecks, group: 'Administração', permission: 'tenant.super_admin', implemented: true },
+  { href: '/migracao', label: 'Migração de dados', icon: DatabaseZap, group: 'Administração', permission: 'tenant.super_admin', implemented: true },
+  { href: '/usuarios', label: 'Usuários e papéis', icon: ShieldCheck, group: 'Administração', permission: 'tenant.super_admin', implemented: true },
+  { href: '/suporte', label: 'Acesso do suporte', icon: LifeBuoy, group: 'Administração', permission: 'tenant.super_admin', implemented: true },
+  { href: '/avisos', label: 'Avisos ao cliente', icon: Bell, group: 'Administração', permission: 'tenant.super_admin', implemented: true },
+  { href: '/configuracoes', label: 'Políticas comerciais', icon: Settings2, group: 'Administração', permission: 'tenant.super_admin', implemented: true },
+  { href: '/plano', label: 'Plano e uso', icon: CreditCard, group: 'Administração', permission: 'tenant.super_admin', implemented: true },
+  { href: '/auditoria', label: 'Auditoria', icon: ScrollText, group: 'Administração', permission: 'tenant.super_admin', implemented: true },
+];
+
+export const TENANT_ADMIN_PATHS = ['/administracao', ...ADMIN_NAV.map((item) => item.href)];
+export const PLATFORM_ADMIN_PATHS = ['/plataforma'];
 
 export const findModule = (slug: string) => NAV.find((n) => n.href === `/m/${slug}`);

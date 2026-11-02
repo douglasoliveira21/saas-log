@@ -1,5 +1,13 @@
 # Onboarding, migração e operação interna
 
+## Portal administrativo do tenant
+
+Configurações administrativas não aparecem na navegação operacional. O acesso é feito pelo menu do usuário em **Administração do tenant**, que abre `/administracao`.
+
+Somente usuários com `tenant.super_admin` entram no portal e nas APIs administrativas. A permissão é concedida automaticamente ao papel `owner`; o papel `admin` continua administrativo no contexto operacional, mas não recebe esse acesso. A área global `/plataforma` permanece independente e exige administrador da plataforma.
+
+Consultas estruturais necessárias à operação e o opt-out de comunicação do cliente continuam disponíveis conforme suas permissões específicas. Alterações de estrutura, usuários, migração, suporte, políticas, plano, auditoria e configuração de avisos exigem o super administrador.
+
 ## Onboarding
 
 A página `/onboarding` calcula o progresso com dados reais do tenant e conduz o administrador por empresa, certificado fiscal, depósitos, usuários, regras fiscais e importação inicial. O administrador pode encerrar o assistente a qualquer momento; as pendências continuam visíveis e auditadas.

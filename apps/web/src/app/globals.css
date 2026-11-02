@@ -847,3 +847,16 @@ tr.pk-cont td { border-top: 0; }
 .search-results { overflow: auto; max-height: calc(75vh - 60px); padding: 10px; } .search-results h3 { margin: 10px 8px 5px; color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; }
 .search-results a { display: flex; flex-direction: column; gap: 2px; padding: 9px 10px; border-radius: 9px; color: var(--text); text-decoration: none; } .search-results a:hover { background: var(--surface-2); } .search-results a span { color: var(--muted); font-size: .8rem; }
 .support-banner { display: flex; gap: 14px; align-items: center; padding: 9px 18px; background: #7c2d12; color: #fff; } .support-banner span { flex: 1; font-size: .82rem; } .support-banner .btn { background: #fff; color: #7c2d12; }
+
+/* Portal reservado ao super administrador do tenant */
+.admin-hero { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; border-color: color-mix(in srgb, var(--brand) 35%, var(--border)); }
+.admin-hero p { margin: 4px 0 0; }
+.admin-hero-icon, .admin-card-icon { flex: none; width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: var(--brand-soft); color: var(--brand); }
+.admin-hero-icon svg, .admin-card-icon svg { width: 21px; height: 21px; }
+.admin-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.admin-card { display: flex; align-items: flex-start; gap: 12px; color: var(--text); text-decoration: none; transition: border-color .15s, transform .15s, box-shadow .15s; }
+.admin-card:hover { border-color: var(--brand); transform: translateY(-1px); box-shadow: var(--shadow); text-decoration: none; }
+.admin-card strong, .admin-card small { display: block; }
+.admin-card small { margin-top: 4px; color: var(--muted); line-height: 1.35; }
+@media (max-width: 900px) { .admin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .admin-grid { grid-template-columns: 1fr; } }

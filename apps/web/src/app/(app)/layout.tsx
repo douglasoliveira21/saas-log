@@ -9,7 +9,7 @@ import { api } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
 import { GpsGate } from '@/components/gps-gate';
 import { BRAND } from '@/lib/brand';
-import { NAV, NAV_GROUP_ICONS, NAV_GROUPS } from '@/lib/nav';
+import { ADMIN_NAV, NAV, NAV_GROUP_ICONS, NAV_GROUPS, PLATFORM_ADMIN_PATHS, TENANT_ADMIN_PATHS } from '@/lib/nav';
 import { SessionProvider, useSession } from '@/lib/session';
 import { useAppMode } from '@/lib/app-mode';
 import { clearTrackerBuffer } from '@/lib/tracking';
@@ -76,7 +76,9 @@ function Shell({ children }: { children: ReactNode }) {
     const next = launcher ? 'CLASSIC' : 'LAUNCHER';
     try { await api('/auth/profile', 'PATCH', { navStyle: next }); await reload(); router.push(next === 'LAUNCHER' ? '/inicio' : '/dashboard'); } catch { /* o perfil mostra o erro */ }
   }
-  const current = [...visible].sort((a, b) => b.href.length - a.href.length).find((n) => pathname === n.href || pathname.startsWith(n.href + '/'));
+  const current = pathname === '/administracao'
+    ? { href: '/administracao', label: 'Portal administrativo', group: 'Administração' }
+    : [...visible, ...(can('tenant.super_admin') ? ADMIN_NAV : [])].sort((a, b) => b.href.length - a.href.length).find((n) => pathname === n.href || pathname.startsWith(n.href + '/'));
   const trialLeft = me.tenant?.status === 'TRIAL' && me.tenant.trialEndsAt ? Math.ceil((new Date(me.tenant.trialEndsAt).getTime() - Date.now()) / 86_400_000) : null;
 
   return (
@@ -158,11 +160,9 @@ function Shell({ children }: { children: ReactNode }) {
           </nav>
           <span className="spacer" />
           <GlobalSearch />
-          {trialLeft !== null && (
-            <Link href="/plano" className={`badge ${trialLeft <= 3 ? 'warn' : 'brand'} hide-sm`} style={{ textDecoration: 'none' }}>
-              {trialLeft > 0 ? `Avaliação: ${trialLeft} dia(s)` : 'Avaliação encerrada'}
-            </Link>
-          )}
+          {trialLeft !== null && (can('tenant.super_admin') ? <Link href="/plano" className={`badge ${trialLeft <= 3 ? 'warn' : 'brand'} hide-sm`} style={{ textDecoration: 'none' }}>
+            {trialLeft > 0 ? `Avaliação: ${trialLeft} dia(s)` : 'Avaliação encerrada'}
+          </Link> : <span className={`badge ${trialLeft <= 3 ? 'warn' : 'brand'} hide-sm`}>{trialLeft > 0 ? `Avaliação: ${trialLeft} dia(s)` : 'Avaliação encerrada'}</span>)}
           <div className="menu-wrap" ref={bellRef}>
             <button className="btn ghost icon" onClick={() => setBell(!bell)} aria-haspopup="true" aria-expanded={bell} aria-label="Notificações" title="Notificações"><Bell /></button>
             {bell && (
@@ -188,6 +188,8 @@ function Shell({ children }: { children: ReactNode }) {
                 <button role="menuitem" onClick={() => router.push('/perfil')}><User />Meu perfil</button>
                 <button role="menuitem" onClick={changeStyle}>{launcher ? <PanelLeft /> : <LayoutGrid />}{launcher ? 'Usar menu lateral (clássico)' : 'Usar início em blocos'}</button>
                 <button role="menuitem" onClick={() => router.push('/seguranca')}><ShieldCheck />Segurança da conta</button>
+                {can('tenant.super_admin') && <button role="menuitem" onClick={() => router.push('/administracao')}><ShieldCheck />Administração do tenant</button>}
+                {me.platformAdmin && <button role="menuitem" onClick={() => router.push('/plataforma')}><ShieldCheck />Administração global</button>}
                 {me.tenants.length > 1 && <button role="menuitem" onClick={() => router.push('/select-tenant')}><Repeat />Trocar empresa</button>}
                 <button role="menuitem" onClick={() => { clearTrackerBuffer(); void logout(); }}><LogOut />Sair</button>
               </div>
@@ -201,11 +203,27 @@ function Shell({ children }: { children: ReactNode }) {
   );
 }
 
+function matchesArea(pathname: string, roots: string[]) {
+  return roots.some((root) => pathname === root || pathname.startsWith(`${root}/`));
+}
+
+function AccessBoundary({ children }: { children: ReactNode }) {
+  const { can, me } = useSession();
+  const pathname = usePathname();
+  const router = useRouter();
+  const deniedTenantAdmin = matchesArea(pathname, TENANT_ADMIN_PATHS) && !can('tenant.super_admin');
+  const deniedPlatformAdmin = matchesArea(pathname, PLATFORM_ADMIN_PATHS) && !me.platformAdmin;
+  const denied = deniedTenantAdmin || deniedPlatformAdmin;
+  useEffect(() => { if (denied) router.replace('/dashboard'); }, [denied, router]);
+  if (denied) return <div className="center-screen muted">Acesso restrito ao super administrador.</div>;
+  return children;
+}
+
 export default function AppLayout({ children }: { children: ReactNode }) {
   const app = useAppMode();
   return (
     <SessionProvider>
-      {app ? <AppShell>{children}</AppShell> : <Shell>{children}</Shell>}
+      <AccessBoundary>{app ? <AppShell>{children}</AppShell> : <Shell>{children}</Shell>}</AccessBoundary>
     </SessionProvider>
   );
 }

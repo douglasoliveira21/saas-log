@@ -2,6 +2,7 @@
 // Só entram aqui permissões efetivamente aplicadas no servidor.
 
 export const PERMISSIONS = {
+  'tenant.super_admin': 'Acessar a área reservada ao super administrador do tenant',
   'tenant.manage': 'Administrar dados e plano da empresa contratante',
   'company.view': 'Consultar empresas e estabelecimentos',
   'company.manage': 'Criar e editar empresas e estabelecimentos',
@@ -76,7 +77,7 @@ const salesRead: PermissionCode[] = ['customers.view', 'sales.view', 'sales.view
 
 export const SYSTEM_ROLES: SystemRoleDef[] = [
   { key: 'owner', name: 'Proprietário da empresa', permissions: ALL_PERMISSIONS },
-  { key: 'admin', name: 'Administrador do tenant', permissions: ALL_PERMISSIONS.filter((p) => p !== 'tenant.manage') },
+  { key: 'admin', name: 'Administrador do tenant', permissions: ALL_PERMISSIONS.filter((p) => p !== 'tenant.manage' && p !== 'tenant.super_admin') },
   {
     key: 'ops_manager',
     name: 'Gerente operacional',

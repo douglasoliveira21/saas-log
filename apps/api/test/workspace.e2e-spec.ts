@@ -30,6 +30,17 @@ describe('Onboarding, migração, busca, suporte temporário e operações',()=>
     expect((await client.a.get('/api/migration/runs').expect(200)).body.length).toBeGreaterThanOrEqual(7);
   });
 
+  it('separa a operação da área exclusiva do super administrador do tenant',async()=>{
+    const roles=(await client.a.get('/api/roles').expect(200)).body;const adminRole=roles.find((x:any)=>x.key==='admin');expect(adminRole).toBeTruthy();
+    const email=`tenant-admin-${run}@teste.local`;await client.a.post('/api/users').set(H).send({name:'Administrador operacional',email,password:PASSWORD,roleId:adminRole.id}).expect(201);
+    const operational=request.agent(app.getHttpServer());await operational.post('/api/auth/login').set(H).send({email,password:PASSWORD}).expect(200);
+    await operational.get('/api/search?q=legado').expect(200);
+    await operational.get('/api/structure').expect(200); // contexto operacional continua consultável
+    await operational.get('/api/users').expect(403);
+    await operational.get('/api/billing').expect(403);
+    await client.a.get('/api/structure').expect(200);
+  });
+
   it('suporte exige aprovação, respeita somente leitura, expira por sessão e aparece na operação',async()=>{
     const req=await root.a.post(`/api/platform/tenants/${client.tenantId}/support`).set(H).send({reason:'Diagnosticar divergência informada pelo cliente',minutes:30}).expect(201);
     const pending=(await client.a.get('/api/support').expect(200)).body.find((x:any)=>x.id===req.body.id);expect(pending.status).toBe('REQUESTED');

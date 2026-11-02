@@ -9,7 +9,7 @@ import { useAppMode } from '@/lib/app-mode';
 import { useSession } from '@/lib/session';
 
 /** Cor do bloco por menu (texto branco em todas, contraste ≥ 4,5:1). */
-const TONE: Record<(typeof NAV_GROUPS)[number], string> = { Geral: 't-slate', Comercial: 't-blue', Suprimentos: 't-orange', 'Canais e logística': 't-teal', 'Financeiro e fiscal': 't-green', Administração: 't-violet' };
+const TONE: Record<(typeof NAV_GROUPS)[number], string> = { Geral: 't-slate', Comercial: 't-blue', Suprimentos: 't-orange', 'Canais e logística': 't-teal', 'Financeiro e fiscal': 't-green' };
 
 /**
  * Início em blocos (estilo "launcher"): um bloco por módulo, agrupados pelos menus. Quem usa o menu lateral clássico não vê esta tela:
