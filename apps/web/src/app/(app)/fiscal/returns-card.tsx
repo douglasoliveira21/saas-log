@@ -15,7 +15,7 @@ export function ReturnsCard({ act, open, reloadList }: { act: (fn: () => Promise
   return (
     <section className="card" style={{ marginBottom: 16 }} aria-label="Devoluções sem nota">
       <div className="card-head"><h2>Devoluções de venda sem NF-e</h2><span className="badge warn">{rows.length}</span></div>
-      <p className="muted" style={{ marginTop: 0 }}>Quando o cliente devolve mercadoria, o sistema prepara uma NF-e de <strong>entrada própria</strong>, finalidade devolução, que referencia a nota autorizada da venda. A tributação usa uma regra aprovada de <strong>RETURN_SALE</strong>: confira CFOP, CST e valores antes de transmitir.</p>
+      <p className="muted" style={{ marginTop: 0 }}>Quando o cliente devolve mercadoria, o sistema prepara uma NF-e de <strong>entrada própria</strong>, finalidade devolução, que referencia a nota autorizada da venda. A tributação usa uma regra de <strong>Devolução de venda (cliente devolve)</strong>: confira CFOP, CST e valores antes de transmitir.</p>
       <div className="table-wrap"><table>
         <thead><tr><th>Pedido</th><th>Cliente</th><th>Itens devolvidos</th><th>Nota original</th><th /></tr></thead>
         <tbody>{rows.map((r) => (

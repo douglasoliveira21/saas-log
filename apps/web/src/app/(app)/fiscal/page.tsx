@@ -38,7 +38,15 @@ const STATUS_LABEL: Record<string, string> = {
   PENDING_CONSULT: 'Aguardando consulta', CANCELLED: 'Cancelada', COMMUNICATION_FAILURE: 'Falha de comunicação', PENDING_APPROVAL: 'Aguardando aprovação', SUPERSEDED: 'Substituída',
 };
 const badge = (s: string) => (['APPROVED', 'AUTHORIZED', 'RECEIVED', 'READY_TO_TRANSMIT', 'OK'].includes(s) ? 'ok' : ['REJECTED', 'PENDING_VALIDATION', 'PENDING_CONSULT', 'COMMUNICATION_FAILURE', 'BLOCKING'].includes(s) ? 'warn' : '');
-const OPS = ['SALE', 'PURCHASE', 'RETURN_SALE', 'RETURN_PURCHASE', 'TRANSFER', 'OTHER'];
+const OPS = [
+  { value: 'SALE', label: 'Venda de mercadoria (saída)' },
+  { value: 'PURCHASE', label: 'Compra de mercadoria (entrada)' },
+  { value: 'RETURN_SALE', label: 'Devolução de venda (cliente devolve)' },
+  { value: 'RETURN_PURCHASE', label: 'Devolução de compra (devolver ao fornecedor)' },
+  { value: 'TRANSFER', label: 'Transferência entre estabelecimentos' },
+  { value: 'OTHER', label: 'Outra operação fiscal' },
+] as const;
+const operationLabel = (value: string) => OPS.find((o) => o.value === value)?.label ?? value;
 const sev = (s: string) => (s === 'BLOCKING' ? 'warn' : s === 'INFO' ? '' : 'warn');
 
 function IssueList({ issues }: { issues: Issue[] }) {
@@ -302,7 +310,11 @@ function RulesTab({ act, can }: TabProps) {
           <h2>Nova regra (rascunho)</h2>
           <div className="form-grid">
             <div><label htmlFor="rn">Nome *</label><input id="rn" name="name" required /></div>
-            <div><label htmlFor="op">Operação *</label><select id="op" name="op">{OPS.map((o) => <option key={o}>{o}</option>)}</select></div>
+            <div>
+              <label htmlFor="op">Operação *</label>
+              <select id="op" name="op">{OPS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+              <small className="muted">Indique o movimento fiscal que esta regra deverá atender.</small>
+            </div>
             <div><label htmlFor="ouf">UF de origem</label><input id="ouf" name="ouf" maxLength={2} /></div>
             <div><label htmlFor="duf">UF de destino</label><input id="duf" name="duf" maxLength={2} /></div>
             <div><label htmlFor="rncm">NCM (prefixo)</label><input id="rncm" name="ncm" inputMode="numeric" /></div>
@@ -332,7 +344,7 @@ function RulesTab({ act, can }: TabProps) {
             {rules?.length === 0 && <tr><td colSpan={7} className="empty">Nenhuma regra cadastrada. Sem regra aprovada, o motor devolve pendência — nunca uma alíquota presumida.</td></tr>}
             {rules?.flatMap((r) => r.versions.map((v, idx) => (
               <tr key={v.id} style={r.active ? undefined : { opacity: 0.55 }}>
-                <td>{idx === 0 && <strong>{r.name}</strong>}</td><td className="muted">{idx === 0 && [r.operation, r.originUf && `de ${r.originUf}`, r.destUf && `para ${r.destUf}`, r.ncmPrefix && `NCM ${r.ncmPrefix}*`, r.regime].filter(Boolean).join(' · ')}</td>
+                <td>{idx === 0 && <strong>{r.name}</strong>}</td><td className="muted">{idx === 0 && [operationLabel(r.operation), r.originUf && `de ${r.originUf}`, r.destUf && `para ${r.destUf}`, r.ncmPrefix && `NCM ${r.ncmPrefix}*`, r.regime].filter(Boolean).join(' · ')}</td>
                 <td>v{v.version}</td><td><span className={`badge ${badge(v.status)}`}>{STATUS_LABEL[v.status]}</span></td>
                 <td className="muted">{new Date(v.validFrom).toLocaleDateString('pt-BR')} → {v.validTo ? new Date(v.validTo).toLocaleDateString('pt-BR') : 'em aberto'}</td>
                 <td className="muted">{v.config.cfop && `CFOP ${v.config.cfop} · `}{summary(v)}<div>{v.sourceReference}</div></td>
@@ -352,7 +364,7 @@ function RulesTab({ act, can }: TabProps) {
       <form className="card" onSubmit={simulate}>
         <h2>Simular o motor</h2>
         <div className="form-grid">
-          <div><label htmlFor="sop">Operação</label><select id="sop" name="op">{OPS.map((o) => <option key={o}>{o}</option>)}</select></div>
+          <div><label htmlFor="sop">Operação</label><select id="sop" name="op">{OPS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
           <div><label htmlFor="souf">UF origem</label><input id="souf" name="ouf" maxLength={2} required /></div>
           <div><label htmlFor="sduf">UF destino</label><input id="sduf" name="duf" maxLength={2} required /></div>
           <div><label htmlFor="sreg">Regime</label><select id="sreg" name="regime" defaultValue=""><option value="">—</option><option>SIMPLES_NACIONAL</option><option>LUCRO_PRESUMIDO</option><option>LUCRO_REAL</option><option>MEI</option></select></div>
