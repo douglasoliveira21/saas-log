@@ -38,7 +38,7 @@ const uniqueUf = (rows: { uf: string }[], what: string) => {
 };
 
 /**
- * Impostos federais da empresa (menu Impostos). O sistema NÃO sugere alíquotas: o contador informa os valores. Esta tela guarda a
+ * Impostos federais da empresa (menu Impostos). O sistema não sugere alíquotas: o usuário autorizado informa os valores. Esta tela guarda a
  * configuração; o cálculo das notas continua usando as regras tributárias aprovadas (Fiscal → Regras tributárias).
  */
 @Injectable()

@@ -19,8 +19,8 @@ interface Cert { id: string; subject: string; cnpj: string | null; serial: strin
 interface ReadinessItem { key: string; label: string; status: 'OK' | 'PENDING' | 'BLOCKING'; detail?: string; blocksHomologation: boolean; blocksProduction: boolean }
 interface ConfigView {
   establishment: { state: string | null };
-  config: { environment: string; status: string; nfeSeries: number; accountantName: string | null; accountantEmail: string | null; approvedAt: string | null };
-  certificate: Cert | null; readiness: ReadinessItem[]; readyForHomologation: boolean; readyForProduction: boolean; questionsForAccountant: string[];
+  config: { environment: string; status: string; nfeSeries: number; approvedAt: string | null };
+  certificate: Cert | null; readiness: ReadinessItem[]; readyForHomologation: boolean; readyForProduction: boolean; setupQuestions: string[];
 }
 interface Issue { severity: string; code: string; message: string }
 interface InDoc { id: string; accessKey: string; number: number; series: number; status: string; emitterName: string; totalInvoice: string; environment: string; issues: Issue[]; supplierId: string | null }
@@ -33,7 +33,7 @@ interface PO { id: string; number: number; status: string; supplier: { legalName
 interface OrderRow { id: string; number: number; status: string; fiscalDocType?: string; customer: { name: string } }
 
 const STATUS_LABEL: Record<string, string> = {
-  DRAFT: 'Rascunho', PENDING_ACCOUNTANT: 'Aguardando contador', APPROVED: 'Validada', NOT_STARTED: 'Não iniciada', IMPORTED: 'Importada', RECEIVED: 'Recebida',
+  DRAFT: 'Rascunho', APPROVED: 'Ativa', NOT_STARTED: 'Não iniciada', IMPORTED: 'Importada', RECEIVED: 'Recebida',
   PENDING_VALIDATION: 'Pendências', READY_TO_TRANSMIT: 'Pronta para transmitir', TRANSMITTING: 'Transmitindo', AUTHORIZED: 'Autorizada', REJECTED: 'Rejeitada',
   PENDING_CONSULT: 'Aguardando consulta', CANCELLED: 'Cancelada', COMMUNICATION_FAILURE: 'Falha de comunicação', PENDING_APPROVAL: 'Aguardando aprovação', SUPERSEDED: 'Substituída',
 };
@@ -59,7 +59,7 @@ export default function FiscalPage() {
   return (
     <>
       <PageHeader title="Fiscal" />
-      <div className="alert info">O sistema <strong>não presume alíquotas nem regras tributárias</strong>: elas são cadastradas e aprovadas com o contador. NF-e/NFC-e são transmitidas pelo provedor configurado e o MDF-e diretamente à SVRS; faça a homologação completa antes de ativar produção. XML recebido passa por validação estrutural, mas sua situação atual deve ser confirmada na SEFAZ.</div>
+      <div className="alert info">O sistema <strong>não presume alíquotas nem regras tributárias</strong>: elas são cadastradas pelo usuário fiscal autorizado. NF-e/NFC-e são transmitidas pelo provedor configurado e o MDF-e diretamente à SVRS; faça a homologação completa antes de ativar produção. XML recebido passa por validação estrutural, mas sua situação atual deve ser confirmada na SEFAZ.</div>
       {error && <Alert kind="error">{error}</Alert>}
       {ok && <Alert kind="ok">{ok}</Alert>}
       <div className="tabs" role="tablist" aria-label="Seções do fiscal">
@@ -79,7 +79,6 @@ export default function FiscalPage() {
 type TabProps = { act: (fn: () => Promise<unknown>, m: string, r: () => void) => Promise<void>; can: (p?: string) => boolean };
 
 function ConfigTab({ act, can }: TabProps) {
-  const ui = useUi();
   const [ests, setEsts] = useState<Est[]>([]);
   const [sel, setSel] = useState('');
   const [view, setView] = useState<ConfigView | null>(null);
@@ -123,22 +122,15 @@ function ConfigTab({ act, can }: TabProps) {
             </ul>
           </section>
           <section className="card">
-            <h2>Parâmetros e validação do contador</h2>
-            <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); void act(() => api(`/fiscal/establishments/${sel}/config`, 'PUT', { environment: f.get('env'), nfeSeries: Number(f.get('series')), accountantName: f.get('an') || undefined, accountantEmail: f.get('ae') || undefined }), 'Configuração salva — a validação do contador foi reaberta.', reload); }}>
+            <h2>Parâmetros fiscais</h2>
+            <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); void act(() => api(`/fiscal/establishments/${sel}/config`, 'PUT', { environment: f.get('env'), nfeSeries: Number(f.get('series')) }), 'Configuração fiscal salva.', reload); }}>
               <div className="form-grid">
                 <div><label htmlFor="env">Ambiente</label><select id="env" name="env" defaultValue={view.config.environment} disabled={!manage}><option value="HOMOLOGACAO">Homologação (sem valor fiscal)</option><option value="PRODUCAO">Produção</option></select></div>
                 <div><label htmlFor="series">Série da NF-e</label><input id="series" name="series" type="number" min={1} defaultValue={view.config.nfeSeries} disabled={!manage} /></div>
-                <div><label htmlFor="an">Contador responsável</label><input id="an" name="an" defaultValue={view.config.accountantName ?? ''} disabled={!manage} /></div>
-                <div><label htmlFor="ae">E-mail do contador</label><input id="ae" name="ae" type="email" defaultValue={view.config.accountantEmail ?? ''} disabled={!manage} /></div>
               </div>
               <p><span className={`badge ${badge(view.config.status)}`}>{STATUS_LABEL[view.config.status]}</span> {view.config.approvedAt && <span className="muted">validada em {new Date(view.config.approvedAt).toLocaleString('pt-BR')}</span>}</p>
               <div className="row">
                 {manage && <button className="btn primary">Salvar</button>}
-                {manage && view.config.status === 'DRAFT' && <button type="button" className="btn" onClick={() => act(() => api(`/fiscal/establishments/${sel}/config/submit`, 'POST'), 'Enviada para validação do contador.', reload)}>Enviar ao contador</button>}
-                {can('fiscal.approve') && view.config.status === 'PENDING_ACCOUNTANT' && <>
-                  <button type="button" className="btn primary" onClick={() => act(() => api(`/fiscal/establishments/${sel}/config/approve`, 'POST'), 'Configuração validada.', reload)}>Validar (contador)</button>
-                  <button type="button" className="btn" onClick={async () => { const r = await ui.prompt({ title: 'Devolver configuração', label: 'Motivo da devolução', multiline: true, confirmLabel: 'Devolver' }); if (r) void act(() => api(`/fiscal/establishments/${sel}/config/reject`, 'POST', { reason: r }), 'Configuração devolvida.', reload); }}>Devolver</button>
-                </>}
               </div>
             </form>
           </section>
@@ -159,9 +151,9 @@ function ConfigTab({ act, can }: TabProps) {
           <ProviderCard establishmentId={sel} uf={view.establishment.state} manage={manage} onChange={reload} />
           <CoverageCard />
           <section className="card">
-            <h2>Perguntas para o contador</h2>
-            <ul>{view.questionsForAccountant.map((q) => <li key={q}>{q}</li>)}</ul>
-            <button className="btn sm" onClick={() => void navigator.clipboard.writeText(view.questionsForAccountant.map((q, i) => `${i + 1}. ${q}`).join('\n'))}>Copiar lista</button>
+            <h2>Questões de configuração</h2>
+            <ul>{view.setupQuestions.map((q) => <li key={q}>{q}</li>)}</ul>
+            <button className="btn sm" onClick={() => void navigator.clipboard.writeText(view.setupQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n'))}>Copiar lista</button>
           </section>
         </div>
       )}
@@ -287,7 +279,7 @@ function RulesTab({ act, can }: TabProps) {
         version: { validFrom: new Date(String(f.get('from'))).toISOString(), sourceReference: f.get('src'), config: { cfop: f.get('cfop') || undefined, includeFreightInBase: f.get('frete') === 'on', taxes } },
       });
       form.reset(); setAdding(false);
-    }, 'Regra criada como rascunho. Envie para aprovação do contador.', load);
+    }, 'Regra criada como rascunho. Revise e aprove para ativá-la.', load);
   }
 
   async function simulate(e: FormEvent<HTMLFormElement>) {
@@ -302,7 +294,7 @@ function RulesTab({ act, can }: TabProps) {
   return (
     <>
       <div className="row" style={{ justifyContent: 'space-between' }}>
-        <p className="muted">Regras são do seu contador: cada versão tem vigência, fonte (base legal/parecer) e só vale depois de aprovada por outra pessoa. Versão aprovada nunca é alterada — cria-se uma nova. O motor ainda <strong>não calcula ST, DIFAL e FCP</strong> (vira pendência).</p>
+        <p className="muted">Cada regra tem vigência e fonte de referência, e só vale depois de aprovada pelo usuário fiscal autorizado. Versão aprovada nunca é alterada — cria-se uma nova. O motor ainda <strong>não calcula ST, DIFAL e FCP</strong> (vira pendência).</p>
         {can('fiscal.rules') && <button className="btn primary" onClick={() => setAdding(true)}><Plus aria-hidden />Regra</button>}
       </div>
       {adding && (
@@ -318,7 +310,7 @@ function RulesTab({ act, can }: TabProps) {
             <div><label htmlFor="from">Vigência a partir de *</label><input id="from" name="from" type="date" required /></div>
             <div><label htmlFor="cfop">CFOP</label><input id="cfop" name="cfop" maxLength={4} inputMode="numeric" /></div>
           </div>
-          <h2 style={{ marginTop: 12 }}>Tributos (valores definidos pelo contador)</h2>
+          <h2 style={{ marginTop: 12 }}>Tributos</h2>
           {['ICMS', 'IPI', 'PIS', 'COFINS'].map((c) => (
             <div className="row" key={c} style={{ marginBottom: 6 }}>
               <strong style={{ width: 70 }}>{c}</strong>
@@ -328,7 +320,7 @@ function RulesTab({ act, can }: TabProps) {
             </div>
           ))}
           <label className="row" style={{ fontWeight: 400 }}><input type="checkbox" name="frete" style={{ width: 'auto' }} /> Incluir frete na base</label>
-          <div className="field"><label htmlFor="src">Fonte / base legal / parecer do contador * (mín. 10 caracteres)</label><input id="src" name="src" required minLength={10} /></div>
+          <div className="field"><label htmlFor="src">Fonte / base legal / referência interna * (mín. 10 caracteres)</label><input id="src" name="src" required minLength={10} /></div>
           <div className="row"><button className="btn primary">Salvar rascunho</button><button type="button" className="btn" onClick={() => setAdding(false)}>Cancelar</button></div>
         </form>
       )}
@@ -346,7 +338,7 @@ function RulesTab({ act, can }: TabProps) {
                 <td className="muted">{v.config.cfop && `CFOP ${v.config.cfop} · `}{summary(v)}<div>{v.sourceReference}</div></td>
                 <td>
                   {v.status === 'DRAFT' && can('fiscal.rules') && <button className="btn sm" onClick={() => act(() => api(`/fiscal/rules/versions/${v.id}/submit`, 'POST'), 'Enviada para aprovação.', load)}>Enviar p/ aprovação</button>}
-                  {v.status === 'PENDING_APPROVAL' && can('fiscal.approve') && <>
+                  {v.status === 'PENDING_APPROVAL' && can('fiscal.rules') && <>
                     <button className="btn sm primary" onClick={() => act(() => api(`/fiscal/rules/versions/${v.id}/approve`, 'POST'), 'Versão aprovada.', load)}>Aprovar</button>{' '}
                     <button className="btn sm" onClick={async () => { const re = await ui.prompt({ title: 'Devolver a rascunho', label: 'Motivo', multiline: true, confirmLabel: 'Devolver' }); if (re) void act(() => api(`/fiscal/rules/versions/${v.id}/reject`, 'POST', { reason: re }), 'Devolvida a rascunho.', load); }}>Devolver</button>
                   </>}

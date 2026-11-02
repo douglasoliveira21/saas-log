@@ -34,7 +34,7 @@ export function MdfeTab({ act, can }: Props) {
 
   return (
     <>
-      <div className="alert info">O MDF-e (manifesto de documentos fiscais) acompanha a carga que sai com <strong>NF-e</strong> e é obrigatório em muitos casos de transporte próprio entre estados: <strong>confirme com o seu contador se a sua operação exige</strong>. Aqui só o <strong>modal rodoviário, carga própria</strong> (o seu veículo e o seu motorista), com certificado A1 e emissão direta. <strong>Ainda não foi testado contra a SEFAZ real</strong>: comece pela homologação e encerre cada viagem depois da entrega.</div>
+      <div className="alert info">O MDF-e (manifesto de documentos fiscais) acompanha a carga que sai com <strong>NF-e</strong> e pode ser obrigatório em operações de transporte próprio entre estados. Aqui só o <strong>modal rodoviário, carga própria</strong> (o seu veículo e o seu motorista), com certificado A1 e emissão direta. <strong>Ainda não foi testado contra a SEFAZ real</strong>: comece pela homologação e encerre cada viagem depois da entrega.</div>
       {emit && (
         <form className="card" style={{ marginBottom: 16 }} onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); void act(async () => { const r = await api<{ id: string; ready: boolean }>('/fiscal/mdfe/prepare', 'POST', { routeId: f.get('route') }); setOpen(r.id); }, 'MDF-e preparado. Confira as pendências e transmita.', load); }}>
           <h2>Preparar MDF-e de uma viagem</h2>

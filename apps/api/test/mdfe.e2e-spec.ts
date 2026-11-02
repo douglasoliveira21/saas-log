@@ -42,7 +42,7 @@ describe('MDF-e rodoviário (carga própria) com servidor de teste', () => {
   let ibge: Awaited<ReturnType<typeof startMockIbge>>;
   const agent = () => request.agent(app.getHttpServer());
   type Agent = ReturnType<typeof agent>;
-  let owner: Agent; let fiscal: Agent; let accountant: Agent; let wh: string; let est: string;
+  let owner: Agent; let fiscal: Agent; let buyer: Agent; let wh: string; let est: string;
   let driverId: string; let vehicleId: string;
 
   async function newOrder(withNfe = true): Promise<string> {
@@ -89,11 +89,11 @@ describe('MDF-e rodoviário (carga própria) com servidor de teste', () => {
     wh = (await owner.post('/api/warehouses').set(H).send({ establishmentId: est, code: 'CD01', name: 'Depósito' }).expect(201)).body.id;
     const roles = Object.fromEntries((await owner.get('/api/roles').expect(200)).body.map((r: any) => [r.key, r.id]));
     const user = async (k: string) => { const email = `${k}-${uid()}@teste.local`; await owner.post('/api/users').set(H).send({ name: `U ${k}`, email, password: PASSWORD, roleId: roles[k] }).expect(201); const a = agent(); await a.post('/api/auth/login').set(H).send({ email, password: PASSWORD }).expect(200); return a; };
-    fiscal = await user('fiscal'); accountant = await user('accountant');
+    fiscal = await user('fiscal'); buyer = await user('buyer');
     for (const dest of ['RJ']) {
       const c = (await fiscal.post('/api/fiscal/rules').set(H).send({ rule: { name: `Venda MG→${dest} ${uid()}`, operation: 'SALE', originUf: 'MG', destUf: dest }, version: { validFrom: '2026-01-01T00:00:00Z', sourceReference: 'Parecer contábil 12/2026 – simulado', config: { cfop: '6102', taxes: { ICMS: { csosn: '102', ratePct: 0 }, PIS: { cst: '49', ratePct: 0 }, COFINS: { cst: '49', ratePct: 0 } } } } }).expect(201)).body;
       await fiscal.post(`/api/fiscal/rules/versions/${c.versionId}/submit`).set(H).expect(200);
-      await accountant.post(`/api/fiscal/rules/versions/${c.versionId}/approve`).set(H).expect(200);
+      await fiscal.post(`/api/fiscal/rules/versions/${c.versionId}/approve`).set(H).expect(200);
     }
     await fiscal.post(`/api/fiscal/establishments/${est}/certificate`).set(H).send({ pfxBase64: makePfx(`EMPRESA TESTE:${EST_CNPJ}`), password: 'p' }).expect(201);
     await fiscal.put(`/api/fiscal/establishments/${est}/provider`).set(H).send({ provider: 'SEFAZ_DIRECT' }).expect(200);
@@ -125,7 +125,7 @@ describe('MDF-e rodoviário (carga própria) com servidor de teste', () => {
     expect(again.id).toBe(p.id); // refaz o mesmo rascunho
     expect([again.ready, again.issues.filter((i: any) => i.severity === 'BLOCKING')]).toEqual([true, []]);
     await fiscal.post('/api/fiscal/mdfe/prepare').set(H).send({ routeId: 'x' }).expect(400);
-    await accountant.post('/api/fiscal/mdfe/prepare').set(H).send({ routeId: route }).expect(403); // contador só consulta
+    await buyer.post('/api/fiscal/mdfe/prepare').set(H).send({ routeId: route }).expect(403);
   });
 
   it('pedido sem NF-e autorizada bloqueia o manifesto', async () => {

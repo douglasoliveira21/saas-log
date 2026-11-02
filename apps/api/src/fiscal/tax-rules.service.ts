@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AuthContext } from '../common/auth';
@@ -9,7 +9,7 @@ type Tx = Prisma.TransactionClient;
 
 const OPERATIONS: Operation[] = ['PURCHASE', 'SALE', 'RETURN_SALE', 'RETURN_PURCHASE', 'TRANSFER', 'OTHER'];
 
-/** Valida a estrutura da configuração (formato). Os VALORES (alíquotas, CST, CFOP) são responsabilidade do contador. */
+/** Valida a estrutura da configuração. Alíquotas, CST e CFOP são responsabilidade do usuário autorizado. */
 export function validateRuleConfig(cfg: unknown): RuleConfig {
   if (!cfg || typeof cfg !== 'object') throw new BadRequestException('Configuração da regra inválida.');
   const c = cfg as Partial<RuleConfig>;
@@ -113,12 +113,11 @@ export class TaxRulesService {
     });
   }
 
-  /** Aprovação (validação do contador). Substitui a versão aprovada anterior encerrando sua vigência na véspera da nova. */
+  /** Ativação da versão. Substitui a versão aprovada anterior encerrando sua vigência na véspera da nova. */
   approve(ctx: AuthContext, versionId: string) {
     return this.prisma.withContext(ctx, async (tx) => {
       const v = await this.version(tx, ctx, versionId);
       if (v.status !== 'PENDING_APPROVAL') throw new ConflictException('A versão não está aguardando aprovação.');
-      if (v.createdById === ctx.userId && !ctx.permissions.has('tenant.manage')) throw new ForbiddenException('A aprovação deve ser feita por outra pessoa (segregação de funções).');
       const previous = await tx.taxRuleVersion.findMany({ where: { ruleId: v.ruleId, tenantId: ctx.tenantId!, status: 'APPROVED' } });
       for (const p of previous) {
         const end = new Date(v.validFrom.getTime() - 1);

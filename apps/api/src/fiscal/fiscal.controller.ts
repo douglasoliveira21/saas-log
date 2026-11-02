@@ -2,7 +2,7 @@ import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, Par
 import type { Response } from 'express';
 import { Type } from 'class-transformer';
 import {
-  ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsEmail, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateNested,
+  ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateNested,
 } from 'class-validator';
 import { AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
 import { Operation } from './engine';
@@ -19,8 +19,6 @@ class ConfigDto {
   @IsOptional() @IsIn(['HOMOLOGACAO', 'PRODUCAO']) environment?: string;
   @IsOptional() @IsArray() @ArrayMaxSize(5) @IsIn(['NFE', 'NFCE', 'NFSE'], { each: true }) documentTypes?: string[];
   @IsOptional() @IsInt() @Min(1) @Max(889) nfeSeries?: number;
-  @IsOptional() @IsString() @MaxLength(120) accountantName?: string;
-  @IsOptional() @IsEmail() accountantEmail?: string;
   @IsOptional() @IsString() @MaxLength(2000) notes?: string;
 }
 class ReasonDto { @IsString() @Length(3, 300) reason: string; }
@@ -134,15 +132,6 @@ export class FiscalController {
   @Put('establishments/:id/config') @RequirePermissions('fiscal.manage')
   updateConfig(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ConfigDto) { return this.cfg.updateConfig(ctx, id, dto); }
 
-  @Post('establishments/:id/config/submit') @HttpCode(200) @RequirePermissions('fiscal.manage')
-  submit(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.cfg.submitForAccountant(ctx, id); }
-
-  @Post('establishments/:id/config/approve') @HttpCode(200) @RequirePermissions('fiscal.approve')
-  approve(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.cfg.approve(ctx, id); }
-
-  @Post('establishments/:id/config/reject') @HttpCode(200) @RequirePermissions('fiscal.approve')
-  reject(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReasonDto) { return this.cfg.reject(ctx, id, dto.reason); }
-
   @Post('establishments/:id/certificate') @RequirePermissions('fiscal.manage')
   certificate(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CertDto) { return this.cfg.uploadCertificate(ctx, id, dto); }
 
@@ -202,10 +191,10 @@ export class FiscalController {
   @Post('rules/versions/:vid/submit') @HttpCode(200) @RequirePermissions('fiscal.rules')
   submitVersion(@CurrentAuth() ctx: AuthContext, @Param('vid', ParseUUIDPipe) vid: string) { return this.rules.submit(ctx, vid); }
 
-  @Post('rules/versions/:vid/approve') @HttpCode(200) @RequirePermissions('fiscal.approve')
+  @Post('rules/versions/:vid/approve') @HttpCode(200) @RequirePermissions('fiscal.rules')
   approveVersion(@CurrentAuth() ctx: AuthContext, @Param('vid', ParseUUIDPipe) vid: string) { return this.rules.approve(ctx, vid); }
 
-  @Post('rules/versions/:vid/reject') @HttpCode(200) @RequirePermissions('fiscal.approve')
+  @Post('rules/versions/:vid/reject') @HttpCode(200) @RequirePermissions('fiscal.rules')
   rejectVersion(@CurrentAuth() ctx: AuthContext, @Param('vid', ParseUUIDPipe) vid: string, @Body() dto: ReasonDto) { return this.rules.reject(ctx, vid, dto.reason); }
 
   @Put('rules/:id/active') @RequirePermissions('fiscal.rules')

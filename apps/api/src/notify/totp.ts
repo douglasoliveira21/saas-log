@@ -29,7 +29,7 @@ export function totpAt(secret: string, atMs: number, step = 30, digits = 6): str
   return String(code % 10 ** digits).padStart(digits, '0');
 }
 
-/** Aceita o código atual e o da janela anterior/seguinte (relógios um pouco fora). Devolve o contador aceito (evita reuso) ou null. */
+/** Aceita o código atual e o da janela anterior/seguinte (relógios um pouco fora). Devolve o passo aceito (evita reuso) ou null. */
 export function verifyTotp(secret: string, code: string, nowMs = Date.now(), window = 1): number | null {
   if (!/^\d{6}$/.test(code)) return null;
   for (let w = -window; w <= window; w++) {

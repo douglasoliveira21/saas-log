@@ -13,7 +13,7 @@ const uid = () => `${run}${++seq}`;
 const day = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
 const thisMonth = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 7);
 
-describe('Gestão: metas, margem, giro/ruptura/previsão, orçamento e pacote do contador', () => {
+describe('Gestão: metas, margem, giro/ruptura/previsão, orçamento e exportação fiscal', () => {
   let app: INestApplication;
   type Agent = ReturnType<typeof request.agent>;
   let owner: Agent; let other: Agent; let wh: string;
@@ -124,7 +124,7 @@ describe('Gestão: metas, margem, giro/ruptura/previsão, orçamento e pacote do
 
   it('orçamento: orça por categoria e mês e compara com o realizado', async () => {
     const cat = (await owner.post('/api/finance/categories').set(H).send({ name: `Aluguel ${uid()}`, kind: 'OPERATING_EXPENSE' }).expect(201)).body.id;
-    // Usa hoje para que o título esteja tanto no mês do orçamento quanto na janela dinâmica do pacote do contador.
+    // Usa hoje para que o título esteja tanto no mês do orçamento quanto na janela dinâmica da exportação fiscal.
     await owner.post('/api/finance/titles').set(H).send({ direction: 'PAYABLE', description: 'Aluguel', amount: 1200, dueDate: day(0), categoryId: cat }).expect(201);
     await owner.put('/api/management/budget').set(H).send({ lines: [{ lineKey: cat, period: thisMonth, amount: 1000 }, { lineKey: 'SALES', period: thisMonth, amount: 5000 }] }).expect(200);
     const b = (await owner.get(`/api/management/budget?year=${thisMonth.slice(0, 4)}`).expect(200)).body;
@@ -140,15 +140,15 @@ describe('Gestão: metas, margem, giro/ruptura/previsão, orçamento e pacote do
     await other.put('/api/management/budget').set(H).send({ lines: [{ lineKey: cat, period: thisMonth, amount: 1 }] }).expect(400); // categoria de outra empresa
   });
 
-  it('pacote do contador: ZIP com planilhas e LEIA-ME deixando claro que não é SPED', async () => {
-    const res = await owner.get(`/api/management/accountant-package?from=${day(-30)}&to=${day(1)}`).buffer(true).parse((r, cb) => { const chunks: Buffer[] = []; r.on('data', (c: Buffer) => chunks.push(c)); r.on('end', () => cb(null, Buffer.concat(chunks))); }).expect(200);
+  it('exportação fiscal: ZIP com planilhas e LEIA-ME deixando claro que não é SPED', async () => {
+    const res = await owner.get(`/api/management/fiscal-export?from=${day(-30)}&to=${day(1)}`).buffer(true).parse((r, cb) => { const chunks: Buffer[] = []; r.on('data', (c: Buffer) => chunks.push(c)); r.on('end', () => cb(null, Buffer.concat(chunks))); }).expect(200);
     expect(res.headers['content-type']).toMatch(/zip/);
     const files = unzipSync(new Uint8Array(res.body as Buffer));
     expect(Object.keys(files)).toEqual(expect.arrayContaining(['LEIA-ME.txt', 'notas_saida.csv', 'notas_entrada.csv', 'lancamentos_financeiros.csv', 'baixas.csv', 'plano_de_contas.csv', 'dre_gerencial.csv']));
-    expect(strFromU8(files['LEIA-ME.txt'])).toMatch(/NÃO é o arquivo SPED/);
+    expect(strFromU8(files['LEIA-ME.txt'])).toMatch(/NÃO é um arquivo SPED/);
     expect(strFromU8(files['lancamentos_financeiros.csv'])).toMatch(/Aluguel/);
     expect(strFromU8(files['plano_de_contas.csv'])).toMatch(/Categoria/);
-    await owner.get('/api/management/accountant-package?from=2026-05-01&to=2026-04-01').expect(400);
+    await owner.get('/api/management/fiscal-export?from=2026-05-01&to=2026-04-01').expect(400);
   });
 
   it('sem a permissão de gestão a API responde 403', async () => {
@@ -160,6 +160,6 @@ describe('Gestão: metas, margem, giro/ruptura/previsão, orçamento e pacote do
     await sp.get('/api/management/margin').expect(403);
     await sp.get('/api/management/goals').expect(403);
     await sp.put('/api/management/goals').set(H).send({ period: thisMonth, items: [] }).expect(403);
-    await sp.get('/api/management/accountant-package').expect(403);
+    await sp.get('/api/management/fiscal-export').expect(403);
   });
 });

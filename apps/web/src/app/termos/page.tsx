@@ -17,7 +17,7 @@ const S: LegalSection[] = [
     id: 'definicoes', title: 'Definições',
     body: <ul>
       <li><strong>Cliente:</strong> a empresa que contrata a Plataforma e é titular da conta (ambiente) onde os dados dela ficam.</li>
-      <li><strong>Usuário:</strong> a pessoa que acessa a Plataforma em nome do Cliente (proprietário, administrador, vendedor, motorista, contador etc.), com as permissões que o Cliente definir.</li>
+      <li><strong>Usuário:</strong> a pessoa que acessa a Plataforma em nome do Cliente, com as permissões que o Cliente definir.</li>
       <li><strong>Dados do Cliente:</strong> todas as informações inseridas ou geradas pelo Cliente na Plataforma (cadastros, pedidos, estoques, financeiro, documentos fiscais, certificados digitais, entre outras).</li>
     </ul>,
   },
@@ -25,7 +25,7 @@ const S: LegalSection[] = [
     id: 'servico', title: 'O serviço',
     body: <>
       <p>A Plataforma reúne módulos como cadastro de produtos e clientes, estoque, vendas e pedidos, compras, financeiro, emissão e gestão de documentos fiscais, logística e entregas, integrações com canais de venda, indicadores e relatórios. Os módulos disponíveis dependem do plano contratado e da fase de desenvolvimento de cada recurso.</p>
-      <p>A Plataforma é uma ferramenta de apoio. <strong>Ela não substitui o contador, o advogado nem a análise do Cliente.</strong> Parâmetros tributários, regras fiscais, alíquotas, comissões, políticas comerciais e demais configurações são definidos e validados pelo Cliente; a {VGON.short} não os fornece como aconselhamento fiscal, contábil ou jurídico.</p>
+      <p>A Plataforma é uma ferramenta de apoio. <strong>Ela não substitui a análise jurídica, fiscal ou administrativa do Cliente.</strong> Parâmetros tributários, regras fiscais, alíquotas, comissões, políticas comerciais e demais configurações são definidos e validados pelo Cliente; a {VGON.short} não os fornece como aconselhamento fiscal ou jurídico.</p>
       <p>Recursos que dependem de terceiros (por exemplo, SEFAZ, certificado digital, provedores de nota fiscal, marketplaces, WhatsApp e e-mail) podem exigir credenciamento, homologação e configuração por parte do Cliente e estão sujeitos à disponibilidade e às regras desses terceiros.</p>
     </>,
   },
@@ -74,7 +74,7 @@ const S: LegalSection[] = [
   {
     id: 'fiscal', title: 'Responsabilidade fiscal e legal do Cliente',
     body: <>
-      <p>O Cliente é o único responsável pelas informações que lança, pelas regras tributárias que cadastra e aprova, pelos documentos fiscais que emite e pelo cumprimento de suas obrigações (fiscais, trabalhistas, consumeristas, regulatórias). Recomenda-se validar toda configuração com o contador e emitir primeiro em ambiente de homologação.</p>
+      <p>O Cliente é o único responsável pelas informações que lança, pelas regras tributárias que cadastra e aprova, pelos documentos fiscais que emite e pelo cumprimento de suas obrigações (fiscais, trabalhistas, consumeristas, regulatórias). Recomenda-se testar toda configuração no ambiente de homologação antes da produção.</p>
       <p>O Cliente deve manter guardados os documentos que a lei exige (por exemplo, XML de notas fiscais) pelo prazo legal, mantendo cópia própria.</p>
     </>,
   },

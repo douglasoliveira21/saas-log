@@ -1,4 +1,4 @@
-# Gestão: metas, margem, giro, orçamento e pacote do contador
+# Gestão: metas, margem, giro, orçamento e exportação fiscal
 
 Menu **Metas e indicadores** (`/gestao`, permissão `management.view`; definir metas/orçamento exige `management.manage`). Tudo é calculado em centavos a partir dos dados do sistema e **não altera** estoque, pedidos nem títulos.
 
@@ -11,7 +11,7 @@ Menu **Metas e indicadores** (`/gestao`, permissão `management.view`; definir m
 
 Pedido (pop-up em Vendas): quem tem `management.view` vê a **margem bruta da mercadoria** do pedido.
 
-## Pacote do contador (Financeiro → Pacote do contador)
-ZIP com `notas_saida.csv`, `notas_entrada.csv`, `lancamentos_financeiros.csv`, `baixas.csv`, `plano_de_contas.csv`, `dre_gerencial.csv`, `LEIA-ME.txt` e a pasta `xml/` (autorizadas de saída e recebidas de entrada, até 5.000). Exige `finance.view` + `reports.export` (o papel Contador passou a ter `reports.export`).
+## Exportação fiscal (Financeiro → Exportação fiscal)
+ZIP com `notas_saida.csv`, `notas_entrada.csv`, `lancamentos_financeiros.csv`, `baixas.csv`, `plano_de_contas.csv`, `dre_gerencial.csv`, `LEIA-ME.txt` e a pasta `xml/` (autorizadas de saída e recebidas de entrada, até 5.000). Exige `finance.view` + `reports.export`.
 
-**Não é SPED.** EFD ICMS/IPI, EFD Contribuições e ECD **não foram implementados**: exigem apuração de ICMS/ST/IPI/PIS/COFINS, blocos e validação no PVA da Receita, que dependem das regras do contador e de ICMS-ST (ainda não suportado). O pacote entrega os dados para o escritório gerar o SPED.
+**Não é SPED.** EFD ICMS/IPI, EFD Contribuições e ECD **não foram implementados**: exigem apuração de ICMS/ST/IPI/PIS/COFINS, blocos e validação no PVA da Receita, além de ICMS-ST (ainda não suportado). A exportação entrega os dados brutos para processamento externo.

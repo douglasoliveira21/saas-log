@@ -70,7 +70,7 @@ class RangeQuery {
 }
 
 /**
- * Gestão: metas de vendas, margem real, giro/ruptura/previsão de estoque, orçamento financeiro e pacote do contador.
+ * Gestão: metas de vendas, margem real, giro/ruptura/previsão de estoque, orçamento e exportação fiscal.
  * Tudo é calculado em centavos a partir dos dados do sistema; nada aqui altera estoque, pedidos ou títulos.
  */
 @Injectable()
@@ -273,13 +273,12 @@ export class ManagementService {
     });
   }
 
-  // ───────────── pacote do contador ─────────────
+  // ───────────── exportação fiscal ─────────────
 
   /**
-   * ZIP para o contador: planilhas (CSV) de notas de saída/entrada, lançamentos e baixas financeiras, plano de contas e DRE, mais os XML
-   * autorizados/recebidos. NÃO é SPED (EFD ICMS/IPI, Contribuições ou ECD): o escritório contábil gera o SPED a partir destes dados.
+   * ZIP com planilhas de notas, lançamentos, baixas, plano de contas, DRE e XML autorizados/recebidos. Não é SPED.
    */
-  async accountantPackage(ctx: AuthContext, q: { from?: string; to?: string }) {
+  async fiscalExport(ctx: AuthContext, q: { from?: string; to?: string }) {
     const r = range(q.from, q.to, 30);
     const files: Record<string, Uint8Array> = {};
     const csv = (name: string, cols: Column[], rows: Row[]) => { files[name] = new Uint8Array(toCsv(cols, rows)); };
@@ -324,17 +323,17 @@ export class ManagementService {
     const dre = await this.statements.dre(ctx, { from: r.from, to: r.to });
     csv('dre_gerencial.csv', [{ key: 'label', label: 'Linha' }, { key: 'amount', label: 'Valor' }, { key: 'pct', label: '% da receita líquida' }], dre.lines.map((l) => ({ label: l.label, amount: Number(l.amount), pct: l.pctOfNetRevenue })));
     files['LEIA-ME.txt'] = strToU8([
-      `Pacote do contador — período ${r.from} a ${r.to}`,
+      `Exportação fiscal — período ${r.from} a ${r.to}`,
       '',
       'Conteúdo: notas_saida.csv, notas_entrada.csv, lancamentos_financeiros.csv, baixas.csv, plano_de_contas.csv, dre_gerencial.csv e a pasta xml/ (saida e entrada).',
       '',
-      'IMPORTANTE: este pacote NÃO é o arquivo SPED (EFD ICMS/IPI, EFD Contribuições, ECD). Ele reúne os dados e os XML para o escritório contábil conciliar e gerar o SPED no sistema fiscal/contábil dele.',
+      'IMPORTANTE: esta exportação NÃO é um arquivo SPED (EFD ICMS/IPI, EFD Contribuições ou ECD).',
       'Notas de saída: só as que saíram de rascunho/validação; o XML vai no pacote apenas para as autorizadas. Notas de entrada: as importadas (XML recebido).',
       'A DRE é gerencial e não substitui a escrituração contábil.',
       xmlSkipped ? `Atenção: ${xmlSkipped} XML não couberam no pacote (limite de ${MAX_XML}); reduza o período.` : '',
     ].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\r\n'));
-    await this.prisma.withContext(ctx, (tx) => this.audit.record(tx, ctx, { action: 'management.accountant_package', entity: 'report', metadata: { from: r.from, to: r.to, xml: xmlCount } }));
-    return { fileName: `pacote-contador-${r.from}_${r.to}.zip`, content: Buffer.from(zipSync(files)) };
+    await this.prisma.withContext(ctx, (tx) => this.audit.record(tx, ctx, { action: 'management.fiscal_export', entity: 'report', metadata: { from: r.from, to: r.to, xml: xmlCount } }));
+    return { fileName: `exportacao-fiscal-${r.from}_${r.to}.zip`, content: Buffer.from(zipSync(files)) };
   }
 }
 
@@ -360,9 +359,9 @@ export class ManagementController {
   @Put('budget') @RequirePermissions('management.manage')
   setBudget(@CurrentAuth() ctx: AuthContext, @Body() dto: BudgetDto) { return this.svc.setBudget(ctx, dto); }
 
-  @Get('accountant-package') @RequirePermissions('finance.view', 'reports.export')
-  async accountant(@CurrentAuth() ctx: AuthContext, @Query() q: RangeQuery, @Res() res: Response) {
-    const f = await this.svc.accountantPackage(ctx, q);
+  @Get('fiscal-export') @RequirePermissions('finance.view', 'reports.export')
+  async fiscalExport(@CurrentAuth() ctx: AuthContext, @Query() q: RangeQuery, @Res() res: Response) {
+    const f = await this.svc.fiscalExport(ctx, q);
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${f.fileName}"`);
     res.setHeader('Cache-Control', 'no-store');

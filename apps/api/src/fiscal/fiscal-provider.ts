@@ -33,7 +33,7 @@ export interface OutgoingItem {
   unitValue: number;
   total: number;
   origin: number | null;
-  /** Códigos vindos do motor tributário (regras aprovadas pelo contador). */
+  /** Códigos vindos do motor tributário (regras fiscais aprovadas). */
   icmsCode: string | null; // CSOSN (Simples) ou CST
   pisCst: string | null;
   cofinsCst: string | null;

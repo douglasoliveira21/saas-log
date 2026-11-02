@@ -14,7 +14,7 @@ describe('Venda: tabela varejo/atacado, vendedor automático, carteira de client
   let app: INestApplication; let admin: PrismaClient;
   const agent = () => request.agent(app.getHttpServer());
   type Agent = ReturnType<typeof agent>;
-  let owner: Agent; let ana: Agent; let beto: Agent; let accountant: Agent; let tenantId: string; let wh: string; let companyId: string;
+  let owner: Agent; let ana: Agent; let beto: Agent; let buyer: Agent; let tenantId: string; let wh: string; let companyId: string;
   const P: Record<string, string> = {};
 
   async function user(roleKey: string, name: string) {
@@ -44,7 +44,7 @@ describe('Venda: tabela varejo/atacado, vendedor automático, carteira de client
     const est = await owner.post('/api/establishments').set(H).send({ companyId, kind: 'MATRIZ', name: 'Matriz', city: 'Belo Horizonte', state: 'MG', street: 'Rua A', number: '1', district: 'Centro' }).expect(201);
     wh = (await owner.post('/api/warehouses').set(H).send({ establishmentId: est.body.id, code: 'CD01', name: 'Depósito' }).expect(201)).body.id;
     await product('a', 10, 8); await product('b', 20, null);
-    ana = await user('salesperson', 'Ana'); beto = await user('salesperson', 'Beto'); accountant = await user('accountant', 'Contador');
+    ana = await user('salesperson', 'Ana'); beto = await user('salesperson', 'Beto'); buyer = await user('buyer', 'Comprador');
   }, 90_000);
   afterAll(async () => { await admin.$disconnect(); await app.close(); });
 
@@ -169,7 +169,7 @@ describe('Venda: tabela varejo/atacado, vendedor automático, carteira de client
     await owner.patch(`/api/customers/${c.id}`).set(H).send({ zipCode: '123' }).expect(400);
     await owner.patch(`/api/customers/${c.id}`).set(H).send({ kind: 'PJ' }).expect(400); // o tipo não muda
     await ana.patch(`/api/customers/${c.id}`).set(H).send({ city: 'X' }).expect(200); // vendedor tem customers.manage
-    await accountant.patch(`/api/customers/${c.id}`).set(H).send({ city: 'Y' }).expect(403);
+    await buyer.patch(`/api/customers/${c.id}`).set(H).send({ city: 'Y' }).expect(403);
     const other = agent();
     await other.post('/api/auth/register').set(H).send({ companyName: `Co ed ${run}`, name: 'Outro', email: `ed-${run}@teste.local`, password: PASSWORD }).expect(201);
     await other.patch(`/api/customers/${c.id}`).set(H).send({ city: 'Z' }).expect(404);
@@ -187,7 +187,7 @@ describe('Venda: tabela varejo/atacado, vendedor automático, carteira de client
     expect(r.quote.customer).toMatchObject({ email: 'cliente@x.com', phone: '11988887777' });
     expect(r.logo).toMatch(/^data:image\/png;base64,/); // logotipo cadastrado no teste anterior
     await beto.get(`/api/quotes/${q}/print`).expect(404); // orçamento de outro vendedor
-    await accountant.get(`/api/quotes/${q}/print`).expect(403); // contador não tem acesso a vendas
+    await buyer.get(`/api/quotes/${q}/print`).expect(403);
     await owner.get(`/api/quotes/${q}/print`).expect(200); // quem enxerga tudo
     await agent().get(`/api/quotes/${q}/print`).expect(401);
   });
@@ -197,7 +197,7 @@ describe('Venda: tabela varejo/atacado, vendedor automático, carteira de client
     const before = (await owner.get('/api/fiscal/federal-taxes').expect(200)).body;
     expect(before.find((x: any) => x.company.id === companyId).config).toBeNull();
     await owner.put(`/api/fiscal/federal-taxes/${companyId}`).set(H).send(ok).expect(200);
-    const got = (await accountant.get('/api/fiscal/federal-taxes').expect(200)).body.find((x: any) => x.company.id === companyId).config;
+    const got = (await buyer.get('/api/fiscal/federal-taxes').expect(200)).body.find((x: any) => x.company.id === companyId).config;
     expect(got).toMatchObject({ regime: 'LUCRO_REAL', pisRate: 1.65, cofinsRate: 7.6, showTotalTaxes: true });
     expect(got.icmsByUf).toHaveLength(2);
     await owner.put(`/api/fiscal/federal-taxes/${companyId}`).set(H).send({ ...ok, pisRate: 101 }).expect(400);
@@ -205,7 +205,7 @@ describe('Venda: tabela varejo/atacado, vendedor automático, carteira de client
     await owner.put(`/api/fiscal/federal-taxes/${companyId}`).set(H).send({ ...ok, icmsByUf: [{ uf: 'XX', cst: '00' }] }).expect(400);
     await owner.put(`/api/fiscal/federal-taxes/${companyId}`).set(H).send({ ...ok, icmsByUf: [{ uf: 'MG', cst: '00' }, { uf: 'mg', cst: '10' }] }).expect(400);
     await owner.put(`/api/fiscal/federal-taxes/${companyId}`).set(H).send({ ...ok, ibsCbsByUf: [{ uf: 'MG', cst: '0', classification: '1' }] }).expect(400);
-    await accountant.put(`/api/fiscal/federal-taxes/${companyId}`).set(H).send(ok).expect(403);
+    await buyer.put(`/api/fiscal/federal-taxes/${companyId}`).set(H).send(ok).expect(403);
     await ana.get('/api/fiscal/federal-taxes').expect(403);
     const other = agent();
     await other.post('/api/auth/register').set(H).send({ companyName: `Co sx2 ${run}`, name: 'Outro', email: `sx2-${run}@teste.local`, password: PASSWORD }).expect(201);

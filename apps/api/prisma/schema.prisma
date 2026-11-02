@@ -1308,7 +1308,7 @@ model ChannelCategoryMapping {
 // Princípios: nenhuma alíquota/regra tributária vem pré-cadastrada; regras são do tenant, versionadas, aprovadas e
 // rastreáveis. Documentos e XML são imutáveis após registrados.
 
-// Parâmetros fiscais por estabelecimento. A validação do contador é registrada (quem/quando).
+// Parâmetros fiscais por estabelecimento.
 model FiscalConfiguration {
   id              String    @id @default(uuid()) @db.Uuid
   tenantId        String    @map("tenant_id") @db.Uuid
@@ -1316,9 +1316,7 @@ model FiscalConfiguration {
   environment     String    @default("HOMOLOGACAO") // HOMOLOGACAO | PRODUCAO
   documentTypes   String[]  @default(["NFE"]) @map("document_types")
   nfeSeries       Int       @default(1) @map("nfe_series")
-  accountantName  String?   @map("accountant_name")
-  accountantEmail String?   @map("accountant_email")
-  status          String    @default("DRAFT") // DRAFT | PENDING_ACCOUNTANT | APPROVED
+  status          String    @default("APPROVED") // configuração ativa
   approvedById    String?   @map("approved_by_id") @db.Uuid
   approvedAt      DateTime? @map("approved_at")
   notes           String?
@@ -1496,7 +1494,7 @@ model TaxRuleVersion {
   validFrom       DateTime  @map("valid_from")
   validTo         DateTime? @map("valid_to")
   config          Json
-  sourceReference String    @map("source_reference") // base legal / orientação do contador (obrigatório)
+  sourceReference String    @map("source_reference") // base legal ou referência interna (obrigatório)
   createdById     String?   @map("created_by_id") @db.Uuid
   approvedById    String?   @map("approved_by_id") @db.Uuid
   approvedAt      DateTime? @map("approved_at")
@@ -2569,7 +2567,7 @@ model GoalBonus {
   @@map("goal_bonuses")
 }
 
-/// Impostos federais da empresa (Simples/Presumido/Real/MEI, PIS/COFINS e opções da Lei 12.741). Valores digitados e validados pelo contador;
+/// Impostos federais da empresa (Simples/Presumido/Real/MEI, PIS/COFINS e opções da Lei 12.741). Valores informados pelo usuário autorizado;
 /// o sistema não traz alíquotas prontas.
 model FederalTaxConfig {
   id                 String     @id @default(uuid()) @db.Uuid

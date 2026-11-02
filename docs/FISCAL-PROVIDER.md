@@ -1,7 +1,7 @@
 # Emissão fiscal por provedor (NF-e e NFC-e) — Focus NFe
 
 ## Como funciona
-O sistema **prepara e valida** a nota (destinatário, regras tributárias aprovadas pelo contador, impostos do motor). A **geração do XML, a assinatura digital e a transmissão à SEFAZ** são feitas pelo provedor **Focus NFe**, na **conta de cada cliente do SaaS**:
+O sistema **prepara e valida** a nota (destinatário, regras tributárias ativas, impostos do motor). A **geração do XML, a assinatura digital e a transmissão à SEFAZ** são feitas pelo provedor **Focus NFe**, na **conta de cada cliente do SaaS**:
 1. O cliente cria a conta no Focus NFe, cadastra a empresa, o **certificado A1** e (NFC-e) o **CSC** no painel dele.
 2. Em Fiscal → Configuração → *Provedor de emissão*, cola o **token** de homologação e/ou produção (cifrado no servidor; só os 4 últimos caracteres voltam à tela). O botão **Testar** confere o token sem emitir nada.
 3. Em Fiscal → Notas de saída: **Preparar** (a partir do pedido; NF-e ou NFC-e conforme escolhido na venda, mais a forma de pagamento) → **Transmitir** → acompanhar → **Ver DANFE / Baixar XML** → **Cancelar** (se necessário).
@@ -20,7 +20,7 @@ Cada estabelecimento usa o seu token; o ambiente (homologação/produção) é o
 Revisado em 02/11/2026 contra a referência oficial do Focus NFe: autenticação, ambientes, emissão/consulta/cancelamento, pagamentos, ICMS, PIS, COFINS, IPI, IBS/CBS, Imposto Seletivo, devolução referenciada, CC-e, inutilização e caminhos do XML/DANFE. Os payloads têm testes automatizados. A autorização real continua dependendo da conta, credenciamento, certificado e parametrização do cliente e deve ser comprovada no ambiente de homologação antes da produção.
 
 ## Limites conhecidos
-- O motor calcula tributos percentuais configurados pelo contador, inclusive IBS/CBS e Imposto Seletivo. **ST, DIFAL e FCP** continuam como pendência explícita por exigirem bases específicas.
+- O motor calcula tributos percentuais configurados pelo responsável fiscal, inclusive IBS/CBS e Imposto Seletivo. **ST, DIFAL e FCP** continuam como pendência explícita por exigirem bases específicas.
 - O conector envia ICMS, PIS, COFINS, IPI, IBS/CBS e Imposto Seletivo. Tributo desconhecido com valor diferente de zero bloqueia a transmissão para impedir XML incompleto.
 - Cancelamento, CC-e e inutilização estão implementados. Contingência offline da NFC-e e eventos de entrega não estão.
 - Devolução de venda gera NF-e de entrada, finalidade 4, chave original referenciada e exige regra aprovada para `RETURN_SALE`.
@@ -32,4 +32,4 @@ Revisado em 02/11/2026 contra a referência oficial do Focus NFe: autenticação
 - **Custos:** o provedor cobra pela emissão em produção (o ambiente de homologação costuma ser gratuito; confirme no site dele). O certificado A1 é custo do cliente.
 
 ## NFC-e acima do limite do cupom (divisão automática)
-Configurável em Configurações → *Cupom fiscal (NFC-e)* (`fiscal.nfceMaxValue`, padrão R$ 9.999,00; `0` desliga). Ao preparar uma NFC-e cujo pedido passa do limite, o sistema cria **vários documentos** ("cupom N/M") do mesmo pedido: cálculo em centavos, soma exata, unidade nunca partida, frete no primeiro cupom. Cada cupom tem numeração, chave e transmissão próprias (uma falha não derruba os outros). Uma unidade acima do limite recusa a preparação. Não vale para NF-e. Ex.: R$ 400.000,00 → 41 cupons. **Pendente:** transmitir todos de uma vez (hoje um a um) e conferir com o contador/SEFAZ da UF se o fracionamento é aceito para o caso de uso.
+Configurável em Configurações → *Cupom fiscal (NFC-e)* (`fiscal.nfceMaxValue`, padrão R$ 9.999,00; `0` desliga). Ao preparar uma NFC-e cujo pedido passa do limite, o sistema cria **vários documentos** ("cupom N/M") do mesmo pedido: cálculo em centavos, soma exata, unidade nunca partida, frete no primeiro cupom. Cada cupom tem numeração, chave e transmissão próprias (uma falha não derruba os outros). Uma unidade acima do limite recusa a preparação. Não vale para NF-e. Ex.: R$ 400.000,00 → 41 cupons. **Pendente:** transmitir todos de uma vez (hoje um a um) e confirmar com a SEFAZ da UF se o fracionamento é aceito para o caso de uso.

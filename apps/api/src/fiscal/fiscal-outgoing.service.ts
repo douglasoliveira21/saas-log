@@ -154,7 +154,7 @@ export class FiscalOutgoingService {
 
   /**
    * Prepara a NF-e de DEVOLUÇÃO DE VENDA (entrada própria: tpNF 0, finNFe 4, CFOP 1.xxx/2.xxx, referenciando a nota autorizada do pedido) a partir de uma
-   * devolução registrada. Tributação: recalculada pelas regras aprovadas; confira com o contador.
+   * devolução registrada. Tributação: recalculada pelas regras fiscais aprovadas.
    */
   async prepareReturn(ctx: AuthContext, returnId: string) {
     await this.warmCities(ctx, {});
@@ -241,7 +241,6 @@ export class FiscalOutgoingService {
       if (!cert) add('BLOCKING', 'CERTIFICATE', 'Certificado digital A1 não cadastrado para o estabelecimento.');
       else if (cert.notAfter.getTime() <= Date.now()) add('BLOCKING', 'CERTIFICATE', 'Certificado digital vencido.');
     }
-    if (cfg.environment === 'PRODUCAO' && cfg.status !== 'APPROVED') add('BLOCKING', 'CONFIG_NOT_APPROVED', 'Produção exige a configuração fiscal validada pelo contador.');
     if (!this.provider.isConfigured(pc)) add('INFO', 'PROVIDER_NOT_CONFIGURED', 'Nenhum provedor de transmissão está configurado para este estabelecimento: o documento pode ser validado, mas não transmitido.');
 
     // NFC-e sem endereço do consumidor = operação interna (destino = UF do emitente)

@@ -155,8 +155,7 @@ export class StructureService {
       ]);
       if (docs + series + certs > 0) throw new ConflictException('O estabelecimento possui documentos, numeração ou certificado fiscal. Desative-o em vez de excluir.');
       const cfg = await tx.fiscalConfiguration.findFirst({ where: { tenantId: t, establishmentId: id } });
-      if (cfg && cfg.status !== 'DRAFT') throw new ConflictException('A configuração fiscal deste estabelecimento já foi enviada ou validada pelo contador. Desative-o em vez de excluir.');
-      if (cfg) await tx.fiscalConfiguration.delete({ where: { id: cfg.id } });
+      if (cfg) throw new ConflictException('Este estabelecimento já possui configuração fiscal. Desative-o em vez de excluir.');
       await tx.establishment.delete({ where: { id } }).catch((err) => this.blocked(err));
       await this.audit.record(tx, ctx, { action: 'establishment.deleted', entity: 'establishment', entityId: id, metadata: { name: e.name, cnpj: e.cnpj } });
       return { id, deleted: true };

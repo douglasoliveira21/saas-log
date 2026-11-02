@@ -17,7 +17,7 @@ const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', '
 const num = (v: string) => Number(v.replace(',', '.'));
 const fmt = (n: number) => String(n).replace('.', ',');
 
-/** Impostos federais da empresa. Os valores são do contador: o sistema não sugere alíquotas. */
+/** Impostos federais da empresa. O sistema não sugere alíquotas. */
 export default function ImpostosPage() {
   const { can } = useSession();
   const manage = can('fiscal.manage');
@@ -29,7 +29,7 @@ export default function ImpostosPage() {
 
   return (
     <>
-      <PageHeader title="Impostos" description={<>Impostos federais e listas por Estado da empresa. <strong>Os valores devem ser informados e conferidos pelo seu contador</strong>: o sistema não traz alíquotas prontas.</>} />
+      <PageHeader title="Impostos" description={<>Impostos federais e listas por Estado da empresa. <strong>Os valores são informados pelo usuário fiscal autorizado</strong>: o sistema não traz alíquotas prontas.</>} />
       {error && <Alert kind="error">{error}</Alert>}
       {ok && <Alert kind="ok">{ok}</Alert>}
       <Alert kind="info">Esta configuração fica registrada por empresa. <strong>Ainda não alimenta o cálculo das notas</strong>: o cálculo continua usando as regras tributárias aprovadas em Fiscal → Regras tributárias.</Alert>
@@ -79,8 +79,8 @@ function CompanyForm({ item, manage, onSaved, onError }: { item: Item; manage: b
         <div className="form-grid">
           <div><label htmlFor={`rg-${item.company.id}`}>Regime tributário *</label>
             <select id={`rg-${item.company.id}`} value={regime} onChange={(e) => setRegime(e.target.value as Regime)}>{(Object.keys(REGIME) as Regime[]).map((k) => <option key={k} value={k}>{REGIME[k]}</option>)}</select></div>
-          <div><label htmlFor={`pis-${item.company.id}`}>Alíquota PIS (%) *</label><input id={`pis-${item.company.id}`} inputMode="decimal" value={pis} onChange={(e) => setPis(e.target.value)} placeholder="Informada pelo contador" /></div>
-          <div><label htmlFor={`cof-${item.company.id}`}>Alíquota COFINS (%) *</label><input id={`cof-${item.company.id}`} inputMode="decimal" value={cofins} onChange={(e) => setCofins(e.target.value)} placeholder="Informada pelo contador" /></div>
+          <div><label htmlFor={`pis-${item.company.id}`}>Alíquota PIS (%) *</label><input id={`pis-${item.company.id}`} inputMode="decimal" value={pis} onChange={(e) => setPis(e.target.value)} placeholder="Informe a alíquota" /></div>
+          <div><label htmlFor={`cof-${item.company.id}`}>Alíquota COFINS (%) *</label><input id={`cof-${item.company.id}`} inputMode="decimal" value={cofins} onChange={(e) => setCofins(e.target.value)} placeholder="Informe a alíquota" /></div>
           <div><label htmlFor={`art-${item.company.id}`}>Artigo SC – MVA</label><input id={`art-${item.company.id}`} value={article} onChange={(e) => setArticle(e.target.value)} placeholder="Nenhum" maxLength={60} />
             <span className="muted" style={{ fontSize: '0.78rem' }}>De acordo com o decreto nº 3.467, esta empresa se enquadra no artigo informado.</span></div>
         </div>

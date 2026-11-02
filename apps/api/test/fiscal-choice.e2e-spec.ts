@@ -97,7 +97,7 @@ describe('Documento fiscal escolhido na venda (NF-e ou NFC-e) e espelho', () => 
     const r = (await preview(A, ok).expect(200)).body;
     expect(codes(r, 'BLOCKER')).toEqual([]);
     expect(r.ready).toBe(true);
-    expect(codes(r)).toEqual(expect.arrayContaining(['FISCAL_CONFIG', 'CERTIFICATE', 'NOT_ISSUED'])); // contador e certificado ainda pendentes; espelho
+    expect(codes(r)).toEqual(expect.arrayContaining(['FISCAL_CONFIG', 'CERTIFICATE', 'NOT_ISSUED'])); // configuração e certificado ainda pendentes; espelho
     expect(r.emitter).toMatchObject({ legalName: expect.stringContaining('fcA'), cnpj: CNPJ_FULL, state: 'SP', taxRegime: 'SIMPLES_NACIONAL' });
     expect(r.recipient).toMatchObject({ document: CNPJ_CUSTOMER, city: 'Campinas' });
     expect(r.items[0]).toMatchObject({ ncm: '73181500', unit: 'UN', quantity: 2, total: '100' });

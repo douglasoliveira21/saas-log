@@ -119,22 +119,16 @@ describe('Empresa, estabelecimentos e depósitos — editar e excluir', () => {
       await A.owner.patch(`/api/warehouses/${w}`).set(H).send({ active: false }).expect(200);
     });
 
-    it('estabelecimento com numeração/certificado fiscal não é excluído; com rascunho fiscal vazio é', async () => {
+    it('estabelecimento com numeração ou configuração fiscal não é excluído', async () => {
       const c = await company(A);
       const used = await est(A, c);
       await admin.$executeRaw`INSERT INTO fiscal_series (tenant_id, establishment_id, model, series, environment, last) VALUES (${A.tenantId}::uuid, ${used}::uuid, '55', 1, 'HOMOLOGACAO', 5)`;
       const r = await A.owner.delete(`/api/establishments/${used}`).set(H).expect(409);
       expect(r.body.message).toMatch(/fiscal/);
 
-      const draft = await est(A, c);
-      await A.owner.get(`/api/fiscal/establishments/${draft}/config`).expect(200); // cria o rascunho da configuração fiscal
-      await A.owner.delete(`/api/establishments/${draft}`).set(H).expect(200);
-
-      const sent = await est(A, c);
-      await admin.$executeRaw`UPDATE fiscal_configurations SET status = 'PENDING_ACCOUNTANT' WHERE establishment_id = ${sent}::uuid`;
-      await A.owner.get(`/api/fiscal/establishments/${sent}/config`).expect(200);
-      await admin.$executeRaw`UPDATE fiscal_configurations SET status = 'PENDING_ACCOUNTANT' WHERE establishment_id = ${sent}::uuid`;
-      await A.owner.delete(`/api/establishments/${sent}`).set(H).expect(409);
+      const configured = await est(A, c);
+      await A.owner.get(`/api/fiscal/establishments/${configured}/config`).expect(200);
+      await A.owner.delete(`/api/establishments/${configured}`).set(H).expect(409);
     });
 
     it('depósito usado em pedido de venda não é excluído', async () => {

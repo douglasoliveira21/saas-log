@@ -113,7 +113,7 @@ export function Danfe({ p }: { p: Preview }) {
         </tbody>
       </table>
       <div className="danfe-row">
-        <div><div className="cap">Dados adicionais</div>Pedido de venda nº {p.order.number}. Tributos, CFOP e CST/CSOSN serão preenchidos na emissão, conforme as regras aprovadas pelo contador.</div>
+        <div><div className="cap">Dados adicionais</div>Pedido de venda nº {p.order.number}. Tributos, CFOP e CST/CSOSN serão preenchidos na emissão conforme as regras fiscais ativas.</div>
       </div>
     </div>
   );

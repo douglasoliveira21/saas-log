@@ -36,7 +36,7 @@ Fonte da verdade: `apps/api/prisma/schema.prisma` + migrations em `apps/api/pris
 | `channel_listings` | RLS | produto × conexão: ID do anúncio, preço aprovado, último estoque/preço enviados, situação do envio |
 | `price_history` | RLS, append-only | alterações de preço de canal com margem e motivo |
 | `channel_category_mappings` | RLS | categoria do ERP → categoria do canal |
-| `fiscal_configurations` | RLS | parâmetros fiscais por estabelecimento e validação do contador |
+| `fiscal_configurations` | RLS | parâmetros fiscais ativos por estabelecimento |
 | `fiscal_certificates` | RLS | metadados do A1; PFX e senha cifrados (apagados ao substituir); um ativo por estabelecimento |
 | `fiscal_documents`, `fiscal_document_items` | RLS | entrada (XML) e saída (NF-e); itens de entrada imutáveis por gatilho |
 | `fiscal_xml_files` | RLS, append-only | XML original com SHA-256 |

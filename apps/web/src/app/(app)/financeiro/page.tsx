@@ -7,9 +7,9 @@ import { brl, dateBr } from '@/lib/format';
 import { useUi, PageHeader, Alert } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { Delinquency } from './delinquency';
-import { AccountantPackage } from './accountant';
+import { FiscalExport } from './fiscal-export';
 
-type Tab = 'pagar' | 'receber' | 'inadimplencia' | 'caixa' | 'dre' | 'contas' | 'banco' | 'marketplaces' | 'contador';
+type Tab = 'pagar' | 'receber' | 'inadimplencia' | 'caixa' | 'dre' | 'contas' | 'banco' | 'marketplaces' | 'exportacao';
 
 interface Title { id: string; description: string; counterpartyName: string | null; dueDate: string; amount: string; outstanding: string; status: string; overdue: boolean; daysOverdue: number; installmentNo: number; installmentTotal: number; origin: string; approvedAt: string | null; category?: { name: string } | null }
 interface Account { id: string; name: string; kind: string; active: boolean; balance: string; bankName?: string | null }
@@ -121,7 +121,7 @@ export default function FinanceiroPage() {
       }, ''));
   };
 
-  const tabs: [Tab, string, boolean][] = [['pagar', 'A pagar', true], ['receber', 'A receber', true], ['inadimplencia', 'Inadimplência', true], ['caixa', 'Fluxo de caixa', true], ['dre', 'DRE gerencial', true], ['contas', 'Contas', true], ['banco', 'Conciliação bancária', reconcile], ['marketplaces', 'Marketplaces', reconcile], ['contador', 'Pacote do contador', can('reports.export')]];
+  const tabs: [Tab, string, boolean][] = [['pagar', 'A pagar', true], ['receber', 'A receber', true], ['inadimplencia', 'Inadimplência', true], ['caixa', 'Fluxo de caixa', true], ['dre', 'DRE gerencial', true], ['contas', 'Contas', true], ['banco', 'Conciliação bancária', reconcile], ['marketplaces', 'Marketplaces', reconcile], ['exportacao', 'Exportação fiscal', can('reports.export')]];
 
   return (
     <>
@@ -245,7 +245,7 @@ export default function FinanceiroPage() {
         </div>
       )}
 
-      {tab === 'contador' && <AccountantPackage />}
+      {tab === 'exportacao' && <FiscalExport />}
       {tab === 'inadimplencia' && <Delinquency canConfigure={manage} canRelease={can('finance.approve')} />}
 
       {tab === 'contas' && (

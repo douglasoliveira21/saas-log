@@ -54,11 +54,11 @@ Pré-requisito do e2e: PostgreSQL acessível em `DIRECT_URL` (padrão: `npm run 
 
 ## Cobertura da Fase 6 (`apps/api/test/fiscal.e2e-spec.ts`, 28 testes + `fiscal.spec.ts`, 13 testes)
 **Provedor de transmissão SIMULADO (`ScriptedProvider`) e XMLs sintéticos**: provam o nosso código, não a SEFAZ nem a conformidade do leiaute.
-- Assistente: pendências por item (homologação × produção), perguntas ao contador, padrão seguro (homologação), fluxo de validação do contador e reabertura a cada mudança.
+- Assistente: pendências por item (homologação × produção), questões de configuração e padrão seguro (homologação); alterações feitas pelo responsável fiscal ficam ativas diretamente.
 - Certificado: senha errada/arquivo inválido/vencido (422), armazenamento cifrado (não decifra em outro tenant), resposta e auditoria sem segredos, substituição apagando o segredo antigo, alertas.
 - XML: importação com hash e retenção imutável, duplicidade (inclusive paralela), rejeições bloqueantes sem gravar (e auditadas), XXE, vínculo por GTIN/código/manual, conversão de unidade, criação de fornecedor.
 - Conciliação e recebimento: status por item, bloqueios, entrada de estoque com custo do XML, idempotência (3 chamadas simultâneas = 1 recebimento), divergência de custo com confirmação, estorno reabre a nota, homologação nunca recebe.
-- Motor: formato da regra, rascunho não vale, aprovação por outra pessoa, imutabilidade (aplicação e banco), versões com vigência, ST/DIFAL como pendência, desativar regra, snapshot reprodutível, isolamento.
+- Motor: formato da regra, rascunho não vale, ativação fiscal, imutabilidade (aplicação e banco), versões com vigência, ST/DIFAL como pendência, desativar regra, snapshot reprodutível, isolamento.
 - Saída: pendências, idempotência por pedido, prontidão, sem provedor ⇒ 424 sem consumir numeração, autorização, numeração sequencial, 4 transmissões simultâneas ⇒ 1 envio, TIMEOUT/exceção ⇒ consulta (sem novo número), NOT_FOUND ⇒ reenvio com a mesma numeração, rejeição, indisponibilidade, produção exige validação, certificado vencido bloqueia antes de consumir número.
 - Unitários: chave de acesso, GTIN, parser/validador de NF-e, motor.
 
@@ -72,7 +72,7 @@ Os relatórios de marketplace são CSVs sintéticos e o OFX é gerado pelo teste
 - Fluxo de caixa (saldo inicial, realizado, previsto, atrasados) e DRE (receita, CMV, margem, despesas, avisos, base de cálculo, permissão).
 - Relatórios: visibilidade por perfil, CSV com BOM e fórmula neutralizada, XLSX válido, auditoria, exportação grande em segundo plano (5.100 linhas) com download restrito a quem pediu.
 - Expedição: Correios `NOT_CONFIGURED`, validação de rastreio, embalagem, um envio ativo por pedido, estados finais, unicidade do código.
-- Isolamento entre tenants e permissões (vendedor/contador), trilha de auditoria.
+- Isolamento entre tenants e permissões por função, trilha de auditoria.
 
 ## Cobertura da Fase 8 (`apps/api/test/platform.e2e-spec.ts`, 17 testes)
 - Planos: visão de uso/limites, bloqueio 402 de produtos (inclusive importação em lote), conexões e pedidos, ilimitado quando não há limite, avaliação vencida ⇒ somente leitura.

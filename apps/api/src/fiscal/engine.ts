@@ -111,11 +111,11 @@ export function calculate(input: EngineInput, rules: RuleCandidate[]): EngineOut
 
   for (const item of input.items) {
     const empty: ItemResult = { key: item.key, ruleVersionId: null, cfop: null, taxes: {}, totalTax: 0 };
-    if (!item.ncm) { pendencies.push({ code: 'MISSING_DATA', itemKey: item.key, message: 'Item sem NCM: cadastre a classificação fiscal (validada pelo contador).' }); results.push(empty); continue; }
+    if (!item.ncm) { pendencies.push({ code: 'MISSING_DATA', itemKey: item.key, message: 'Item sem NCM: cadastre a classificação fiscal.' }); results.push(empty); continue; }
 
     const cands = rules.filter((r) => matches(r, input, item)).sort((a, b) => b.priority - a.priority || specificity(b) - specificity(a));
     if (!cands.length) {
-      pendencies.push({ code: 'NO_RULE', itemKey: item.key, message: `Nenhuma regra aprovada e vigente para ${input.operation} ${input.originUf ?? '?'}→${input.destUf ?? '?'} NCM ${item.ncm}. Consulte o contador e cadastre/aprove a regra.` });
+      pendencies.push({ code: 'NO_RULE', itemKey: item.key, message: `Nenhuma regra aprovada e vigente para ${input.operation} ${input.originUf ?? '?'}→${input.destUf ?? '?'} NCM ${item.ncm}. Cadastre e aprove a regra fiscal.` });
       results.push(empty);
       continue;
     }
@@ -131,7 +131,7 @@ export function calculate(input: EngineInput, rules: RuleCandidate[]): EngineOut
     let blocked = false;
     for (const [code, p] of Object.entries(cfg.taxes ?? {})) {
       if ((p.kind ?? 'PERCENT') !== 'PERCENT') {
-        pendencies.push({ code: 'UNSUPPORTED_TAX', itemKey: item.key, message: `${code} (${p.kind}) exige base/margem específicas e ainda não é calculado pelo motor: apure com o contador.` });
+        pendencies.push({ code: 'UNSUPPORTED_TAX', itemKey: item.key, message: `${code} (${p.kind}) exige base ou margem específica e ainda não é calculado pelo motor.` });
         blocked = true;
         continue;
       }

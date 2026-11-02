@@ -1,6 +1,6 @@
 /**
  * CFOP da NF-e de devolução de venda (entrada própria) a partir do CFOP da venda original. Só os pares abaixo são suportados; qualquer outro CFOP
- * precisa ser tratado manualmente com o contador (o sistema recusa em vez de adivinhar).
+ * precisa ser tratado manualmente (o sistema recusa em vez de adivinhar).
  */
 const MAP: Record<string, string> = {
   '5101': '1201', '6101': '2201', // venda de produção do estabelecimento

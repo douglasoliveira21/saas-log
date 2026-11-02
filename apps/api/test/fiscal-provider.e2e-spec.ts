@@ -96,7 +96,7 @@ describe('Emissão fiscal por provedor (Focus NFe simulado): NF-e e NFC-e', () =
   const focus = new MockFocus();
   const agent = () => request.agent(app.getHttpServer());
   type Agent = ReturnType<typeof agent>;
-  interface T { owner: Agent; tenantId: string; est: string; wh: string; fiscal: Agent; accountant: Agent; buyer: Agent }
+  interface T { owner: Agent; tenantId: string; est: string; wh: string; fiscal: Agent; buyer: Agent }
 
   async function setup(label: string): Promise<T> {
     const owner = agent();
@@ -106,14 +106,14 @@ describe('Emissão fiscal por provedor (Focus NFe simulado): NF-e e NFC-e', () =
     const wh = (await owner.post('/api/warehouses').set(H).send({ establishmentId: est.body.id, code: 'CD01', name: 'Depósito' }).expect(201)).body.id;
     const roles = Object.fromEntries((await owner.get('/api/roles').expect(200)).body.map((r: any) => [r.key, r.id]));
     const user = async (k: string) => { const email = `${k}-${uid()}@teste.local`; await owner.post('/api/users').set(H).send({ name: `U ${k}`, email, password: PASSWORD, roleId: roles[k] }).expect(201); const a = agent(); await a.post('/api/auth/login').set(H).send({ email, password: PASSWORD }).expect(200); return a; };
-    return { owner, tenantId: reg.body.tenantId, est: est.body.id, wh, fiscal: await user('fiscal'), accountant: await user('accountant'), buyer: await user('buyer') };
+    return { owner, tenantId: reg.body.tenantId, est: est.body.id, wh, fiscal: await user('fiscal'), buyer: await user('buyer') };
   }
 
-  /** Regra aprovada pelo contador: Simples, CSOSN 102 e PIS/COFINS CST 49, tudo sem valor (o que este conector sabe enviar). */
+  /** Regra fiscal: Simples, CSOSN 102 e PIS/COFINS CST 49, tudo sem valor. */
   async function approveRule(t: T, taxes: object = { ICMS: { csosn: '102', ratePct: 0 }, PIS: { cst: '49', ratePct: 0 }, COFINS: { cst: '49', ratePct: 0 } }, destUf = 'RJ') {
     const c = (await t.fiscal.post('/api/fiscal/rules').set(H).send({ rule: { name: `Venda SP→${destUf} ${uid()}`, operation: 'SALE', originUf: 'SP', destUf }, version: { validFrom: '2026-01-01T00:00:00Z', sourceReference: 'Parecer contábil 12/2026 – simulado', config: { cfop: destUf === 'SP' ? '5102' : '6102', taxes } } }).expect(201)).body;
     await t.fiscal.post(`/api/fiscal/rules/versions/${c.versionId}/submit`).set(H).expect(200);
-    await t.accountant.post(`/api/fiscal/rules/versions/${c.versionId}/approve`).set(H).expect(200);
+    await t.fiscal.post(`/api/fiscal/rules/versions/${c.versionId}/approve`).set(H).expect(200);
     return c;
   }
 
@@ -170,7 +170,7 @@ describe('Emissão fiscal por provedor (Focus NFe simulado): NF-e e NFC-e', () =
   describe('token do provedor', () => {
     it('guarda cifrado, nunca devolve, valida e exige permissão de gerenciar o fiscal', async () => {
       await A.buyer.put(`/api/fiscal/establishments/${A.est}/provider`).set(H).send({ provider: 'FOCUS_NFE', tokenHomologacao: focus.token }).expect(403);
-      await A.accountant.put(`/api/fiscal/establishments/${A.est}/provider`).set(H).send({ provider: 'FOCUS_NFE', tokenHomologacao: focus.token }).expect(403);
+      await A.buyer.put(`/api/fiscal/establishments/${A.est}/provider`).set(H).send({ provider: 'FOCUS_NFE', tokenHomologacao: focus.token }).expect(403);
       await A.fiscal.put(`/api/fiscal/establishments/${A.est}/provider`).set(H).send({ provider: 'FOCUS_NFE' }).expect(400); // sem token
       await A.fiscal.put(`/api/fiscal/establishments/${A.est}/provider`).set(H).send({ provider: 'FOCUS_NFE', tokenHomologacao: 'curto' }).expect(400);
       await A.fiscal.put(`/api/fiscal/establishments/${A.est}/provider`).set(H).send({ provider: 'FOCUS_NFE', tokenHomologacao: 'tem espaço no meio' }).expect(400);

@@ -317,7 +317,7 @@ export default function EmpresaPage() {
                       <div><label htmlFor="cnpj">CNPJ</label><DocumentField id="cnpj" name="cnpj" kind="cnpj" defaultValue={cItem?.cnpj ?? undefined} fill={{ legalName: 'legalName', tradeName: 'tradeName', contactEmail: 'email', contactPhone: 'phone' }} /></div>
                       <div><label htmlFor="legalName" className="req">Razão social</label><input id="legalName" name="legalName" required defaultValue={cItem?.legalName} /></div>
                       <div><label htmlFor="tradeName">Nome fantasia</label><input id="tradeName" name="tradeName" defaultValue={cItem?.tradeName ?? ''} /></div>
-                      <div><label htmlFor="taxRegime">Regime tributário</label><select id="taxRegime" name="taxRegime" defaultValue={cItem?.taxRegime ?? ''}><option value="">Selecione…</option>{REGIMES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select><Hint>Confirme com o seu contador.</Hint></div>
+                      <div><label htmlFor="taxRegime">Regime tributário</label><select id="taxRegime" name="taxRegime" defaultValue={cItem?.taxRegime ?? ''}><option value="">Selecione…</option>{REGIMES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
                     </div>
                   </Section>
                   <Section title="Contato" why="Quem responde pela empresa e como falar com ela.">

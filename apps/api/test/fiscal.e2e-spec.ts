@@ -81,7 +81,7 @@ describe('Fase 6 — fiscal: configuração, certificado, XML recebido, motor e 
     const wh = (await owner.post('/api/warehouses').set(H).send({ establishmentId: est.body.id, code: 'CD01', name: 'Depósito' }).expect(201)).body.id;
     const roles = Object.fromEntries((await owner.get('/api/roles').expect(200)).body.map((r: any) => [r.key, r.id]));
     const t: T = { owner, tenantId: reg.body.tenantId, companyId: company.body.id, est: est.body.id, wh, users: {}, roles };
-    for (const k of ['fiscal', 'accountant', 'buyer', 'ops_manager', 'stock_operator']) t.users[k] = await addUser(t, k);
+    for (const k of ['fiscal', 'buyer', 'ops_manager', 'stock_operator']) t.users[k] = await addUser(t, k);
     return t;
   }
 
@@ -124,7 +124,7 @@ describe('Fase 6 — fiscal: configuração, certificado, XML recebido, motor e 
 
   // ───────────────────────── configuração, assistente e certificado ─────────────────────────
   describe('assistente de configuração e certificado A1', () => {
-    it('mostra o que impede homologação/produção, sem presumir nada, e gera perguntas para o contador', async () => {
+    it('mostra o que impede homologação/produção, sem presumir dados fiscais', async () => {
       const C = await setup('fisC', { complete: false });
       provider.configured = false; // instalação sem provedor de transmissão
       const r = (await C.users.fiscal.get(`/api/fiscal/establishments/${C.est}/config`).expect(200)).body;
@@ -136,8 +136,8 @@ describe('Fase 6 — fiscal: configuração, certificado, XML recebido, motor e 
       expect(r.readyForProduction).toBe(false);
       provider.configured = true;
       expect(r.blockingForProduction).toEqual(expect.arrayContaining(['Certificado digital A1 válido', 'Regras tributárias aprovadas e vigentes']));
-      expect(r.questionsForAccountant.join(' ')).toMatch(/regime tributário/i);
-      expect(r.config).toMatchObject({ environment: 'HOMOLOGACAO', status: 'DRAFT' }); // padrão seguro
+      expect(r.setupQuestions.join(' ')).toMatch(/regime tributário/i);
+      expect(r.config).toMatchObject({ environment: 'HOMOLOGACAO', status: 'APPROVED' }); // configuração ativa por padrão
       // completar o cadastro resolve os itens correspondentes
       await C.owner.patch(`/api/establishments/${C.est}`).set(H).send({ stateRegistration: '123', zipCode: '13000-000', city: 'Campinas', state: 'SP', cnae: '4744-0/99' }).expect(200);
       await C.owner.patch(`/api/companies/${C.companyId}`).set(H).send({ taxRegime: 'LUCRO_PRESUMIDO' }).expect(200);
@@ -191,24 +191,17 @@ describe('Fase 6 — fiscal: configuração, certificado, XML recebido, motor e 
       expect((await C.users.fiscal.get('/api/fiscal/metrics').expect(200)).body.certificatesExpiringSoon).toBe(1);
     });
 
-    it('fluxo de validação do contador: mudanças invalidam a aprovação; quem configura não aprova', async () => {
+    it('salva a configuração fiscal diretamente com validação de campos', async () => {
       const C = await setup('fisE');
       const url = `/api/fiscal/establishments/${C.est}/config`;
-      await C.users.fiscal.post(`${url}/submit`).set(H).expect(400); // sem contador informado
-      await C.users.fiscal.put(url).set(H).send({ accountantName: 'Maria Contadora', accountantEmail: 'maria@contabil.test', environment: 'PRODUCAO' }).expect(200);
-      const sub = (await C.users.fiscal.post(`${url}/submit`).set(H).expect(200)).body;
-      expect(sub.status).toBe('PENDING_ACCOUNTANT');
-      expect(sub.questionsForAccountant.length).toBeGreaterThan(0);
-      await C.users.fiscal.post(`${url}/approve`).set(H).expect(403);
-      await C.users.accountant.post(`${url}/approve`).set(H).expect(200);
+      await C.users.fiscal.put(url).set(H).send({ environment: 'PRODUCAO' }).expect(200);
       expect((await C.users.fiscal.get(url).expect(200)).body.config).toMatchObject({ status: 'APPROVED', environment: 'PRODUCAO' });
-      await C.users.accountant.post(`${url}/approve`).set(H).expect(409);
-      await C.users.fiscal.put(url).set(H).send({ nfeSeries: 2 }).expect(200); // qualquer mudança reabre a validação
-      expect((await C.users.fiscal.get(url).expect(200)).body.config).toMatchObject({ status: 'DRAFT', approvedAt: null });
+      await C.users.fiscal.put(url).set(H).send({ nfeSeries: 2 }).expect(200);
+      expect((await C.users.fiscal.get(url).expect(200)).body.config).toMatchObject({ status: 'APPROVED', nfeSeries: 2 });
       await C.users.fiscal.put(url).set(H).send({ nfeSeries: 0 }).expect(400);
       await C.users.fiscal.put(url).set(H).send({ environment: 'TESTE' }).expect(400);
       const acts = (await C.owner.get('/api/audit?limit=100').expect(200)).body.items.map((i: any) => i.action);
-      expect(acts).toEqual(expect.arrayContaining(['fiscal.config_changed', 'fiscal.config_submitted', 'fiscal.config_approved']));
+      expect(acts).toContain('fiscal.config_changed');
     });
   });
 
@@ -395,7 +388,7 @@ describe('Fase 6 — fiscal: configuração, certificado, XML recebido, motor e 
   describe('motor fiscal versionado', () => {
     const rule = (extra: object = {}) => ({
       rule: { name: `Venda SP→RJ ${uid()}`, operation: 'SALE', originUf: 'SP', destUf: 'RJ', ...extra },
-      version: { validFrom: '2026-01-01T00:00:00Z', sourceReference: 'Parecer contábil 12/2026 – simulado', config: { cfop: '6102', taxes: { ICMS: { csosn: '102', ratePct: 12 }, PIS: { cst: '01', ratePct: 1.65 } } } },
+      version: { validFrom: '2026-01-01T00:00:00Z', sourceReference: 'Referência fiscal 12/2026 – simulada', config: { cfop: '6102', taxes: { ICMS: { csosn: '102', ratePct: 12 }, PIS: { cst: '01', ratePct: 1.65 } } } },
     });
     const calc = (t: T, body: object = {}, who: Agent = t.users.fiscal) =>
       who.post('/api/fiscal/engine/calculate').set(H).send({ operation: 'SALE', date: '2026-06-01', originUf: 'SP', destUf: 'RJ', regime: 'SIMPLES_NACIONAL', items: [{ key: 'a', ncm: '73181500', value: 200 }], ...body });
@@ -415,18 +408,17 @@ describe('Fase 6 — fiscal: configuração, certificado, XML recebido, motor e 
       expect(ok.versionId).toBeDefined();
     });
 
-    it('aprovação pelo contador (outra pessoa) ativa a regra; resultado é rastreável; versão aprovada é imutável (aplicação e banco)', async () => {
+    it('ativação fiscal torna a regra rastreável e imutável na aplicação e no banco', async () => {
       const C = await setup('fisG');
       const created = (await C.users.fiscal.post('/api/fiscal/rules').set(H).send(rule()).expect(201)).body;
       const v = created.versionId;
-      await C.users.accountant.post(`/api/fiscal/rules/versions/${v}/approve`).set(H).expect(409); // não enviada
+      await C.users.fiscal.post(`/api/fiscal/rules/versions/${v}/approve`).set(H).expect(409); // não enviada
       await C.users.fiscal.post(`/api/fiscal/rules/versions/${v}/submit`).set(H).expect(200);
-      await C.users.fiscal.post(`/api/fiscal/rules/versions/${v}/approve`).set(H).expect(403); // sem permissão de aprovar
-      await C.users.accountant.post(`/api/fiscal/rules/versions/${v}/approve`).set(H).expect(200);
+      await C.users.fiscal.post(`/api/fiscal/rules/versions/${v}/approve`).set(H).expect(200);
       const r = (await calc(C).expect(200)).body;
       expect(r.ready).toBe(true);
       expect(r.items[0]).toMatchObject({ cfop: '6102', taxes: { ICMS: { base: 200, ratePct: 12, amount: 24, csosn: '102' }, PIS: { amount: 3.3 } } });
-      expect(r.rulesUsed[0]).toMatchObject({ versionId: v, version: 1, sourceReference: expect.stringContaining('Parecer') });
+      expect(r.rulesUsed[0]).toMatchObject({ versionId: v, version: 1, sourceReference: expect.stringContaining('Referência') });
       expect(r.engineVersion).toBe('1.0.0');
       await C.users.fiscal.put(`/api/fiscal/rules/versions/${v}`).set(H).send({ config: { taxes: { ICMS: { csosn: '102', ratePct: 99 } } } }).expect(409);
       await expect(prisma.withContext({ tenantId: C.tenantId }, (tx) => tx.taxRuleVersion.update({ where: { id: v }, data: { config: { taxes: { ICMS: { ratePct: 99 } } } } }))).rejects.toThrow(/imutável/);
@@ -438,11 +430,11 @@ describe('Fase 6 — fiscal: configuração, certificado, XML recebido, motor e 
       const C = await setup('fisH');
       const created = (await C.users.fiscal.post('/api/fiscal/rules').set(H).send(rule()).expect(201)).body;
       await C.users.fiscal.post(`/api/fiscal/rules/versions/${created.versionId}/submit`).set(H).expect(200);
-      await C.users.accountant.post(`/api/fiscal/rules/versions/${created.versionId}/approve`).set(H).expect(200);
-      const v2 = (await C.users.fiscal.post(`/api/fiscal/rules/${created.ruleId}/versions`).set(H).send({ validFrom: '2026-07-01T00:00:00Z', sourceReference: 'Parecer contábil 20/2026 – simulado', config: { cfop: '6102', taxes: { ICMS: { csosn: '102', ratePct: 7 } } } }).expect(201)).body;
-      await C.users.fiscal.post(`/api/fiscal/rules/${created.ruleId}/versions`).set(H).send({ validFrom: '2026-08-01T00:00:00Z', sourceReference: 'Parecer contábil 21/2026 – simulado', config: { taxes: { ICMS: { ratePct: 1 } } } }).expect(409); // já há rascunho
+      await C.users.fiscal.post(`/api/fiscal/rules/versions/${created.versionId}/approve`).set(H).expect(200);
+      const v2 = (await C.users.fiscal.post(`/api/fiscal/rules/${created.ruleId}/versions`).set(H).send({ validFrom: '2026-07-01T00:00:00Z', sourceReference: 'Referência fiscal 20/2026 – simulada', config: { cfop: '6102', taxes: { ICMS: { csosn: '102', ratePct: 7 } } } }).expect(201)).body;
+      await C.users.fiscal.post(`/api/fiscal/rules/${created.ruleId}/versions`).set(H).send({ validFrom: '2026-08-01T00:00:00Z', sourceReference: 'Referência fiscal 21/2026 – simulada', config: { taxes: { ICMS: { ratePct: 1 } } } }).expect(409); // já há rascunho
       await C.users.fiscal.post(`/api/fiscal/rules/versions/${v2.versionId}/submit`).set(H).expect(200);
-      await C.users.accountant.post(`/api/fiscal/rules/versions/${v2.versionId}/approve`).set(H).expect(200);
+      await C.users.fiscal.post(`/api/fiscal/rules/versions/${v2.versionId}/approve`).set(H).expect(200);
       expect((await calc(C, { date: '2026-06-15' }).expect(200)).body.items[0].taxes.ICMS.amount).toBe(24); // 12% — versão 1
       expect((await calc(C, { date: '2026-07-15' }).expect(200)).body.items[0].taxes.ICMS.amount).toBe(14); // 7% — versão 2
       const versions = (await C.users.fiscal.get('/api/fiscal/rules').expect(200)).body[0].versions;
@@ -454,16 +446,16 @@ describe('Fase 6 — fiscal: configuração, certificado, XML recebido, motor e 
       const C = await setup('fisI');
       const r1 = (await C.users.fiscal.post('/api/fiscal/rules').set(H).send(rule({ name: 'R1' })).expect(201)).body;
       await C.users.fiscal.post(`/api/fiscal/rules/versions/${r1.versionId}/submit`).set(H).expect(200);
-      await C.users.accountant.post(`/api/fiscal/rules/versions/${r1.versionId}/reject`).set(H).send({ reason: 'faltou CST' }).expect(200);
+      await C.users.fiscal.post(`/api/fiscal/rules/versions/${r1.versionId}/reject`).set(H).send({ reason: 'faltou CST' }).expect(200);
       expect((await C.users.fiscal.get('/api/fiscal/rules').expect(200)).body[0].versions[0].status).toBe('DRAFT');
       await C.users.fiscal.post(`/api/fiscal/rules/versions/${r1.versionId}/submit`).set(H).expect(200);
-      await C.users.accountant.post(`/api/fiscal/rules/versions/${r1.versionId}/approve`).set(H).expect(200);
+      await C.users.fiscal.post(`/api/fiscal/rules/versions/${r1.versionId}/approve`).set(H).expect(200);
 
       const st = rule({ name: 'ST', ncmPrefix: '7318' });
       st.version.config = { cfop: '6403', taxes: { ICMS_ST: { kind: 'ST', ratePct: 18 } } } as any;
       const r2 = (await C.users.fiscal.post('/api/fiscal/rules').set(H).send(st).expect(201)).body;
       await C.users.fiscal.post(`/api/fiscal/rules/versions/${r2.versionId}/submit`).set(H).expect(200);
-      await C.users.accountant.post(`/api/fiscal/rules/versions/${r2.versionId}/approve`).set(H).expect(200);
+      await C.users.fiscal.post(`/api/fiscal/rules/versions/${r2.versionId}/approve`).set(H).expect(200);
       const r = (await calc(C).expect(200)).body;
       expect(r.pendencies.map((p: any) => p.code)).toContain('UNSUPPORTED_TAX');
       expect(r.ready).toBe(false);
@@ -478,8 +470,8 @@ describe('Fase 6 — fiscal: configuração, certificado, XML recebido, motor e 
       const C = await setup('fisJ');
       const c = (await C.users.fiscal.post('/api/fiscal/rules').set(H).send(rule()).expect(201)).body;
       await C.users.fiscal.post(`/api/fiscal/rules/versions/${c.versionId}/submit`).set(H).expect(200);
-      await C.users.accountant.post(`/api/fiscal/rules/versions/${c.versionId}/approve`).set(H).expect(200);
-      await calc(C, { persist: true }, C.users.accountant).expect(403);
+      await C.users.fiscal.post(`/api/fiscal/rules/versions/${c.versionId}/approve`).set(H).expect(200);
+      await calc(C, { persist: true }, C.users.buyer).expect(403);
       const first = (await calc(C, { persist: true }).expect(200)).body;
       const snap = await admin.taxCalculation.findUniqueOrThrow({ where: { id: first.calculationId } });
       expect(snap).toMatchObject({ engineVersion: '1.0.0', ruleVersionIds: [c.versionId], operation: 'SALE' });
@@ -501,9 +493,9 @@ describe('Fase 6 — fiscal: configuração, certificado, XML recebido, motor e 
       const t = await setup(label);
       if (o.withCert !== false) await t.users.fiscal.post(`/api/fiscal/establishments/${t.est}/certificate`).set(H).send({ pfxBase64: makePfx({ cn: `EMPRESA:${EST_CNPJ}`, password: 'p' }), password: 'p' }).expect(201);
       if (o.withRule !== false) {
-        const c = (await t.users.fiscal.post('/api/fiscal/rules').set(H).send({ rule: { name: 'Venda SP→RJ', operation: 'SALE', originUf: 'SP', destUf: 'RJ' }, version: { validFrom: '2026-01-01T00:00:00Z', sourceReference: 'Parecer contábil – simulado', config: { cfop: '6102', taxes: { ICMS: { csosn: '102', ratePct: 12 } } } } }).expect(201)).body;
+        const c = (await t.users.fiscal.post('/api/fiscal/rules').set(H).send({ rule: { name: 'Venda SP→RJ', operation: 'SALE', originUf: 'SP', destUf: 'RJ' }, version: { validFrom: '2026-01-01T00:00:00Z', sourceReference: 'Referência fiscal – simulada', config: { cfop: '6102', taxes: { ICMS: { csosn: '102', ratePct: 12 } } } } }).expect(201)).body;
         await t.users.fiscal.post(`/api/fiscal/rules/versions/${c.versionId}/submit`).set(H).expect(200);
-        await t.users.accountant.post(`/api/fiscal/rules/versions/${c.versionId}/approve`).set(H).expect(200);
+        await t.users.fiscal.post(`/api/fiscal/rules/versions/${c.versionId}/approve`).set(H).expect(200);
       }
       const cust = (await t.owner.post('/api/customers').set(H).send({
         kind: 'PJ', name: 'Cliente Fiscal', document: '04252011000110',
@@ -640,16 +632,11 @@ describe('Fase 6 — fiscal: configuração, certificado, XML recebido, motor e 
       expect(await series(c.t)).toBe(1);
     });
 
-    it('produção exige configuração validada pelo contador; certificado vencido e dados quebrados bloqueiam antes de consumir número', async () => {
+    it('produção usa a configuração ativa; certificado vencido bloqueia antes de consumir número', async () => {
       const c = await prepared('fisR');
-      await c.t.users.fiscal.put(`/api/fiscal/establishments/${c.t.est}/config`).set(H).send({ environment: 'PRODUCAO', accountantName: 'Contadora', accountantEmail: 'c@contabil.test' }).expect(200);
+      await c.t.users.fiscal.put(`/api/fiscal/establishments/${c.t.est}/config`).set(H).send({ environment: 'PRODUCAO' }).expect(200);
       const reval = (await c.t.users.fiscal.post(`/api/fiscal/outgoing/${c.docId}/revalidate`).set(H).expect(200)).body;
-      expect(reval.status).toBe('PENDING_VALIDATION');
-      expect(reval.issues.map((i: any) => i.code)).toContain('CONFIG_NOT_APPROVED');
-      await tx(c).expect(409);
-      await c.t.users.fiscal.post(`/api/fiscal/establishments/${c.t.est}/config/submit`).set(H).expect(200);
-      await c.t.users.accountant.post(`/api/fiscal/establishments/${c.t.est}/config/approve`).set(H).expect(200);
-      expect((await c.t.users.fiscal.post(`/api/fiscal/outgoing/${c.docId}/revalidate`).set(H).expect(200)).body.status).toBe('READY_TO_TRANSMIT');
+      expect(reval.status).toBe('READY_TO_TRANSMIT');
       // o certificado vence entre a validação e a transmissão
       await admin.fiscalCertificate.updateMany({ where: { tenantId: c.t.tenantId, status: 'ACTIVE' }, data: { notAfter: new Date(Date.now() - 1000) } });
       const r = await tx(c).expect(409);

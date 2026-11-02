@@ -41,7 +41,6 @@ export const PERMISSIONS = {
   'fiscal.manage': 'Configurar parâmetros fiscais e gerenciar certificado digital',
   'fiscal.import': 'Importar XML de documentos recebidos e conciliar com compras',
   'fiscal.rules': 'Criar e editar regras tributárias (rascunho)',
-  'fiscal.approve': 'Aprovar regras tributárias e a configuração fiscal (validação do contador)',
   'fiscal.emit': 'Preparar e transmitir documentos fiscais de saída',
   'finance.view': 'Consultar contas a pagar/receber, caixa e DRE',
   'finance.manage': 'Lançar títulos e registrar baixas/estornos; cadastros financeiros',
@@ -100,7 +99,6 @@ export const SYSTEM_ROLES: SystemRoleDef[] = [
   { key: 'driver', name: 'Motorista', permissions: ['delivery.perform'] },
   { key: 'finance', name: 'Financeiro', permissions: ['company.view', 'products.view', 'suppliers.view', ...salesRead, 'purchases.view', 'commissions.view', 'pricing.view', 'finance.view', 'finance.manage', 'notifications.manage', 'finance.reconcile', 'management.view', 'management.manage', 'credit.manage', 'reports.view', 'reports.export'] },
   { key: 'fiscal', name: 'Fiscal', permissions: ['company.view', 'products.view', 'products.manage', ...salesRead, 'purchases.view', 'fiscal.view', 'fiscal.manage', 'fiscal.import', 'fiscal.rules', 'fiscal.emit'] },
-  { key: 'accountant', name: 'Contador (acesso limitado)', permissions: ['company.view', 'products.view', 'fiscal.view', 'fiscal.rules', 'fiscal.approve', 'finance.view', 'reports.view', 'reports.export'] },
   {
     key: 'auditor',
     name: 'Auditor (somente leitura)',

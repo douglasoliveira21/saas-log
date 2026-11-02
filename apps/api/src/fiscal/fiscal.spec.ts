@@ -65,7 +65,7 @@ describe('leitura e validação de NF-e', () => {
 const rule = (o: Partial<RuleCandidate> & { rate?: number; cfop?: string; extra?: object }): RuleCandidate => ({
   ruleId: o.ruleId ?? 'r1', name: o.name ?? 'Regra', operation: 'SALE', originUf: null, destUf: null, ncmPrefix: null, regime: null, productOrigin: null, recipientKind: null, priority: 0,
   ...o,
-  version: o.version ?? { id: `${o.ruleId ?? 'r1'}-v1`, version: 1, validFrom: new Date('2026-01-01'), validTo: null, sourceReference: 'Parecer do contador 12/2026', config: { cfop: o.cfop ?? '5102', taxes: { ICMS: { csosn: '102', ratePct: o.rate ?? 10 }, ...(o.extra ?? {}) } } },
+  version: o.version ?? { id: `${o.ruleId ?? 'r1'}-v1`, version: 1, validFrom: new Date('2026-01-01'), validTo: null, sourceReference: 'Referência fiscal 12/2026', config: { cfop: o.cfop ?? '5102', taxes: { ICMS: { csosn: '102', ratePct: o.rate ?? 10 }, ...(o.extra ?? {}) } } },
 });
 
 const input = { operation: 'SALE' as const, date: new Date('2026-06-01'), originUf: 'SP', destUf: 'RJ', regime: 'SIMPLES_NACIONAL', items: [{ key: 'a', ncm: '73181500', value: 200 }] };
@@ -128,7 +128,7 @@ describe('motor fiscal', () => {
     const rules = [rule({ rate: 12 })];
     const a = calculate(input, rules);
     expect(calculate(input, rules)).toEqual(a);
-    expect(a.rulesUsed[0]).toMatchObject({ versionId: 'r1-v1', version: 1, sourceReference: 'Parecer do contador 12/2026' });
+    expect(a.rulesUsed[0]).toMatchObject({ versionId: 'r1-v1', version: 1, sourceReference: 'Referência fiscal 12/2026' });
     expect(a.engineVersion).toBe('1.0.0');
   });
 });

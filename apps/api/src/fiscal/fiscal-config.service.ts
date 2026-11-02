@@ -83,50 +83,14 @@ export class FiscalConfigService {
     });
   }
 
-  async updateConfig(ctx: AuthContext, establishmentId: string, dto: { environment?: string; documentTypes?: string[]; nfeSeries?: number; accountantName?: string; accountantEmail?: string; notes?: string }) {
+  async updateConfig(ctx: AuthContext, establishmentId: string, dto: { environment?: string; documentTypes?: string[]; nfeSeries?: number; notes?: string }) {
     return this.prisma.withContext(ctx, async (tx) => {
       await this.establishment(tx, ctx, establishmentId);
       const before = await this.ensureConfig(tx, ctx, establishmentId);
       const data = Object.fromEntries(Object.entries(dto).filter(([, v]) => v !== undefined));
-      // Qualquer mudança de parâmetro fiscal invalida a validação anterior do contador.
-      const row = await tx.fiscalConfiguration.update({ where: { id: before.id }, data: { ...data, status: 'DRAFT', approvedById: null, approvedAt: null } });
-      await this.audit.record(tx, ctx, { action: 'fiscal.config_changed', entity: 'fiscal_configuration', entityId: row.id, metadata: { establishmentId, before: { environment: before.environment, series: before.nfeSeries, status: before.status }, after: { ...data }, approvalReset: before.status !== 'DRAFT' } });
+      const row = await tx.fiscalConfiguration.update({ where: { id: before.id }, data: { ...data, status: 'APPROVED', approvedById: ctx.userId, approvedAt: new Date() } });
+      await this.audit.record(tx, ctx, { action: 'fiscal.config_changed', entity: 'fiscal_configuration', entityId: row.id, metadata: { establishmentId, before: { environment: before.environment, series: before.nfeSeries }, after: { ...data } } });
       return row;
-    });
-  }
-
-  async submitForAccountant(ctx: AuthContext, establishmentId: string) {
-    return this.prisma.withContext(ctx, async (tx) => {
-      const est = await this.establishment(tx, ctx, establishmentId);
-      const cfg = await this.ensureConfig(tx, ctx, establishmentId);
-      if (cfg.status === 'PENDING_ACCOUNTANT') throw new ConflictException('Já está aguardando a validação do contador.');
-      if (!cfg.accountantName) throw new BadRequestException('Informe o contador responsável antes de enviar para validação.');
-      const cert = await tx.fiscalCertificate.findFirst({ where: { tenantId: ctx.tenantId!, establishmentId, status: 'ACTIVE' } });
-      const { questionsForAccountant } = await this.readiness(tx, ctx, est, cfg, cert);
-      await tx.fiscalConfiguration.update({ where: { id: cfg.id }, data: { status: 'PENDING_ACCOUNTANT' } });
-      await this.audit.record(tx, ctx, { action: 'fiscal.config_submitted', entity: 'fiscal_configuration', entityId: cfg.id, metadata: { establishmentId } });
-      return { status: 'PENDING_ACCOUNTANT' as const, questionsForAccountant };
-    });
-  }
-
-  async approve(ctx: AuthContext, establishmentId: string) {
-    return this.prisma.withContext(ctx, async (tx) => {
-      await this.establishment(tx, ctx, establishmentId);
-      const cfg = await this.ensureConfig(tx, ctx, establishmentId);
-      if (cfg.status !== 'PENDING_ACCOUNTANT') throw new ConflictException('A configuração não está aguardando validação.');
-      await tx.fiscalConfiguration.update({ where: { id: cfg.id }, data: { status: 'APPROVED', approvedById: ctx.userId, approvedAt: new Date() } });
-      await this.audit.record(tx, ctx, { action: 'fiscal.config_approved', entity: 'fiscal_configuration', entityId: cfg.id, metadata: { establishmentId, environment: cfg.environment } });
-      return { status: 'APPROVED' as const };
-    });
-  }
-
-  async reject(ctx: AuthContext, establishmentId: string, reason: string) {
-    return this.prisma.withContext(ctx, async (tx) => {
-      const cfg = await this.ensureConfig(tx, ctx, establishmentId);
-      if (cfg.status !== 'PENDING_ACCOUNTANT') throw new ConflictException('A configuração não está aguardando validação.');
-      await tx.fiscalConfiguration.update({ where: { id: cfg.id }, data: { status: 'DRAFT', notes: `${cfg.notes ?? ''}\nDevolvida pelo contador: ${reason}`.trim() } });
-      await this.audit.record(tx, ctx, { action: 'fiscal.config_rejected', entity: 'fiscal_configuration', entityId: cfg.id, metadata: { establishmentId, reason } });
-      return { status: 'DRAFT' as const };
     });
   }
 
@@ -136,7 +100,7 @@ export class FiscalConfigService {
   private async readiness(
     tx: Tx, ctx: Pick<AuthContext, 'tenantId'>,
     est: Prisma.EstablishmentGetPayload<{ include: { company: true } }>,
-    cfg: { environment: string; status: string; accountantName: string | null; accountantEmail: string | null },
+    cfg: { environment: string; status: string },
     cert: { id: string; subject: string; cnpj: string | null; serial: string; fingerprint: string; notBefore: Date; notAfter: Date } | null,
   ) {
     const items: ReadinessItem[] = [];
@@ -148,7 +112,7 @@ export class FiscalConfigService {
     add('ie', 'Inscrição estadual', !!est.stateRegistration, { detail: 'Obrigatória para emitir NF-e de mercadorias.' });
     add('address', 'Endereço (UF, município e CEP)', !!(est.state && est.city && est.zipCode), { detail: 'A UF compõe a chave de acesso e a seleção de regras.' });
     add('cnae', 'CNAE', !!est.cnae, { detail: 'Informe o CNAE principal.', blocking: false, hom: false, prod: true });
-    add('regime', 'Regime tributário da empresa', !!est.company.taxRegime, { detail: 'Defina o regime em Empresa e depósitos (validar com o contador).' });
+    add('regime', 'Regime tributário da empresa', !!est.company.taxRegime, { detail: 'Defina o regime em Empresa e depósitos.' });
     if (!est.company.taxRegime) questions.push('Qual é o regime tributário correto da empresa e desde quando?');
 
     const pc = await this.pctx.resolve(tx, ctx.tenantId!, est.id, '55', (cfg.environment as FiscalEnvironment) ?? 'HOMOLOGACAO');
@@ -164,19 +128,15 @@ export class FiscalConfigService {
       }
     }
 
-    add('accountant', 'Contador responsável informado', !!cfg.accountantName && !!cfg.accountantEmail, { detail: 'Informe nome e e-mail do contador.', blocking: false, hom: false, prod: true });
-    add('approval', 'Configuração validada pelo contador', cfg.status === 'APPROVED', { detail: cfg.status === 'PENDING_ACCOUNTANT' ? 'Aguardando a validação do contador.' : 'Envie a configuração para validação do contador.', hom: false, prod: true });
-    if (cfg.status !== 'APPROVED') questions.push('A configuração fiscal (ambiente, série, tipos de documento) está correta para este estabelecimento?');
-
     const noNcm = await tx.product.count({ where: { tenantId: ctx.tenantId!, active: true, kind: 'PHYSICAL', ncm: null } });
     const noOrigin = await tx.product.count({ where: { tenantId: ctx.tenantId!, active: true, kind: 'PHYSICAL', taxOrigin: null } });
-    add('products_ncm', 'Produtos com NCM', noNcm === 0, { detail: `${noNcm} produto(s) sem NCM (cada NCM deve ser validado pelo contador).`, blocking: false, hom: false, prod: true });
+    add('products_ncm', 'Produtos com NCM', noNcm === 0, { detail: `${noNcm} produto(s) sem NCM.`, blocking: false, hom: false, prod: true });
     add('products_origin', 'Produtos com origem da mercadoria', noOrigin === 0, { detail: `${noOrigin} produto(s) sem origem informada.`, blocking: false, hom: false, prod: true });
     if (noNcm > 0) questions.push(`Confirme o NCM dos ${noNcm} produtos ainda sem classificação.`);
 
     const now = new Date();
     const approvedRules = await tx.taxRuleVersion.count({ where: { tenantId: ctx.tenantId!, status: 'APPROVED', validFrom: { lte: now }, OR: [{ validTo: null }, { validTo: { gte: now } }] } });
-    add('tax_rules', 'Regras tributárias aprovadas e vigentes', approvedRules > 0, { detail: 'O sistema não traz regras prontas: cadastre-as com o contador e aprove em Regras tributárias. Sem regra, o motor devolve pendência.' });
+    add('tax_rules', 'Regras tributárias aprovadas e vigentes', approvedRules > 0, { detail: 'O sistema não traz regras prontas: cadastre e aprove em Regras tributárias. Sem regra, o motor devolve pendência.' });
     if (approvedRules === 0) questions.push('Quais CFOP, CST/CSOSN e alíquotas se aplicam às nossas operações de venda e compra (por UF, NCM e regime)?');
 
     add('provider', 'Integração de transmissão (SEFAZ/provedor)', this.provider.isConfigured(pc), { detail: 'Nenhum provedor de transmissão está configurado para este estabelecimento: informe o token do provedor (ex.: Focus NFe) na aba Configuração. Sem isso a emissão não é possível (docs/FISCAL-PROVIDER.md).' });
@@ -188,7 +148,7 @@ export class FiscalConfigService {
       readyForHomologation: !items.some((i) => i.blocksHomologation),
       readyForProduction: !items.some((i) => i.blocksProduction) && cfg.environment === 'PRODUCAO',
       blockingForProduction: items.filter((i) => i.blocksProduction).map((i) => i.label),
-      questionsForAccountant: questions,
+      setupQuestions: questions,
     };
   }
 

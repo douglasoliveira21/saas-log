@@ -213,7 +213,7 @@ export default function ProdutoEditorPage() {
               </div>
             </Card>
 
-            <Card id="fiscal" title="Dados fiscais" why="Nunca preenchidos automaticamente: valide com o seu contador. Produto sem NCM aparece como pendência fiscal.">
+            <Card id="fiscal" title="Dados fiscais" why="Nunca preenchidos automaticamente. Produto sem NCM aparece como pendência fiscal.">
               <div className="form-grid">
                 <Field id="ncm" label="NCM (8 dígitos)"><input id="ncm" name="ncm" inputMode="numeric" maxLength={8} defaultValue={p?.ncm ?? ''} /></Field>
                 <Field id="cest" label="CEST (7 dígitos)"><input id="cest" name="cest" inputMode="numeric" maxLength={7} defaultValue={p?.cest ?? ''} /></Field>

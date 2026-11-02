@@ -50,7 +50,7 @@ describe('Emissão direta na SEFAZ (MG) com servidor de teste: NF-e, NFC-e, canc
   let ibge: Awaited<ReturnType<typeof startMockIbge>>;
   const agent = () => request.agent(app.getHttpServer());
   type Agent = ReturnType<typeof agent>;
-  interface T { owner: Agent; tenantId: string; est: string; wh: string; fiscal: Agent; accountant: Agent }
+  interface T { owner: Agent; tenantId: string; est: string; wh: string; fiscal: Agent; buyer: Agent }
 
   async function setup(label: string, uf = 'MG'): Promise<T> {
     const owner = agent();
@@ -61,13 +61,13 @@ describe('Emissão direta na SEFAZ (MG) com servidor de teste: NF-e, NFC-e, canc
     const wh = (await owner.post('/api/warehouses').set(H).send({ establishmentId: est.body.id, code: 'CD01', name: 'Depósito' }).expect(201)).body.id;
     const roles = Object.fromEntries((await owner.get('/api/roles').expect(200)).body.map((r: any) => [r.key, r.id]));
     const user = async (k: string) => { const email = `${k}-${uid()}@teste.local`; await owner.post('/api/users').set(H).send({ name: `U ${k}`, email, password: PASSWORD, roleId: roles[k] }).expect(201); const a = agent(); await a.post('/api/auth/login').set(H).send({ email, password: PASSWORD }).expect(200); return a; };
-    return { owner, tenantId: reg.body.tenantId, est: est.body.id, wh, fiscal: await user('fiscal'), accountant: await user('accountant') };
+    return { owner, tenantId: reg.body.tenantId, est: est.body.id, wh, fiscal: await user('fiscal'), buyer: await user('buyer') };
   }
 
   async function approveRule(t: T, origin: string, dest: string, taxes: object = { ICMS: { csosn: '102', ratePct: 0 }, PIS: { cst: '49', ratePct: 0 }, COFINS: { cst: '49', ratePct: 0 } }, operation = 'SALE') {
     const c = (await t.fiscal.post('/api/fiscal/rules').set(H).send({ rule: { name: `${operation} ${origin}→${dest} ${uid()}`, operation, originUf: origin, destUf: dest }, version: { validFrom: '2026-01-01T00:00:00Z', sourceReference: 'Parecer contábil 12/2026 – simulado', config: { cfop: origin === dest ? '5102' : '6102', taxes } } }).expect(201)).body;
     await t.fiscal.post(`/api/fiscal/rules/versions/${c.versionId}/submit`).set(H).expect(200);
-    await t.accountant.post(`/api/fiscal/rules/versions/${c.versionId}/approve`).set(H).expect(200);
+    await t.fiscal.post(`/api/fiscal/rules/versions/${c.versionId}/approve`).set(H).expect(200);
   }
   const upload = (t: T, cn = `EMPRESA TESTE:${EST_CNPJ}`) => t.fiscal.post(`/api/fiscal/establishments/${t.est}/certificate`).set(H).send({ pfxBase64: makePfx(cn), password: 'p' });
   const useDirect = (t: T, extra: object = {}) => t.fiscal.put(`/api/fiscal/establishments/${t.est}/provider`).set(H).send({ provider: 'SEFAZ_DIRECT', ...extra });
@@ -135,7 +135,7 @@ describe('Emissão direta na SEFAZ (MG) com servidor de teste: NF-e, NFC-e, canc
     });
 
     it('configura a emissão direta e o CSC (nunca devolvido); valida o CSC e exige permissão', async () => {
-      await A.accountant.put(`/api/fiscal/establishments/${A.est}/provider`).set(H).send({ provider: 'SEFAZ_DIRECT' }).expect(403);
+      await A.buyer.put(`/api/fiscal/establishments/${A.est}/provider`).set(H).send({ provider: 'SEFAZ_DIRECT' }).expect(403);
       await useDirect(A, { cscHomologacao: { id: 'x', token: 'ABC123456' } }).expect(400);
       await useDirect(A, { cscHomologacao: { id: '1', token: 'curto' } }).expect(400);
       const ok = await useDirect(A, { cscHomologacao: { id: '1', token: 'CSC-SECRETO-123456' } }).expect(200);

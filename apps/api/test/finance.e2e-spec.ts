@@ -492,13 +492,13 @@ describe('Fase 7 — financeiro, conciliações, fluxo de caixa, DRE, relatório
       await A.users.salesperson.get('/api/finance/accounts').expect(403);
       await A.users.salesperson.post('/api/finance/titles').set(H).send({ direction: 'PAYABLE', description: 'x', amount: 1, dueDate: day(1) }).expect(403);
       const acc = (await A.owner.post('/api/finance/accounts').set(H).send({ name: `Conta ${uid()}`, kind: 'BANK', bankName: 'Banco X', agency: '0001', accountNumber: '12345-6' }).expect(201)).body.id;
-      const asAccountant = agent();
+      const viewer = agent();
       const email = `acc-${uid()}@teste.local`;
-      await A.owner.post('/api/users').set(H).send({ name: 'Contador', email, password: PASSWORD, roleId: A.roles.accountant }).expect(201);
-      await asAccountant.post('/api/auth/login').set(H).send({ email, password: PASSWORD }).expect(200);
-      const seen = ((await asAccountant.get('/api/finance/accounts').expect(200)).body as any[]).find((a) => a.id === acc);
+      await A.owner.post('/api/users').set(H).send({ name: 'Auditor', email, password: PASSWORD, roleId: A.roles.auditor }).expect(201);
+      await viewer.post('/api/auth/login').set(H).send({ email, password: PASSWORD }).expect(200);
+      const seen = ((await viewer.get('/api/finance/accounts').expect(200)).body as any[]).find((a) => a.id === acc);
       expect(seen.accountNumber).toBeUndefined();
-      await asAccountant.post(`/api/finance/titles`).set(H).send({ direction: 'PAYABLE', description: 'x', amount: 1, dueDate: day(1) }).expect(403);
+      await viewer.post(`/api/finance/titles`).set(H).send({ direction: 'PAYABLE', description: 'x', amount: 1, dueDate: day(1) }).expect(403);
     });
 
     it('baixas, estornos e conciliações ficam na trilha de auditoria', async () => {

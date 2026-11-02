@@ -45,7 +45,7 @@ export async function buildFiscalPreview(tx: Tx, tenantId: string, orderId: stri
     if (noNcm.length) add('BLOCKER', 'ITEM_NCM', `Item(ns) sem NCM de 8 dígitos: ${noNcm.join(', ')}.`);
     const noOrigin = order.items.filter((i) => i.product.taxOrigin === null).map((i) => i.product.sku);
     if (noOrigin.length) add('WARNING', 'ITEM_ORIGIN', `Item(ns) sem origem da mercadoria: ${noOrigin.join(', ')}.`);
-    if (!config || config.status !== 'APPROVED') add('WARNING', 'FISCAL_CONFIG', 'A configuração fiscal do estabelecimento ainda não foi validada pelo contador (Fiscal).');
+    if (!config) add('WARNING', 'FISCAL_CONFIG', 'A configuração fiscal do estabelecimento ainda não foi cadastrada.');
     else if (!config.documentTypes.includes(docType === 'NFE' ? 'NFE' : 'NFCE')) add('WARNING', 'DOC_TYPE_DISABLED', `${docType === 'NFE' ? 'NF-e' : 'NFC-e'} não está habilitada na configuração fiscal deste estabelecimento.`);
     if (!cert) add('WARNING', 'CERTIFICATE', 'O estabelecimento não tem certificado digital A1 ativo.');
     add('INFO', 'NOT_ISSUED', 'Este é um espelho para conferência: a nota só existe (com chave de acesso e valor fiscal) depois de preparada e transmitida em Fiscal → Notas de saída, pelo provedor configurado.');

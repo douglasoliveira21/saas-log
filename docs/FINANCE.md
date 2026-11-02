@@ -44,7 +44,7 @@ O dinheiro recebido **não** é o total dos pedidos. A partir do **relatório de
 ## DRE gerencial (`GET /finance/dre`)
 Receita bruta (pedidos **expedidos** no período + categorias de receita lançadas) → deduções (descontos, devoluções, categorias de dedução) → receita líquida → CMV (custo gravado no pedido, `costSnapshot`; devolução reposta abate) → margem bruta → despesas variáveis (comissões de vendedores, tarifas de marketplace importadas, categorias variáveis) → margem de contribuição → despesas operacionais/financeiras/outras (inclui títulos sem categoria, com aviso) → **resultado gerencial**.
 - **Regime:** receita por data de expedição; despesas por vencimento do título; comissões por data de aprovação. Não é regime de caixa nem competência contábil formal.
-- **Não substitui a escrituração contábil.** Tributos sobre vendas só aparecem se lançados em categorias de Dedução; apuração de impostos depende do contador/motor fiscal.
+- **Não substitui a escrituração contábil.** Tributos sobre vendas só aparecem se lançados em categorias de Dedução; a apuração depende da parametrização do motor fiscal.
 - Avisos explícitos: itens vendidos sem custo cadastrado (CMV subestimado) e despesas sem categoria.
 
 ## Relatórios e exportação
@@ -68,7 +68,7 @@ Relatórios: vendas, estoque, contas a receber, contas a pagar, comissões, liqu
 | Regras de encargos (juros/multa) por cliente/fornecedor | Política do negócio |
 | Boletos/PIX/CNAB (remessa/retorno), pagamento via banco | Convênio e layout do banco |
 | Conciliação de cartão/adquirente | Arquivos/API da adquirente |
-| DRE contábil, tributos e fechamento | Contador; motor fiscal validado |
+| DRE contábil, tributos e fechamento | Motor fiscal validado e regras de negócio definidas |
 | Rateio entre centros de custo, orçamento × realizado, transferência entre contas | Não implementados |
 | Notificações de vencimento | Módulo de notificações (pendente) |
 
