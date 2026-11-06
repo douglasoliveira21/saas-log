@@ -17,15 +17,21 @@ if (!key || !secret) throw new Error('Defina ALKORD_APP_KEY e ALKORD_APP_SECRET 
 const source = async (path: string, params: Record<string, string> = {}) => {
   const url = new URL(`${apiBase}/${path}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  const r = await fetch(url, { headers: { 'application-key': key!, 'application-secret': secret! } });
-  if (!r.ok) throw new Error(`Alkord ${path}: HTTP ${r.status}`);
-  return r.json() as Promise<{ TOTAL_REGISTROS?: number; REGISTROS?: AnyRow[] }>;
+  let last = 0;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const r = await fetch(url, { headers: { 'application-key': key!, 'application-secret': secret! } });
+    if (r.ok) return r.json() as Promise<{ TOTAL_REGISTROS?: number; REGISTROS?: AnyRow[] }>;
+    last = r.status;
+    if (![429, 500, 502, 503, 504].includes(r.status)) break;
+    await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+  }
+  throw new Error(`Alkord ${path}: HTTP ${last}`);
 };
 
 async function all(path: string) {
   const out: AnyRow[] = []; let start = 0;
   for (;;) {
-    const page = await source(path, { registro_inicial: String(start), numero_registros: '500' });
+    const page = await source(path, { registro_inicial: String(start), numero_registros: '100' });
     const rows = page.REGISTROS ?? []; out.push(...rows);
     if (!rows.length || out.length >= Number(page.TOTAL_REGISTROS ?? out.length)) return out;
     start += rows.length;
