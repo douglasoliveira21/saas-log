@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AuthContext } from '../common/auth';
 import { PrismaService } from '../prisma/prisma.service';
-import { calculate, ENGINE_VERSION, EngineInput, EngineOutput, Operation, RuleCandidate, RuleConfig } from './engine';
+import { calculate, ENGINE_VERSION, EngineInput, EngineOutput, FederalTaxDefaults, Operation, RuleCandidate, RuleConfig } from './engine';
 
 type Tx = Prisma.TransactionClient;
 
@@ -166,8 +166,13 @@ export class TaxRulesService {
     return out;
   }
 
-  async compute(tx: Tx, tenantId: string, input: EngineInput): Promise<EngineOutput> {
-    return calculate(input, await this.candidates(tx, tenantId));
+  async compute(tx: Tx, tenantId: string, input: EngineInput, companyId?: string): Promise<EngineOutput> {
+    const cfg = await tx.federalTaxConfig.findFirst({ where: { tenantId, ...(companyId ? { companyId } : {}) }, orderBy: { updatedAt: 'desc' } });
+    const federal = cfg ? {
+      companyId: cfg.companyId, regime: cfg.regime, pisRate: Number(cfg.pisRate), cofinsRate: Number(cfg.cofinsRate),
+      icmsByUf: Array.isArray(cfg.icmsByUf) ? cfg.icmsByUf as unknown as FederalTaxDefaults['icmsByUf'] : [],
+    } satisfies FederalTaxDefaults : undefined;
+    return calculate(input, federal ? [] : await this.candidates(tx, tenantId), federal);
   }
 
   /** Cálculo com retrato opcional (reprodutível): entradas, saídas, versões de regra e versão do motor. */

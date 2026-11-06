@@ -248,7 +248,7 @@ export class FiscalOutgoingService {
     const out: EngineOutput = await this.rules.compute(tx, ctx.tenantId!, {
       operation, date: new Date(), originUf: est.state, destUf: cust.state ?? (model === '65' ? est.state : null), regime: est.company.taxRegime, recipientKind: null,
       items: doc.items.map((i) => ({ key: String(i.line), ncm: i.ncm, productOrigin: i.product?.taxOrigin ?? null, value: Number(i.totalValue) })),
-    });
+    }, est.company.id);
     for (const p of out.pendencies) add('BLOCKING', `TAX_${p.code}`, p.itemKey ? `Item ${p.itemKey}: ${p.message}` : p.message);
     for (const r of out.items) {
       const line = Number(r.key);

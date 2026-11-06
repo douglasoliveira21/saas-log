@@ -39,7 +39,7 @@ const uniqueUf = (rows: { uf: string }[], what: string) => {
 
 /**
  * Impostos federais da empresa (menu Impostos). O sistema não sugere alíquotas: o usuário autorizado informa os valores. Esta tela guarda a
- * configuração; o cálculo das notas continua usando as regras tributárias aprovadas (Fiscal → Regras tributárias).
+ * configuração; o cálculo das notas usa esta configuração como fonte principal e mantém regras tributárias para exceções.
  */
 @Injectable()
 export class FederalTaxService {

@@ -57,6 +57,14 @@ export interface EngineInput {
   items: EngineItem[];
 }
 
+export interface FederalTaxDefaults {
+  companyId: string;
+  regime: string;
+  pisRate: number;
+  cofinsRate: number;
+  icmsByUf: { uf: string; cst: string; ratePct?: number }[];
+}
+
 export interface Pendency { code: 'NO_RULE' | 'AMBIGUOUS_RULE' | 'UNSUPPORTED_TAX' | 'MISSING_DATA'; itemKey?: string; message: string }
 
 export interface TaxAmount { cst?: string; csosn?: string; classCode?: string; base: number; ratePct: number; amount: number }
@@ -101,7 +109,22 @@ function matches(r: RuleCandidate, i: EngineInput, item: EngineItem): boolean {
 const specificity = (r: RuleCandidate) =>
   [r.originUf, r.destUf, r.regime, r.recipientKind].filter(Boolean).length + (r.productOrigin !== null ? 1 : 0) + (r.ncmPrefix ? 1 + r.ncmPrefix.length / 100 : 0);
 
-export function calculate(input: EngineInput, rules: RuleCandidate[]): EngineOutput {
+export function calculate(input: EngineInput, rules: RuleCandidate[], federal?: FederalTaxDefaults): EngineOutput {
+  // A configuração da tela Impostos é a fonte principal quando informada.
+  // Regras tributárias continuam disponíveis apenas como fallback legado.
+  if (federal) {
+    const icms = federal.icmsByUf.find((x) => x.uf.toUpperCase() === (input.destUf ?? '').toUpperCase());
+    const taxes: Record<string, TaxParam> = {
+      PIS: { ratePct: federal.pisRate }, COFINS: { ratePct: federal.cofinsRate },
+      ...(icms ? { ICMS: { ratePct: icms.ratePct ?? 0, ...(icms.cst.length === 3 ? { csosn: icms.cst } : { cst: icms.cst }) } } : {}),
+    };
+    const fallback: RuleCandidate = {
+      ruleId: `federal-tax-config:${federal.companyId}`, name: 'Configuração do menu Impostos', operation: input.operation,
+      originUf: null, destUf: input.destUf, ncmPrefix: null, regime: federal.regime, productOrigin: null, recipientKind: null, priority: 999,
+      version: { id: `federal-tax-config:${federal.companyId}`, version: 1, validFrom: new Date(0), validTo: null, config: { taxes }, sourceReference: 'Fiscal > Impostos' },
+    };
+    rules = [fallback];
+  }
   const pendencies: Pendency[] = [];
   const used = new Map<string, EngineOutput['rulesUsed'][number]>();
   const totals: Record<string, number> = {};

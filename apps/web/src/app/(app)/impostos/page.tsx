@@ -32,7 +32,7 @@ export default function ImpostosPage() {
       <PageHeader title="Impostos" description={<>Impostos federais e listas por Estado da empresa. <strong>Os valores são informados pelo usuário fiscal autorizado</strong>: o sistema não traz alíquotas prontas.</>} />
       {error && <Alert kind="error">{error}</Alert>}
       {ok && <Alert kind="ok">{ok}</Alert>}
-      <Alert kind="info">Esta configuração fica registrada por empresa. <strong>Ainda não alimenta o cálculo das notas</strong>: o cálculo continua usando as regras tributárias aprovadas em Fiscal → Regras tributárias.</Alert>
+      <Alert kind="info">Esta configuração fica registrada por empresa e é usada como fonte principal no cálculo das notas. As regras tributárias aprovadas em Fiscal → Regras tributárias ficam disponíveis para cenários excepcionais.</Alert>
       {!items && !error && <Skeleton rows={4} />}
       {items?.length === 0 && <div className="card empty">Cadastre uma empresa em “Empresa e estrutura” para configurar os impostos.</div>}
       {items?.map((it) => <CompanyForm key={it.company.id} item={it} manage={manage} onSaved={() => { setOk('Impostos salvos.'); setError(''); load(); }} onError={(m) => { setError(m); setOk(''); }} />)}
