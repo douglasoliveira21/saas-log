@@ -16,12 +16,29 @@ async function raw(path: string, method: string, body?: unknown): Promise<Respon
   });
 }
 
+// Uma única renovação por vez evita que chamadas paralelas (por exemplo, vários
+// componentes montando junto com /auth/me) rotacionem o mesmo refresh token.
+let refreshInFlight: Promise<boolean> | null = null;
+function refreshOnce(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = raw('/auth/refresh', 'POST')
+      .then((res) => res.ok)
+      .catch(() => false)
+      .finally(() => { refreshInFlight = null; });
+  }
+  return refreshInFlight;
+}
+
+const noRefreshPaths = new Set([
+  '/auth/login', '/auth/register', '/auth/refresh', '/auth/logout',
+  '/auth/forgot-password', '/auth/reset-password', '/auth/mfa/verify',
+]);
+
 export async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   let res = await raw(path, method, body);
   // Access token expirado: tenta renovar uma vez com o refresh token (cookie httpOnly).
-  if (res.status === 401 && !path.startsWith('/auth/')) {
-    const refreshed = await raw('/auth/refresh', 'POST');
-    if (refreshed.ok) res = await raw(path, method, body);
+  if (res.status === 401 && !noRefreshPaths.has(path)) {
+    if (await refreshOnce()) res = await raw(path, method, body);
   }
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
