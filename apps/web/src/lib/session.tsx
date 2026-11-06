@@ -33,7 +33,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
       setMe(data);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) router.replace('/login');
+      if (e instanceof ApiError && e.status === 401) {
+        // Navegação completa limpa o estado do App Router e evita ficar preso
+        // no carregamento quando access e refresh tokens expiraram juntos.
+        if (typeof window !== 'undefined' && window.location.pathname !== '/login') window.location.replace('/login');
+        else router.replace('/login');
+      }
     }
   }, [router]);
 
