@@ -95,9 +95,9 @@ function CompanyForm({ item, manage, onSaved, onError }: { item: Item; manage: b
         <p className="muted" style={{ marginTop: 0 }}>Esta lista de CSTs/CSOSN por UF será usada para o ICMS dos produtos que não tiverem configuração específica na UF de destino.</p>
         {icms.map((r, i) => (
           <div className="row" key={i} style={{ gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-            <select aria-label="UF" value={r.uf} onChange={(e) => setIcms(icms.map((x, k) => (k === i ? { ...x, uf: e.target.value } : x)))} style={{ width: 90 }}>{UFS.map((u) => <option key={u}>{u}</option>)}</select>
-            <input aria-label="CST/CSOSN" placeholder="CST/CSOSN (ex.: 00, 102)" value={r.cst} maxLength={3} onChange={(e) => setIcms(icms.map((x, k) => (k === i ? { ...x, cst: e.target.value.replace(/\D/g, '') } : x)))} style={{ width: 170 }} />
-            <input aria-label="Alíquota %" placeholder="Alíquota % (opcional)" inputMode="decimal" value={r.ratePct === undefined ? '' : fmt(r.ratePct)} onChange={(e) => setIcms(icms.map((x, k) => (k === i ? { ...x, ratePct: e.target.value === '' ? undefined : num(e.target.value) } : x)))} style={{ width: 170 }} />
+            <div><label>UF</label><select aria-label="UF" value={r.uf} onChange={(e) => setIcms(icms.map((x, k) => (k === i ? { ...x, uf: e.target.value } : x)))} style={{ width: 90 }}>{UFS.map((u) => <option key={u}>{u}</option>)}</select></div>
+            <div><label>CST/CSOSN</label><input aria-label="CST/CSOSN" placeholder="Ex.: 00 ou 102" value={r.cst} maxLength={3} onChange={(e) => setIcms(icms.map((x, k) => (k === i ? { ...x, cst: e.target.value.replace(/\D/g, '') } : x)))} style={{ width: 170 }} /></div>
+            <div><label>Alíquota (%)</label><input aria-label="Alíquota %" placeholder="Ex.: 18" inputMode="decimal" min={0} max={100} step="0.01" value={r.ratePct === undefined ? '' : fmt(r.ratePct)} onChange={(e) => setIcms(icms.map((x, k) => (k === i ? { ...x, ratePct: e.target.value === '' ? undefined : Math.min(100, num(e.target.value)) } : x)))} style={{ width: 170 }} /></div>
             {manage && <button type="button" className="btn icon ghost" aria-label={`Remover ICMS ${r.uf}`} onClick={() => setIcms(icms.filter((_, k) => k !== i))}><Trash2 /></button>}
           </div>
         ))}

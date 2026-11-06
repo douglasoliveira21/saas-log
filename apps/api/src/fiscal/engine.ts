@@ -120,7 +120,9 @@ export function calculate(input: EngineInput, rules: RuleCandidate[], federal?: 
     };
     const fallback: RuleCandidate = {
       ruleId: `federal-tax-config:${federal.companyId}`, name: 'Configuração do menu Impostos', operation: input.operation,
-      originUf: null, destUf: input.destUf, ncmPrefix: null, regime: federal.regime, productOrigin: null, recipientKind: null, priority: 999,
+      // O regime já foi validado na tela Impostos; não bloqueie por divergência
+      // de cadastro antigo entre empresa e estabelecimento.
+      originUf: null, destUf: input.destUf, ncmPrefix: null, regime: null, productOrigin: null, recipientKind: null, priority: 999,
       version: { id: `federal-tax-config:${federal.companyId}`, version: 1, validFrom: new Date(0), validTo: null, config: { taxes }, sourceReference: 'Fiscal > Impostos' },
     };
     rules = [fallback];

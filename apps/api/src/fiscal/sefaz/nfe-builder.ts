@@ -81,6 +81,7 @@ export function allocateFreight(totals: number[], freight: number): number[] {
 }
 
 function icmsXml(i: NfeItem['icms']): string {
+  i = { ...i, code: i.code.trim() };
   const o = tag('orig', i.origin);
   if (i.regime === 'SN') {
     if (['102', '103', '300', '400'].includes(i.code)) return `<ICMS><ICMSSN102>${o}<CSOSN>${i.code}</CSOSN></ICMSSN102></ICMS>`;
