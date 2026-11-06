@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 import * as QRCode from 'qrcode';
 import type { Response } from 'express';
 import { SYSTEM_ROLES } from '../access/permissions';
@@ -24,6 +24,7 @@ import { newTotpSecret, otpauthUrl, verifyTotp } from '../notify/totp';
 import { sniffImage } from '../branding/branding.service';
 import { normalizePhone } from '../lookup/lookup';
 import { PrismaService } from '../prisma/prisma.service';
+import { Mailer } from '../notify/mailer';
 import type { AvatarDto, LoginDto, MfaVerifyDto, PasswordDto, ProfileDto, RegisterDto } from './auth.dto';
 
 const MAX_FAILED = 5;
@@ -50,6 +51,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly audit: AuditService,
     private readonly crypto: CryptoService,
+    private readonly mailer: Mailer,
   ) {}
 
   async register(dto: RegisterDto, res: Response, meta: RequestMeta) {
@@ -131,13 +133,32 @@ export class AuthService {
 
     // Segundo fator: a senha sozinha não abre a sessão. O token abaixo só serve para /auth/mfa/verify (outra chave, 5 minutos).
     if (user.totpEnabledAt) {
-      const mfaToken = await this.jwt.signAsync({ sub: user.id, purpose: 'mfa' }, { secret: this.mfaSecret(), expiresIn: 300 });
-      return { mfaRequired: true as const, mfaToken };
+      const platformAdmin = await this.isPlatformAdmin(user.id);
+      let emailMfa = false;
+      let emailCodeHash: string | undefined;
+      if (platformAdmin) {
+        const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+        const sent = await this.mailer.send({
+          to: user.email,
+          subject: `${getConfig().appName}: código de acesso`,
+          text: `Seu código de autenticação em duas etapas é: ${code}\n\nEle expira em 5 minutos. Se você não tentou entrar, altere sua senha.`,
+          html: `<p>Seu código de autenticação em duas etapas é:</p><p style="font-size:24px;font-weight:700;letter-spacing:4px">${code}</p><p>Ele expira em 5 minutos. Se você não tentou entrar, altere sua senha.</p>`,
+        });
+        if (sent.ok) { emailMfa = true; emailCodeHash = sha256(code); }
+        else this.log.warn(`código de 2FA por e-mail não enviado userId=${user.id}: ${sent.reason}`);
+      }
+      const mfaToken = await this.jwt.signAsync({ sub: user.id, purpose: 'mfa', ...(emailCodeHash ? { emailCodeHash } : {}) }, { secret: this.mfaSecret(), expiresIn: 300 });
+      return { mfaRequired: true as const, mfaToken, mfaMethod: emailMfa ? 'email_or_authenticator' as const : 'authenticator' as const };
     }
     return this.completeLogin(user.id, res, meta);
   }
 
   private mfaSecret() { return `${getConfig().jwtSecret}:mfa`; }
+
+  private async isPlatformAdmin(userId: string) {
+    const rows = await this.prisma.withContext({ tenantId: null, userId }, (tx) => tx.$queryRaw<{ is_admin: boolean }[]>`SELECT platform_is_admin() AS is_admin`);
+    return !!rows[0]?.is_admin;
+  }
 
   private async completeLogin(userId: string, res: Response, meta: RequestMeta) {
     const tenants = await this.listTenants(userId);
@@ -153,7 +174,8 @@ export class AuthService {
   /** Segunda etapa do login: código do aplicativo (6 dígitos) ou um código de recuperação. Erros contam para o bloqueio. */
   async verifyMfa(dto: MfaVerifyDto, res: Response, meta: RequestMeta) {
     let sub: string;
-    try { sub = (await this.jwt.verifyAsync<{ sub: string; purpose?: string }>(dto.mfaToken, { secret: this.mfaSecret() })).sub; } catch { throw new UnauthorizedException('Verificação expirada. Entre novamente com a senha.'); }
+    let payload: { sub: string; purpose?: string; emailCodeHash?: string };
+    try { payload = await this.jwt.verifyAsync<{ sub: string; purpose?: string; emailCodeHash?: string }>(dto.mfaToken, { secret: this.mfaSecret() }); sub = payload.sub; } catch { throw new UnauthorizedException('Verificação expirada. Entre novamente com a senha.'); }
     const user = await this.prisma.user.findUnique({ where: { id: sub } });
     if (!user || user.status !== 'ACTIVE' || !user.totpEnabledAt || !user.totpSecret) throw new UnauthorizedException('Verificação inválida.');
     if (user.lockedUntil && user.lockedUntil > new Date()) throw new HttpException('Muitas tentativas. Tente novamente em alguns minutos.', HttpStatus.TOO_MANY_REQUESTS);
@@ -163,6 +185,7 @@ export class AuthService {
     if (/^\d{6}$/.test(code)) {
       step = verifyTotp(secret.secret, code);
       ok = step !== null && step > (secret.lastStep ?? 0); // o mesmo código não vale duas vezes
+      if (!ok && payload.emailCodeHash && sha256(code) === payload.emailCodeHash) ok = true;
     } else {
       const hashes = (user.recoveryCodes as string[] | null) ?? [];
       const h = sha256(dto.code.trim().toLowerCase());

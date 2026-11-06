@@ -9,13 +9,15 @@ import { AuthShell } from '@/components/auth-shell';
 import { PasswordInput } from '@/components/password-input';
 import { Alert } from '@/components/ui';
 
-type LoginResult = { selectedTenantId: string | null; mfaRequired?: undefined } | { mfaRequired: true; mfaToken: string };
+type LoginResult = { selectedTenantId: string | null; mfaRequired?: undefined } | { mfaRequired: true; mfaToken: string; mfaMethod?: 'email_or_authenticator' | 'authenticator' };
+type MfaMethod = 'email_or_authenticator' | 'authenticator';
 
 export default function LoginPage() {
   const router = useRouter();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [mfaMethod, setMfaMethod] = useState<MfaMethod>('authenticator');
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -29,7 +31,7 @@ export default function LoginPage() {
         return;
       }
       const res = await api<LoginResult>('/auth/login', 'POST', { email: f.get('email'), password: f.get('password') });
-      if (res.mfaRequired) { setMfaToken(res.mfaToken); setBusy(false); return; }
+      if (res.mfaRequired) { setMfaToken(res.mfaToken); setMfaMethod(res.mfaMethod ?? 'authenticator'); setBusy(false); return; }
       router.replace(res.selectedTenantId ? '/inicio' : '/select-tenant');
     } catch (err) {
       setError((err as Error).message);
@@ -43,7 +45,7 @@ export default function LoginPage() {
         <div className="auth-head">
           <span className="auth-badge" aria-hidden>{mfaToken ? <KeyRound /> : <Lock />}</span>
           <h1>{mfaToken ? 'Verificação em duas etapas' : 'Acesse sua conta'}</h1>
-          <p className="muted">{mfaToken ? 'Digite o código de 6 dígitos do aplicativo autenticador. Sem o celular, use um código de recuperação.' : 'Entre com o e-mail e a senha cadastrados.'}</p>
+          <p className="muted">{mfaToken ? (mfaMethod === 'email_or_authenticator' ? 'Enviamos um código de 6 dígitos para o e-mail do administrador. Você também pode usar o aplicativo autenticador.' : 'Digite o código de 6 dígitos do aplicativo autenticador. Sem o celular, use um código de recuperação.') : 'Entre com o e-mail e a senha cadastrados.'}</p>
         </div>
         {error && <Alert kind="error">{error}</Alert>}
         {mfaToken ? (
