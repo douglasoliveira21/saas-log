@@ -437,11 +437,15 @@ export class AuthService {
     const access = await this.jwt.signAsync({ sub: userId, tid: tenantId }, { expiresIn: cfg.accessTtlSeconds });
     const base = { httpOnly: true, sameSite: 'lax' as const, secure: cfg.cookieSecure };
     res.cookie(COOKIE_ACCESS, access, { ...base, path: '/', maxAge: cfg.accessTtlSeconds * 1000 });
-    res.cookie(COOKIE_REFRESH, refresh, { ...base, path: '/api/auth', maxAge: cfg.refreshTtlSeconds * 1000 });
+    // O frontend acessa a API por um rewrite/proxy. Usar a raiz evita que o
+    // navegador deixe de enviar o refresh token quando o caminho externo muda.
+    res.cookie(COOKIE_REFRESH, refresh, { ...base, path: '/', maxAge: cfg.refreshTtlSeconds * 1000 });
   }
 
   private clearCookies(res: Response) {
     res.clearCookie(COOKIE_ACCESS, { path: '/' });
+    res.clearCookie(COOKIE_REFRESH, { path: '/' });
+    // Remove também cookies emitidos por versões anteriores.
     res.clearCookie(COOKIE_REFRESH, { path: '/api/auth' });
   }
 }
