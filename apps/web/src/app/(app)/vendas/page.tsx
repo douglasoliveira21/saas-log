@@ -193,7 +193,7 @@ export default function VendasPage() {
             <h3>Quem compra e de onde sai</h3>
             <p className="sub">Escolha o cliente e o depósito que vai separar os produtos.</p>
             <div className="form-grid">
-              <div><label htmlFor="c">Cliente *</label><select id="c" value={meta.customerId} onChange={(e) => { const c = customers.find((x) => x.id === e.target.value); changeTable(c?.priceTable === 'WHOLESALE' ? 'WHOLESALE' : 'RETAIL', { customerId: e.target.value }); }}><option value="">Selecione…</option>{customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+              <CustomerPicker customers={customers} value={meta.customerId} onSelect={(c) => { if (c && !customers.some((x) => x.id === c.id)) setCustomers((current) => [...current, c]); changeTable(c?.priceTable === 'WHOLESALE' ? 'WHOLESALE' : 'RETAIL', { customerId: c?.id ?? '' }); }} />
               <div><label htmlFor="w">Depósito de saída *</label><select id="w" value={meta.warehouseId} onChange={(e) => setMeta({ ...meta, warehouseId: e.target.value })}><option value="">Selecione…</option>{whs.map((w) => <option key={w.id} value={w.id}>{w.code} — {w.name}</option>)}</select></div>
               <div><label htmlFor="pt">Tabela de preço</label><select id="pt" value={meta.priceTable} onChange={(e) => changeTable(e.target.value)}><option value="RETAIL">Varejo</option><option value="WHOLESALE">Atacado</option></select></div>
               <div><label htmlFor="sp">Vendedor</label>{sellers.length > 0 ? <select id="sp" value={meta.salespersonId} onChange={(e) => setMeta({ ...meta, salespersonId: e.target.value })}><option value="">{me.user.name} (você)</option>{sellers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select> : <input id="sp" value={me.user.name} readOnly aria-readonly="true" title="A venda é registrada em nome de quem está logado." />}</div>
@@ -209,9 +209,7 @@ export default function VendasPage() {
             <div className="line-grid head" aria-hidden><span>Produto</span><span>Qtd.</span><span>Preço (R$)</span><span>Desc. %</span><span style={{ textAlign: 'right' }}>Total</span><span /></div>
             {lines.map((l, i) => (
               <div className="line-grid" key={i}>
-                <select aria-label="Produto" value={l.productId} onChange={(e) => { const p = products.find((x) => x.id === e.target.value); setLine(i, { productId: e.target.value, unitPrice: priceOf(p, meta.priceTable) ?? l.unitPrice }); }}>
-                  <option value="">Escolha o produto…</option>{products.map((p) => <option key={p.id} value={p.id}>{p.sku} — {p.name}</option>)}
-                </select>
+                <ProductPicker products={products} value={l.productId} onSelect={(p) => { if (p && !products.some((x) => x.id === p.id)) setProducts((current) => [...current, p]); setLine(i, { productId: p?.id ?? '', unitPrice: p ? priceOf(p, meta.priceTable) ?? l.unitPrice : '' }); }} />
                 <input aria-label="Quantidade" inputMode="numeric" placeholder="Qtd." value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} />
                 <input aria-label="Preço unitário" inputMode="decimal" placeholder="0,00" value={l.unitPrice} onChange={(e) => setLine(i, { unitPrice: e.target.value })} />
                 <input aria-label="Desconto %" inputMode="decimal" placeholder="0" value={l.discountPct} onChange={(e) => setLine(i, { discountPct: e.target.value })} />
@@ -414,4 +412,59 @@ export default function VendasPage() {
       {fiscalView && <FiscalPreviewDialog orderId={fiscalView.id} docType={fiscalView.docType} onClose={() => setFiscalView(null)} />}
     </>
   );
+}
+
+function CustomerPicker({ customers, value, onSelect }: { customers: Customer[]; value: string; onSelect: (customer: Customer | null) => void }) {
+  const selected = customers.find((c) => c.id === value);
+  const [query, setQuery] = useState(selected?.name ?? '');
+  const [matches, setMatches] = useState<Customer[]>(customers.slice(0, 30));
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => { if (selected && !open) setQuery(selected.name); }, [selected?.id]);
+  useEffect(() => {
+    const term = query.trim();
+    if (!term) { setMatches(customers.slice(0, 30)); return; }
+    const timer = setTimeout(() => {
+      api<Customer[]>(`/customers?search=${encodeURIComponent(term)}`).then((rows) => setMatches(rows.slice(0, 50))).catch(() => setMatches([]));
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [query, customers]);
+
+  function choose(c: Customer) { setQuery(c.name); setOpen(false); onSelect(c); }
+  return <div className="customer-picker" style={{ position: 'relative' }}>
+    <label htmlFor="customer-search">Cliente *</label>
+    <input id="customer-search" value={query} autoComplete="off" placeholder="Busque por nome, CPF ou CNPJ…" onFocus={() => setOpen(true)} onChange={(e) => { setQuery(e.target.value); setOpen(true); if (!e.target.value.trim()) onSelect(null); }} />
+    {open && <>
+      <button type="button" aria-label="Fechar busca de clientes" className="picker-backdrop" onClick={() => setOpen(false)} />
+      <div className="picker-options" role="listbox">
+        {matches.length === 0 ? <div className="picker-empty">Nenhum cliente encontrado.</div> : matches.map((c) => <button type="button" role="option" aria-selected={c.id === value} key={c.id} onClick={() => choose(c)}><strong>{c.name}</strong><span>{c.document ? c.document : c.kind === 'PJ' ? 'Pessoa jurídica sem CNPJ' : 'Pessoa física sem CPF'}</span></button>)}
+      </div>
+    </>}
+  </div>;
+}
+
+function ProductPicker({ products, value, onSelect }: { products: Product[]; value: string; onSelect: (product: Product | null) => void }) {
+  const selected = products.find((p) => p.id === value);
+  const [query, setQuery] = useState(selected ? `${selected.sku} — ${selected.name}` : '');
+  const [matches, setMatches] = useState<Product[]>(products.slice(0, 30));
+  const [open, setOpen] = useState(false);
+  useEffect(() => { if (selected && !open) setQuery(`${selected.sku} — ${selected.name}`); }, [selected?.id]);
+  useEffect(() => {
+    const term = query.trim();
+    if (!term) { setMatches(products.slice(0, 30)); return; }
+    const timer = setTimeout(() => {
+      api<{ items: Product[] }>(`/products?search=${encodeURIComponent(term)}&limit=50`).then((r) => setMatches(r.items)).catch(() => setMatches([]));
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [query, products]);
+  function choose(p: Product) { setQuery(`${p.sku} — ${p.name}`); setOpen(false); onSelect(p); }
+  return <div className="product-picker" style={{ position: 'relative' }}>
+    <input aria-label="Produto" value={query} autoComplete="off" placeholder="Buscar SKU ou produto…" onFocus={() => setOpen(true)} onChange={(e) => { setQuery(e.target.value); setOpen(true); if (!e.target.value.trim()) onSelect(null); }} />
+    {open && <>
+      <button type="button" aria-label="Fechar busca de produtos" className="picker-backdrop" onClick={() => setOpen(false)} />
+      <div className="picker-options" role="listbox">
+        {matches.length === 0 ? <div className="picker-empty">Nenhum produto encontrado.</div> : matches.map((p) => <button type="button" role="option" aria-selected={p.id === value} key={p.id} onClick={() => choose(p)}><strong>{p.sku} — {p.name}</strong></button>)}
+      </div>
+    </>}
+  </div>;
 }

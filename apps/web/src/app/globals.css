@@ -663,6 +663,14 @@ input.otp { text-align: center; letter-spacing: .35em; font-size: 1.3rem; font-v
 .auth-terms { margin: 14px 0 0; text-align: center; font-size: .78rem; color: var(--muted); line-height: 1.5; }
 .auth-foot { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: .8rem; color: var(--muted); text-align: center; }
 .auth-foot nav { display: flex; gap: 8px; }
+.customer-picker { min-width: 0; z-index: 3; }
+.product-picker { min-width: 0; z-index: 3; }
+.picker-options { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); max-height: 260px; overflow: auto; padding: 5px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-lg); }
+.picker-options button { display: grid; gap: 2px; width: 100%; padding: 9px 10px; text-align: left; color: var(--text); background: transparent; border: 0; border-radius: 7px; cursor: pointer; }
+.picker-options button:hover, .picker-options button[aria-selected="true"] { background: var(--brand-soft); }
+.picker-options button span { color: var(--muted); font-size: .78rem; }
+.picker-empty { padding: 12px 10px; color: var(--muted); font-size: .84rem; }
+.picker-backdrop { position: fixed; inset: 0; z-index: -1; border: 0; background: transparent; cursor: default; }
 @media (max-width: 960px) { .auth-top-logo { display: block; } .auth-top-logo.on-dark { filter: none; } }
 
 .legal-page { min-height: 100vh; background: var(--bg); }
