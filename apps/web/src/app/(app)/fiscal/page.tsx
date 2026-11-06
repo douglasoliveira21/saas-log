@@ -267,7 +267,7 @@ function RulesTab({ act, can }: TabProps) {
   const ui = useUi();
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [adding, setAdding] = useState(false);
-  const [editing, setEditing] = useState<{ id: string; validFrom: string; sourceReference: string; config: RuleVersion['config'] } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; ruleId?: string; mode: 'draft' | 'version'; validFrom: string; sourceReference: string; config: RuleVersion['config'] } | null>(null);
   const [calc, setCalc] = useState<any>(null);
   const load = useCallback(() => { api<Rule[]>('/fiscal/rules').then(setRules).catch(() => setRules([])); }, []);
   useEffect(load, [load]);
@@ -284,7 +284,8 @@ function RulesTab({ act, can }: TabProps) {
     const form = e.currentTarget;
     await act(async () => {
       const config = { cfop: f.get('cfop') || undefined, includeFreightInBase: f.get('frete') === 'on', taxes };
-      if (editing) await api(`/fiscal/rules/versions/${editing.id}`, 'PUT', { validFrom: new Date(String(f.get('from'))).toISOString(), sourceReference: f.get('src'), config });
+      if (editing?.mode === 'version') await api(`/fiscal/rules/${editing.ruleId}/versions`, 'POST', { validFrom: new Date(String(f.get('from'))).toISOString(), sourceReference: f.get('src'), config });
+      else if (editing) await api(`/fiscal/rules/versions/${editing.id}`, 'PUT', { validFrom: new Date(String(f.get('from'))).toISOString(), sourceReference: f.get('src'), config });
       else await api('/fiscal/rules', 'POST', { rule: { name: f.get('name'), operation: f.get('op'), originUf: f.get('ouf') || undefined, destUf: f.get('duf') || undefined, ncmPrefix: f.get('ncm') || undefined, regime: f.get('regime') || undefined }, version: { validFrom: new Date(String(f.get('from'))).toISOString(), sourceReference: f.get('src'), config } });
       form.reset(); setAdding(false); setEditing(null);
     }, 'Regra criada como rascunho. Revise e aprove para ativá-la.', load);
@@ -307,7 +308,7 @@ function RulesTab({ act, can }: TabProps) {
       </div>
       {adding && (
         <form className="card" style={{ marginBottom: 16 }} onSubmit={create}>
-          <h2>{editing ? 'Editar regra (rascunho)' : 'Nova regra (rascunho)'}</h2>
+          <h2>{editing?.mode === 'version' ? 'Nova versão da regra' : editing ? 'Editar regra (rascunho)' : 'Nova regra (rascunho)'}</h2>
           <div className="form-grid">
             {!editing && <div><label htmlFor="rn">Nome *</label><input id="rn" name="name" required /></div>}
             <div>
@@ -349,7 +350,8 @@ function RulesTab({ act, can }: TabProps) {
                 <td className="muted">{new Date(v.validFrom).toLocaleDateString('pt-BR')} → {v.validTo ? new Date(v.validTo).toLocaleDateString('pt-BR') : 'em aberto'}</td>
                 <td className="muted">{v.config.cfop && `CFOP ${v.config.cfop} · `}{summary(v)}<div>{v.sourceReference}</div></td>
                 <td>
-                  {v.status === 'DRAFT' && can('fiscal.rules') && <><button className="btn sm" onClick={() => { setEditing({ id: v.id, validFrom: v.validFrom, sourceReference: v.sourceReference, config: v.config }); setAdding(true); }}>Editar</button> <button className="btn sm" onClick={() => act(() => api(`/fiscal/rules/versions/${v.id}/submit`, 'POST'), 'Enviada para aprovação.', load)}>Enviar p/ aprovação</button></>}
+                  {v.status === 'DRAFT' && can('fiscal.rules') && <><button className="btn sm" onClick={() => { setEditing({ id: v.id, mode: 'draft', validFrom: v.validFrom, sourceReference: v.sourceReference, config: v.config }); setAdding(true); }}>Editar</button> <button className="btn sm" onClick={() => act(() => api(`/fiscal/rules/versions/${v.id}/submit`, 'POST'), 'Enviada para aprovação.', load)}>Enviar p/ aprovação</button></>}
+                  {v.status === 'APPROVED' && can('fiscal.rules') && <button className="btn sm" onClick={() => { setEditing({ id: v.id, ruleId: r.id, mode: 'version', validFrom: new Date().toISOString(), sourceReference: v.sourceReference, config: v.config }); setAdding(true); }}>Nova versão</button>}
                   {v.status === 'PENDING_APPROVAL' && can('fiscal.rules') && <>
                     <button className="btn sm primary" onClick={() => act(() => api(`/fiscal/rules/versions/${v.id}/approve`, 'POST'), 'Versão aprovada.', load)}>Aprovar</button>{' '}
                     <button className="btn sm" onClick={async () => { const re = await ui.prompt({ title: 'Devolver a rascunho', label: 'Motivo', multiline: true, confirmLabel: 'Devolver' }); if (re) void act(() => api(`/fiscal/rules/versions/${v.id}/reject`, 'POST', { reason: re }), 'Devolvida a rascunho.', load); }}>Devolver</button>
