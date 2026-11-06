@@ -272,7 +272,8 @@ th[aria-sort] .sort { opacity: 1; color: var(--brand); }
 .toast.ok { border-left-color: var(--ok); } .toast.error { border-left-color: var(--danger); } .toast.info { border-left-color: var(--info); }
 .toast svg.t-ico { width: 18px; height: 18px; flex: none; margin-top: 1px; }
 .toast.ok svg.t-ico { color: var(--ok); } .toast.error svg.t-ico { color: var(--danger); } .toast.info svg.t-ico { color: var(--info); }
-.toast .t-msg { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.toast .t-msg { flex: 1; min-width: 0; overflow-wrap: anywhere; display: grid; gap: 2px; }
+.toast .t-msg strong { font-size: 0.82rem; }
 
 /* ─────────── autenticação ─────────── */
 .auth-wrap { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }

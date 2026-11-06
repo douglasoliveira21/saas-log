@@ -44,7 +44,11 @@ export async function api<T>(path: string, method = 'GET', body?: unknown): Prom
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
     const msg = Array.isArray(data?.message) ? data.message.join(' ') : (data?.message ?? 'Não foi possível concluir a operação.');
+    if (typeof window !== 'undefined' && !path.startsWith('/auth/')) window.dispatchEvent(new CustomEvent('dh:action-feedback', { detail: { kind: 'error', message: msg } }));
     throw new ApiError(res.status, msg);
+  }
+  if (typeof window !== 'undefined' && method !== 'GET' && !path.startsWith('/auth/')) {
+    window.dispatchEvent(new CustomEvent('dh:action-feedback', { detail: { kind: 'ok', message: 'Ação concluída com sucesso.' } }));
   }
   return data as T;
 }

@@ -44,6 +44,15 @@ export function UiProvider({ children }: { children: ReactNode }) {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), kind === 'error' ? 8000 : 4500);
   }, []);
 
+  useEffect(() => {
+    const onFeedback = (event: Event) => {
+      const detail = (event as CustomEvent<{ kind?: ToastKind; message?: string }>).detail;
+      if (detail?.message && (detail.kind === 'ok' || detail.kind === 'error' || detail.kind === 'info')) push(detail.kind, detail.message);
+    };
+    window.addEventListener('dh:action-feedback', onFeedback);
+    return () => window.removeEventListener('dh:action-feedback', onFeedback);
+  }, [push]);
+
   const api = useMemo<UiApi>(() => ({
     toast: { ok: (m) => push('ok', m), error: (m) => push('error', m), info: (m) => push('info', m) },
     confirm: (o) => new Promise((resolve) => setDialog({ kind: 'confirm', o, resolve })),
@@ -66,9 +75,9 @@ export function UiProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="toasts" aria-live="polite" role="status">
         {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.kind}`}>
+          <div key={t.id} className={`toast ${t.kind}`} role={t.kind === 'error' ? 'alert' : 'status'}>
             {t.kind === 'ok' ? <CheckCircle2 className="t-ico" /> : t.kind === 'error' ? <XCircle className="t-ico" /> : <Info className="t-ico" />}
-            <span className="t-msg">{t.message}</span>
+            <span className="t-msg"><strong>{t.kind === 'ok' ? 'Concluído' : t.kind === 'error' ? 'Não concluído' : 'Aviso'}</strong><span>{t.message}</span></span>
             <button className="btn ghost sm icon" aria-label="Fechar aviso" onClick={() => setToasts((x) => x.filter((i) => i.id !== t.id))}><X /></button>
           </div>
         ))}
