@@ -19,9 +19,16 @@ export class IbgeService {
     const hit = this.cache.get(key);
     if (hit && Date.now() - hit.at < 24 * 3_600_000) return;
     try {
+      let rows: { id: number; nome: string }[] = [];
       const res = await fetch(`${this.base()}/api/v1/localidades/estados/${key}/municipios`, { signal: AbortSignal.timeout(8000) });
-      if (!res.ok) return;
-      const rows = (await res.json()) as { id: number; nome: string }[];
+      if (res.ok) rows = (await res.json()) as { id: number; nome: string }[];
+      // Fallback para quando o serviço oficial estiver temporariamente indisponível.
+      // A BrasilAPI também retorna o código oficial do município, não um identificador próprio.
+      if (!rows.length) {
+        const fallback = await fetch(`https://brasilapi.com.br/api/ibge/municipios/v1/${key}?providers=dados-abertos-br`, { signal: AbortSignal.timeout(8000) });
+        if (fallback.ok) rows = (await fallback.json() as { nome: string; codigo_ibge: string }[]).map((r) => ({ id: Number(r.codigo_ibge), nome: r.nome }));
+      }
+      if (!rows.length) return;
       const names = new Map<string, string | null>();
       for (const r of rows) { const n = norm(r.nome); names.set(n, names.has(n) ? null : String(r.id)); } // duplicado ⇒ ambíguo
       this.cache.set(key, { at: Date.now(), names });
