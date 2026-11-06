@@ -61,22 +61,30 @@ export class SalesService {
     return { OR: [{ createdById: ctx.userId }, ...(mine ? [{ salespersonId: mine.id }] : [])] };
   }
 
-  list(ctx: AuthContext, q: { status?: OrderStatus; search?: string; limit?: number; offset?: number }) {
+  list(ctx: AuthContext, q: { status?: OrderStatus; group?: string; search?: string; limit?: number; offset?: number }) {
     return this.prisma.withContext(ctx, async (tx) => {
       const num = q.search && /^\d+$/.test(q.search) ? Number(q.search) : undefined;
+      const groups: Record<string, OrderStatus[]> = {
+        draft: ['DRAFT'], approval: ['PENDING_APPROVAL'], warehouse: ['CONFIRMED', 'PICKING', 'PACKED'], transit: ['SHIPPED'], done: ['DELIVERED', 'CLOSED'],
+      };
+      const base: Prisma.SalesOrderWhereInput = { tenantId: ctx.tenantId!, AND: [await this.scope(tx, ctx)] };
       const where: Prisma.SalesOrderWhereInput = {
-        tenantId: ctx.tenantId!, AND: [await this.scope(tx, ctx)],
+        ...base,
         ...(q.status ? { status: q.status } : {}),
+        ...(!q.status && q.group && groups[q.group] ? { status: { in: groups[q.group] } } : {}),
         ...(q.search ? { OR: [...(num ? [{ number: num }] : []), { customer: { name: { contains: q.search, mode: 'insensitive' } } }] } : {}),
       };
-      const [items, total] = await Promise.all([
+      const [items, total, byStatus] = await Promise.all([
         tx.salesOrder.findMany({
           where, orderBy: { number: 'desc' }, take: q.limit ?? 50, skip: q.offset ?? 0,
           select: { id: true, number: true, status: true, channel: true, paymentMethod: true, total: true, createdAt: true, customerType: true, dispatchDate: true, dispatchDeferred: true, customer: { select: { name: true } }, salesperson: { select: { name: true } } },
         }),
         tx.salesOrder.count({ where }),
+        tx.salesOrder.groupBy({ by: ['status'], where: base, _count: { _all: true } }),
       ]);
-      return { total, items };
+      const statusCounts = Object.fromEntries(byStatus.map((x) => [x.status, x._count._all]));
+      const summary = Object.fromEntries(Object.entries(groups).map(([key, statuses]) => [key, statuses.reduce((sum, status) => sum + (statusCounts[status] ?? 0), 0)]));
+      return { total, items, summary };
     });
   }
 

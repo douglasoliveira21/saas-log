@@ -3,23 +3,31 @@
 import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
-import { PageHeader, Alert, Skeleton } from '@/components/ui';
+import { PageHeader, Alert, Pager, Skeleton } from '@/components/ui';
 import { DocumentField, MaskedInput } from '@/components/fields';
 import { docOrDash, formatPhone } from '@/lib/format';
 import { useSession } from '@/lib/session';
 
 interface Supplier { id: string; legalName: string; tradeName: string | null; document: string | null; email: string | null; phone: string | null; paymentTerms: string | null; leadTimeDays: number | null; active: boolean }
+const PAGE_SIZE = 50;
 
 export default function FornecedoresPage() {
   const { can } = useSession();
   const manage = can('suppliers.manage');
   const [items, setItems] = useState<Supplier[] | null>(null);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [adding, setAdding] = useState(false);
 
-  const load = useCallback(() => { api<Supplier[]>('/suppliers').then(setItems).catch((e) => setError(e.message)); }, []);
-  useEffect(load, [load]);
+  const load = useCallback(() => {
+    const q = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String((page - 1) * PAGE_SIZE) });
+    if (search.trim()) q.set('search', search.trim());
+    api<{ items: Supplier[]; total: number }>(`/suppliers?${q}`).then((r) => { setItems(r.items); setTotal(r.total); setError(''); }).catch((e) => setError(e.message));
+  }, [page, search]);
+  useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
 
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -57,6 +65,7 @@ export default function FornecedoresPage() {
         </form>
       )}
       <section className="card">
+        <input aria-label="Buscar fornecedores" placeholder="Buscar por nome ou documento" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} style={{ maxWidth: 340, marginBottom: 12 }} />
         <div className="table-wrap">
           <table>
             <thead><tr><th>Fornecedor</th><th>Documento</th><th>Contato</th><th>Pagamento</th><th>Prazo</th><th /></tr></thead>
@@ -73,6 +82,7 @@ export default function FornecedoresPage() {
             </tbody>
           </table>
         </div>
+        <Pager page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
       </section>
     </>
   );

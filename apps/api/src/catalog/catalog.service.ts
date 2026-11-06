@@ -9,7 +9,7 @@ import { onlyDigits } from '../common/cnpj';
 import { PrismaService } from '../prisma/prisma.service';
 import { StockService } from '../stock/stock.service';
 import {
-  CreateCategoryDto, CreateProductDto, CreateSupplierDto, ImportDto, LinkSupplierDto, ProductQuery, UpdateProductDto, UpdateSupplierDto,
+  CreateCategoryDto, CreateProductDto, CreateSupplierDto, ImportDto, LinkSupplierDto, ProductQuery, SupplierQuery, UpdateProductDto, UpdateSupplierDto,
 } from './catalog.dto';
 import { mapImportRows, RowError } from './csv';
 
@@ -208,13 +208,14 @@ export class CatalogService {
   }
 
   // ───────────── fornecedores ─────────────
-  listSuppliers(ctx: AuthContext, search?: string) {
-    return this.prisma.withContext(ctx, (tx) =>
-      tx.supplier.findMany({
-        where: { tenantId: ctx.tenantId!, ...(search ? { OR: [{ legalName: { contains: search, mode: 'insensitive' } }, { tradeName: { contains: search, mode: 'insensitive' } }, { document: { contains: onlyDigits(search) || '∅' } }] } : {}) },
-        orderBy: { legalName: 'asc' }, take: 200,
-      }),
-    );
+  listSuppliers(ctx: AuthContext, q: SupplierQuery) {
+    return this.prisma.withContext(ctx, async (tx) => {
+      const search = q.search?.trim();
+      const where: Prisma.SupplierWhereInput = { tenantId: ctx.tenantId!, ...(search ? { OR: [{ legalName: { contains: search, mode: 'insensitive' } }, { tradeName: { contains: search, mode: 'insensitive' } }, { document: { contains: onlyDigits(search) || '∅' } }] } : {}) };
+      const items = await tx.supplier.findMany({ where, orderBy: [{ legalName: 'asc' }, { id: 'asc' }], take: q.limit ?? 200, skip: q.offset ?? 0 });
+      if (q.limit === undefined && q.offset === undefined) return items;
+      return { items, total: await tx.supplier.count({ where }) };
+    });
   }
 
   createSupplier(ctx: AuthContext, dto: CreateSupplierDto) {

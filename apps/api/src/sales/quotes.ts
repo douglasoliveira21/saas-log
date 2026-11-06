@@ -43,6 +43,8 @@ class LostDto { @IsString() @IsNotEmpty() @MaxLength(300) reason: string; }
 class ListQuery {
   @IsOptional() @IsIn(['OPEN', 'CONVERTED', 'LOST', 'EXPIRED']) status?: string;
   @IsOptional() @IsString() @MaxLength(80) search?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) limit?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) offset?: number;
 }
 
 /**
@@ -72,15 +74,15 @@ export class QuotesService {
     return this.prisma.withContext(ctx, async (tx) => {
       const num = q.search && /^\d+$/.test(q.search) ? Number(q.search) : undefined;
       const today = new Date(`${localToday()}T00:00:00Z`);
-      const rows = await tx.quote.findMany({
-        where: {
-          tenantId: ctx.tenantId!, AND: [await this.scope(tx, ctx)],
-          ...(q.status === 'EXPIRED' ? { status: 'OPEN', validUntil: { lt: today } } : q.status === 'OPEN' ? { status: 'OPEN', validUntil: { gte: today } } : q.status ? { status: q.status } : {}),
-          ...(q.search ? { OR: [...(num ? [{ number: num }] : []), { customer: { name: { contains: q.search, mode: 'insensitive' as const } } }] } : {}),
-        },
-        orderBy: { number: 'desc' }, take: 200, include: { customer: { select: { name: true } } },
-      });
-      return rows.map((r) => this.view(r));
+      const where: Prisma.QuoteWhereInput = {
+        tenantId: ctx.tenantId!, AND: [await this.scope(tx, ctx)],
+        ...(q.status === 'EXPIRED' ? { status: 'OPEN', validUntil: { lt: today } } : q.status === 'OPEN' ? { status: 'OPEN', validUntil: { gte: today } } : q.status ? { status: q.status } : {}),
+        ...(q.search ? { OR: [...(num ? [{ number: num }] : []), { customer: { name: { contains: q.search, mode: 'insensitive' as const } } }] } : {}),
+      };
+      const rows = await tx.quote.findMany({ where, orderBy: { number: 'desc' }, take: q.limit ?? 200, skip: q.offset ?? 0, include: { customer: { select: { name: true } } } });
+      const items = rows.map((r) => this.view(r));
+      if (q.limit === undefined && q.offset === undefined) return items;
+      return { items, total: await tx.quote.count({ where }) };
     });
   }
 

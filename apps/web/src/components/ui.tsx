@@ -167,6 +167,23 @@ export function Skeleton({ rows = 4 }: { rows?: number }) {
   return <div aria-busy="true" aria-label="Carregando">{Array.from({ length: rows }, (_, i) => <span key={i} className="skeleton row-h" />)}</div>;
 }
 
+export function Pager({ page, pageSize, total, onPage }: { page: number; pageSize: number; total: number; onPage: (page: number) => void }) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const current = Math.min(Math.max(1, page), totalPages);
+  return (
+    <div className="pager" aria-label="Paginação">
+      <span>{total === 0 ? 'Nenhum registro' : `Exibindo ${(current - 1) * pageSize + 1}–${Math.min(current * pageSize, total)} de ${total}`}</span>
+      <div className="row">
+        <button className="btn sm" onClick={() => onPage(1)} disabled={current <= 1} aria-label="Primeira página">Primeira</button>
+        <button className="btn sm" onClick={() => onPage(current - 1)} disabled={current <= 1} aria-label="Página anterior">Anterior</button>
+        <span>Página {current} de {totalPages}</span>
+        <button className="btn sm" onClick={() => onPage(current + 1)} disabled={current >= totalPages} aria-label="Próxima página">Próxima</button>
+        <button className="btn sm" onClick={() => onPage(totalPages)} disabled={current >= totalPages} aria-label="Última página">Última</button>
+      </div>
+    </div>
+  );
+}
+
 export function StatCard(props: { label: string; value: ReactNode; icon?: ReactNode; hint?: ReactNode; tone?: 'ok' | 'warn' | 'danger' }) {
   return <KpiCard {...props} />;
 }

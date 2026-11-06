@@ -1,6 +1,7 @@
 import { BadRequestException, Body, ConflictException, ForbiddenException, Controller, Get, Injectable, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { CustomerKind, Prisma } from '@prisma/client';
-import { IsBoolean, IsEmail, IsEnum, IsIn, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, Validate } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsBoolean, IsEmail, IsEnum, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, Validate } from 'class-validator';
 import { AuditService } from '../audit/audit.service';
 import { AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
 import { onlyDigits } from '../common/cnpj';
@@ -37,6 +38,12 @@ export class UpdateCustomerDto extends CustomerFields {
   @IsOptional() @IsBoolean() active?: boolean;
 }
 
+class ListCustomersQuery {
+  @IsOptional() @IsString() @MaxLength(200) search?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(10) @Max(100) pageSize?: number;
+}
+
 @Injectable()
 export class CustomersService {
   constructor(
@@ -45,15 +52,24 @@ export class CustomersService {
     private readonly settings: SettingsService,
   ) {}
 
-  list(ctx: AuthContext, search?: string) {
+  list(ctx: AuthContext, search?: string, page?: number, pageSize = 50) {
     return this.prisma.withContext(ctx, async (tx) => {
+      const where: Prisma.CustomerWhereInput = {
+        tenantId: ctx.tenantId!,
+        ...(search ? { OR: [{ name: { contains: search, mode: 'insensitive' as const } }, { document: { contains: onlyDigits(search) || '∅' } }] } : {}),
+      };
       const rows = await tx.customer.findMany({
-        where: { tenantId: ctx.tenantId!, ...(search ? { OR: [{ name: { contains: search, mode: 'insensitive' } }, { document: { contains: onlyDigits(search) || '∅' } }] } : {}) },
-        orderBy: { name: 'asc' }, take: 200,
+        where,
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        take: page === undefined ? 200 : pageSize,
+        ...(page === undefined ? {} : { skip: (page - 1) * pageSize }),
       });
       const days = (await this.settings.load(tx, ctx))['customers.inactiveAfterDays'];
       const profiles = await purchaseProfiles(tx, ctx.tenantId!, rows.map((r) => r.id), days);
-      return rows.map((r) => ({ ...r, purchase: profiles.get(r.id)! }));
+      const items = rows.map((r) => ({ ...r, purchase: profiles.get(r.id)! }));
+      if (page === undefined) return items;
+      const total = await tx.customer.count({ where });
+      return { items, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
     });
   }
 
@@ -113,7 +129,7 @@ export class CustomersController {
   constructor(private readonly svc: CustomersService) {}
 
   @Get() @RequirePermissions('customers.view')
-  list(@CurrentAuth() ctx: AuthContext, @Query('search') search?: string) { return this.svc.list(ctx, search); }
+  list(@CurrentAuth() ctx: AuthContext, @Query() query: ListCustomersQuery) { return this.svc.list(ctx, query.search?.trim(), query.page, query.pageSize); }
 
   @Get(':id/purchase-profile') @RequirePermissions('customers.view')
   profile(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.svc.profile(ctx, id); }

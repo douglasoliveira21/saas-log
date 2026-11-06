@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
 import {
-  CreateCategoryDto, CreateProductDto, CreateSupplierDto, ImportDto, LinkSupplierDto, ProductQuery, UpdateProductDto, UpdateSupplierDto,
+  CreateCategoryDto, CreateProductDto, CreateSupplierDto, ImportDto, LinkSupplierDto, ProductQuery, SupplierQuery, UpdateProductDto, UpdateSupplierDto,
 } from './catalog.dto';
 import { CatalogService } from './catalog.service';
 
@@ -37,7 +37,7 @@ export class CatalogController {
   unlink(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Param('supplierId', ParseUUIDPipe) sid: string) { return this.svc.unlinkSupplier(ctx, id, sid); }
 
   @Get('suppliers') @RequirePermissions('suppliers.view')
-  suppliers(@CurrentAuth() ctx: AuthContext, @Query('search') search?: string) { return this.svc.listSuppliers(ctx, search); }
+  suppliers(@CurrentAuth() ctx: AuthContext, @Query() q: SupplierQuery) { return this.svc.listSuppliers(ctx, q); }
 
   @Post('suppliers') @RequirePermissions('suppliers.manage')
   createSupplier(@CurrentAuth() ctx: AuthContext, @Body() dto: CreateSupplierDto) { return this.svc.createSupplier(ctx, dto); }

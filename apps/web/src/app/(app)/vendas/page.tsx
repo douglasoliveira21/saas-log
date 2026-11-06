@@ -4,7 +4,7 @@ import { FileText, Plus, Printer, Search, ShoppingCart, Trash2 } from 'lucide-re
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { brl, dateBr, ORDER_STATUS } from '@/lib/format';
-import { useUi, PageHeader, Alert, Skeleton, EmptyState, Dialog } from '@/components/ui';
+import { useUi, PageHeader, Alert, Skeleton, EmptyState, Dialog, Pager } from '@/components/ui';
 import type { CreditInfo } from '@/components/credit-dialog';
 import { boletoPreview, FLOW, PAYMENT_LABEL, STATUS_INFO, SUMMARY_GROUPS } from '@/lib/order-flow';
 import { useSession } from '@/lib/session';
@@ -31,12 +31,16 @@ const CHANNELS: [string, string][] = [['DIRECT', 'Atendimento comercial'], ['WHA
 const suggestFiscal = (c?: Customer): FiscalChoice | undefined => (c?.document ? (c.document.replace(/\D/g, '').length === 14 ? 'NFE' : 'NFCE') : undefined);
 const STEPS = ['Cliente', 'Produtos', 'Pagamento', 'Entrega e nota'];
 const num = (v: string) => (v.trim() === '' ? undefined : Number(v.replace(',', '.')));
+const PAGE_SIZE = 50;
 
 export default function VendasPage() {
   const { can, me } = useSession();
   const ui = useUi();
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [rows, setRows] = useState<OrderRow[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState<Record<string, number>>({});
+  const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [group, setGroup] = useState('');
   const [q, setQ] = useState('');
@@ -56,9 +60,13 @@ export default function VendasPage() {
   const [fiscalView, setFiscalView] = useState<{ id: string; docType: FiscalChoice } | null>(null);
 
   const load = useCallback(() => {
-    api<{ items: OrderRow[] }>('/sales/orders?limit=100').then((r) => setRows(r.items)).catch((e) => setError(e.message));
-  }, []);
-  useEffect(load, [load]);
+    const query = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String((page - 1) * PAGE_SIZE) });
+    if (status) query.set('status', status);
+    else if (group) query.set('group', group);
+    if (q.trim()) query.set('search', q.trim());
+    api<{ items: OrderRow[]; total: number; summary: Record<string, number> }>(`/sales/orders?${query}`).then((r) => { setRows(r.items); setTotal(r.total); setSummary(r.summary); setError(''); }).catch((e) => setError(e.message));
+  }, [group, page, q, status]);
+  useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
   useEffect(() => {
     api<{ items: Product[] }>('/products?limit=200').then((r) => setProducts(r.items)).catch(() => undefined);
     api<Customer[]>('/customers').then(setCustomers).catch(() => undefined);
@@ -155,12 +163,7 @@ export default function VendasPage() {
     if (reason) await act(() => api(`/sales/orders/${d.id}/cancel`, 'POST', { reason }), 'Pedido cancelado.');
   };
 
-  const counts = useMemo(() => Object.fromEntries(SUMMARY_GROUPS.map((g) => [g.key, (rows ?? []).filter((o) => g.statuses.includes(o.status)).length])), [rows]);
-  const shown = useMemo(() => {
-    const g = SUMMARY_GROUPS.find((x) => x.key === group);
-    const term = q.trim().toLowerCase();
-    return (rows ?? []).filter((o) => (!g || g.statuses.includes(o.status)) && (!status || o.status === status) && (!term || String(o.number).includes(term) || o.customer.name.toLowerCase().includes(term)));
-  }, [rows, group, status, q]);
+  const shown = rows ?? [];
   const calc = useMemo(() => {
     const items = lines.map((l) => { const qty = Number(l.quantity) || 0; const price = num(l.unitPrice) ?? 0; const disc = num(l.discountPct) ?? 0; const gross = qty * price; return { gross, total: gross * (1 - disc / 100) }; });
     const sub = items.reduce((a, x) => a + x.gross, 0); const total = items.reduce((a, x) => a + x.total, 0);
@@ -272,20 +275,20 @@ export default function VendasPage() {
 
       <div className="sum-grid" role="group" aria-label="Resumo dos pedidos por situação">
         {SUMMARY_GROUPS.map((g) => (
-          <button key={g.key} type="button" className={`sum ${g.tone} ${group === g.key ? 'active' : ''}`} aria-pressed={group === g.key} onClick={() => { setGroup(group === g.key ? '' : g.key); setStatus(''); }}>
-            <span className="n">{rows ? counts[g.key] : '—'}</span><span className="l">{g.label}</span><span className="h">{g.hint}</span>
+          <button key={g.key} type="button" className={`sum ${g.tone} ${group === g.key ? 'active' : ''}`} aria-pressed={group === g.key} onClick={() => { setGroup(group === g.key ? '' : g.key); setStatus(''); setPage(1); }}>
+            <span className="n">{rows ? summary[g.key] ?? 0 : '—'}</span><span className="l">{g.label}</span><span className="h">{g.hint}</span>
           </button>
         ))}
       </div>
 
       <section className="card" style={{ marginBottom: 16 }}>
         <div className="toolbar">
-          <div className="search"><Search aria-hidden /><input aria-label="Buscar pedido" placeholder="Buscar por nº ou cliente…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-          <select aria-label="Filtrar por situação" value={status} onChange={(e) => { setStatus(e.target.value); setGroup(''); }} style={{ maxWidth: 220 }}>
+          <div className="search"><Search aria-hidden /><input aria-label="Buscar pedido" placeholder="Buscar por nº ou cliente…" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} /></div>
+          <select aria-label="Filtrar por situação" value={status} onChange={(e) => { setStatus(e.target.value); setGroup(''); setPage(1); }} style={{ maxWidth: 220 }}>
             <option value="">Todas as situações</option>{Object.entries(ORDER_STATUS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
-          {(group || status || q) && <button className="btn sm" onClick={() => { setGroup(''); setStatus(''); setQ(''); }}>Limpar filtros</button>}
-          <span className="muted" style={{ marginLeft: 'auto', fontSize: '0.82rem' }}>{rows ? `${shown.length} de ${rows.length} pedidos` : ''}</span>
+          {(group || status || q) && <button className="btn sm" onClick={() => { setGroup(''); setStatus(''); setQ(''); setPage(1); }}>Limpar filtros</button>}
+          <span className="muted" style={{ marginLeft: 'auto', fontSize: '0.82rem' }}>{rows ? `${total} pedido(s)` : ''}</span>
         </div>
         {!rows && !error && <Skeleton rows={4} />}
         {rows && shown.length === 0 && (rows.length === 0
@@ -313,6 +316,7 @@ export default function VendasPage() {
             </table>
           </div>
         )}
+        {rows && <Pager page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />}
       </section>
 
       {detail && (() => {

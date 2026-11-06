@@ -3,7 +3,7 @@
 import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
-import { PageHeader, Alert, Dialog, Skeleton } from '@/components/ui';
+import { PageHeader, Alert, Dialog, Pager, Skeleton } from '@/components/ui';
 import { CepField, DocumentField, MaskedInput, UfSelect } from '@/components/fields';
 import { docOrDash, formatPhone } from '@/lib/format';
 import { useSession } from '@/lib/session';
@@ -12,12 +12,17 @@ import { CreditDialog } from '@/components/credit-dialog';
 
 interface Customer { id: string; kind: 'PF' | 'PJ'; name: string; document: string | null; email: string | null; phone: string | null; city: string | null; state: string | null; stateRegistration?: string | null; zipCode?: string | null; street?: string | null; number?: string | null; district?: string | null; active: boolean; priceTable?: string; salespersonId?: string | null; purchase?: PurchaseInfo }
 interface Seller { id: string; name: string; active: boolean }
+interface CustomerPage { items: Customer[]; total: number }
+
+const PAGE_SIZE = 50;
 
 export default function ClientesPage() {
   const { can } = useSession();
   const manage = can('customers.manage');
   const [items, setItems] = useState<Customer[] | null>(null);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [adding, setAdding] = useState(false);
@@ -26,7 +31,13 @@ export default function ClientesPage() {
   const [sellers, setSellers] = useState<Seller[]>([]);
   useEffect(() => { if (can('sales.view_all') && can('commissions.view')) api<Seller[]>('/salespeople').then((s) => setSellers(s.filter((x) => x.active))).catch(() => undefined); }, [can]);
 
-  const load = useCallback(() => { api<Customer[]>(`/customers${search ? `?search=${encodeURIComponent(search)}` : ''}`).then(setItems).catch((e) => setError(e.message)); }, [search]);
+  const load = useCallback(() => {
+    const query = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+    if (search.trim()) query.set('search', search.trim());
+    api<CustomerPage>(`/customers?${query}`).then((result) => {
+      setItems(result.items); setTotal(result.total); setError('');
+    }).catch((e) => setError(e.message));
+  }, [page, search]);
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
 
   const OPTIONAL = ['stateRegistration', 'email', 'phone', 'zipCode', 'street', 'number', 'district', 'city', 'state'];
@@ -92,7 +103,7 @@ export default function ClientesPage() {
         </Dialog>
       )}
       <section className="card">
-        <input aria-label="Buscar clientes" placeholder="Buscar por nome ou documento" value={search} onChange={(e) => setSearch(e.target.value)} style={{ maxWidth: 340, marginBottom: 12 }} />
+        <input aria-label="Buscar clientes" placeholder="Buscar por nome ou documento" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} style={{ maxWidth: 340, marginBottom: 12 }} />
         <div className="table-wrap">
           <table>
             <thead><tr><th>Nome</th><th>Tipo</th><th>Documento</th><th>Contato</th><th>Local</th><th>Perfil de compra</th><th /></tr></thead>
@@ -110,6 +121,7 @@ export default function ClientesPage() {
             </tbody>
           </table>
         </div>
+        <Pager page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
       </section>
       {credit && <CreditDialog customerId={credit.id} customerName={credit.name} canManage={can('credit.manage')} canEditCustomer={manage} onClose={() => setCredit(null)} />}
     </>

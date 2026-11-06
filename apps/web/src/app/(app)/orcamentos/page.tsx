@@ -1,8 +1,8 @@
 'use client';
 
 import { FileText, Plus, Printer, Search, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Dialog, EmptyState, PageHeader, Skeleton, useUi } from '@/components/ui';
+import { useCallback, useEffect, useState } from 'react';
+import { Alert, Dialog, EmptyState, PageHeader, Pager, Skeleton, useUi } from '@/components/ui';
 import { api } from '@/lib/api';
 import { brl, dateBr } from '@/lib/format';
 import { PAYMENT_LABEL } from '@/lib/order-flow';
@@ -25,11 +25,14 @@ const STATUS: Record<string, [string, string]> = { OPEN: ['Em aberto', 'info'], 
 const num = (v: string) => (v.trim() === '' ? undefined : Number(v.replace(',', '.')));
 const emptyLine = (): Line => ({ productId: '', quantity: '1', unitPrice: '', discountPct: '' });
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+const PAGE_SIZE = 50;
 
 export default function OrcamentosPage() {
   const { can } = useSession();
   const ui = useUi();
   const [rows, setRows] = useState<QuoteRow[] | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [filter, setFilter] = useState('');
   const [q, setQ] = useState('');
   const [detail, setDetail] = useState<QuoteDetail | null>(null);
@@ -38,15 +41,20 @@ export default function OrcamentosPage() {
   const [error, setError] = useState('');
   const [products, setProducts] = useState<Product[]>([]); const [customers, setCustomers] = useState<Customer[]>([]); const [whs, setWhs] = useState<Warehouse[]>([]);
 
-  const load = useCallback(() => { api<QuoteRow[]>(`/quotes${filter ? `?status=${filter}` : ''}`).then(setRows).catch((e) => setError(e.message)); }, [filter]);
-  useEffect(load, [load]);
+  const load = useCallback(() => {
+    const query = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String((page - 1) * PAGE_SIZE) });
+    if (filter) query.set('status', filter);
+    if (q.trim()) query.set('search', q.trim());
+    api<{ items: QuoteRow[]; total: number }>(`/quotes?${query}`).then((r) => { setRows(r.items); setTotal(r.total); setError(''); }).catch((e) => setError(e.message));
+  }, [filter, page, q]);
+  useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
   useEffect(() => {
     api<{ items: Product[] }>('/products?limit=200').then((r) => setProducts(r.items)).catch(() => undefined);
     api<Customer[]>('/customers').then(setCustomers).catch(() => undefined);
     api<{ establishments: { warehouses: Warehouse[] }[] }[]>('/structure').then((t) => setWhs(t.flatMap((c) => c.establishments.flatMap((e) => e.warehouses)).filter((w) => w.active))).catch(() => undefined);
   }, []);
   const open = useCallback(async (id: string) => { setError(''); try { setDetail(await api<QuoteDetail>(`/quotes/${id}`)); } catch (e) { setError((e as Error).message); } }, []);
-  const shown = useMemo(() => (rows ?? []).filter((r) => !q.trim() || String(r.number).includes(q.trim()) || r.customer.name.toLowerCase().includes(q.trim().toLowerCase())), [rows, q]);
+  const shown = rows ?? [];
 
   async function lost(d: QuoteDetail) {
     const reason = await ui.prompt({ title: 'Marcar como perdido', label: 'Motivo (ex.: fechou com concorrente)', confirmLabel: 'Marcar como perdido', danger: true, cancelLabel: 'Voltar' });
@@ -63,8 +71,8 @@ export default function OrcamentosPage() {
       {error && <Alert kind="error">{error}</Alert>}
       <section className="card">
         <div className="toolbar">
-          <div className="search"><Search aria-hidden /><input aria-label="Buscar orçamento" placeholder="Buscar por nº ou cliente…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-          <select aria-label="Situação" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ maxWidth: 200 }}><option value="">Todas as situações</option><option value="OPEN">Em aberto</option><option value="EXPIRED">Vencidos</option><option value="CONVERTED">Viraram pedido</option><option value="LOST">Perdidos</option></select>
+          <div className="search"><Search aria-hidden /><input aria-label="Buscar orçamento" placeholder="Buscar por nº ou cliente…" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} /></div>
+          <select aria-label="Situação" value={filter} onChange={(e) => { setFilter(e.target.value); setPage(1); }} style={{ maxWidth: 200 }}><option value="">Todas as situações</option><option value="OPEN">Em aberto</option><option value="EXPIRED">Vencidos</option><option value="CONVERTED">Viraram pedido</option><option value="LOST">Perdidos</option></select>
         </div>
         {!rows && !error && <Skeleton rows={4} />}
         {rows && shown.length === 0 && <EmptyState icon={<FileText size={22} />} title="Nenhum orçamento">Crie um orçamento para o cliente decidir; ao aceitar, vire pedido.</EmptyState>}
@@ -76,6 +84,7 @@ export default function OrcamentosPage() {
             ); })}</tbody>
           </table></div>
         )}
+        {rows && <Pager page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />}
       </section>
 
       {detail && (() => {

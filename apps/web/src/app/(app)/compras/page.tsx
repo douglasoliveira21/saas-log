@@ -4,7 +4,7 @@ import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { brl, dateBr, PURCHASE_STATUS } from '@/lib/format';
-import { useUi, PageHeader, Alert, Skeleton } from '@/components/ui';
+import { useUi, PageHeader, Alert, Pager, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { SuggestionsTab } from './suggestions-tab';
 import { RfqTab } from './rfq-tab';
@@ -21,11 +21,14 @@ interface Suggestion { productId: string; sku: string; name: string; supplier: s
 interface Line { productId: string; quantity: string; unitCost: string }
 
 const num = (v: string) => Number(v.replace(',', '.'));
+const PAGE_SIZE = 50;
 
 export default function ComprasPage() {
   const { can } = useSession();
   const ui = useUi();
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [sugs, setSugs] = useState<Suggestion[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -41,9 +44,9 @@ export default function ComprasPage() {
   const [recvLot, setRecvLot] = useState<Record<string, { lot?: string; exp?: string; loc?: string }>>({});
 
   const load = useCallback(() => {
-    api<{ items: Row[] }>('/purchases?limit=100').then((r) => setRows(r.items)).catch((e) => setError(e.message));
+    api<{ items: Row[]; total: number }>(`/purchases?limit=${PAGE_SIZE}&offset=${(page - 1) * PAGE_SIZE}`).then((r) => { setRows(r.items); setTotal(r.total); }).catch((e) => setError(e.message));
     api<Suggestion[]>('/purchases/suggestions').then(setSugs).catch(() => undefined);
-  }, []);
+  }, [page]);
   useEffect(load, [load]);
   useEffect(() => {
     api<{ items: Product[] }>('/products?limit=200').then((r) => setProducts(r.items)).catch(() => undefined);
@@ -144,6 +147,7 @@ export default function ComprasPage() {
             {rows?.map((o) => <tr key={o.id}><td>{o.number}</td><td>{o.supplier.legalName}</td><td>{o.warehouse.code}</td><td><span className="badge">{PURCHASE_STATUS[o.status]}</span></td><td className="num">{brl(o.total)}</td><td>{dateBr(o.expectedDate)}</td><td><button className="btn sm" onClick={() => open(o.id)}>Abrir</button></td></tr>)}
           </tbody>
         </table></div>
+        <Pager page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
       </section>
 
       {detail && (

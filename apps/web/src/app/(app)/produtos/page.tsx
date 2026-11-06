@@ -4,7 +4,7 @@ import { Search, Plus, Pencil, ImageOff } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { api, ApiError } from '@/lib/api';
-import { useUi, PageHeader, Alert, Skeleton, EmptyState, SortTh, useSort } from '@/components/ui';
+import { useUi, PageHeader, Alert, Skeleton, EmptyState, Pager, SortTh, useSort } from '@/components/ui';
 import { formatNcm } from '@/lib/format';
 import { useSession } from '@/lib/session';
 
@@ -14,6 +14,7 @@ interface ImportReport { committed: boolean; created: number; updated: number; i
 
 const brl = (v: string | null) => (v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
 const TEMPLATE = 'sku;nome;codigo_barras;marca;categoria;unidade;custo;preco_venda;estoque_minimo;ncm;deposito;saldo_inicial\nPARAF-001;Parafuso sextavado M8;7891234567895;Acme;Ferragens;UN;1,50;3,90;50;73181500;CD01;200\n';
+const PAGE_SIZE = 50;
 
 export default function ProdutosPage() {
   const { can } = useSession();
@@ -21,6 +22,7 @@ export default function ProdutosPage() {
   const manage = can('products.manage');
   const [items, setItems] = useState<Product[] | null>(null);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [cats, setCats] = useState<Category[]>([]);
   const [search, setSearch] = useState('');
   const [fiscal, setFiscal] = useState(false);
@@ -33,11 +35,11 @@ export default function ProdutosPage() {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
-    const qs = new URLSearchParams({ limit: '100' });
+    const qs = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String((page - 1) * PAGE_SIZE) });
     if (search) qs.set('search', search);
     if (fiscal) qs.set('fiscal', 'pending');
     api<{ total: number; items: Product[] }>(`/products?${qs}`).then((r) => { setItems(r.items); setTotal(r.total); }).catch((e) => setError(e.message));
-  }, [search, fiscal]);
+  }, [page, search, fiscal]);
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
   useEffect(() => { api<Category[]>('/categories').then(setCats).catch(() => undefined); }, []);
 
@@ -101,8 +103,8 @@ export default function ProdutosPage() {
 
       <section className="card">
         <div className="toolbar">
-          <div className="search"><Search aria-hidden /><input aria-label="Buscar produtos" placeholder="Buscar por SKU, nome ou código de barras" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-          <label className="check"><input type="checkbox" checked={fiscal} onChange={(e) => setFiscal(e.target.checked)} /> Só com pendência fiscal</label>
+          <div className="search"><Search aria-hidden /><input aria-label="Buscar produtos" placeholder="Buscar por SKU, nome ou código de barras" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} /></div>
+          <label className="check"><input type="checkbox" checked={fiscal} onChange={(e) => { setFiscal(e.target.checked); setPage(1); }} /> Só com pendência fiscal</label>
           <span className="muted" style={{ marginLeft: 'auto' }}>{total} produto(s)</span>
         </div>
         <div className="table-wrap">
@@ -122,6 +124,7 @@ export default function ProdutosPage() {
             </tbody>
           </table>
         </div>
+        <Pager page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
       </section>
     </>
   );

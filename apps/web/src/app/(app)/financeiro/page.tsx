@@ -4,7 +4,7 @@ import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { brl, dateBr } from '@/lib/format';
-import { useUi, PageHeader, Alert } from '@/components/ui';
+import { useUi, PageHeader, Alert, Pager } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { Delinquency } from './delinquency';
 import { FiscalExport } from './fiscal-export';
@@ -26,6 +26,7 @@ const MKT: Record<string, string> = { IMPORTED: 'Importada', UNLINKED: 'Sem pedi
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const shift = (n: number) => iso(new Date(Date.now() + n * 86_400_000));
 const num = (v: FormDataEntryValue | number | null) => Number(String(v ?? '').replace(',', '.'));
+const PAGE_SIZE = 50;
 
 export default function FinanceiroPage() {
   const { can } = useSession();
@@ -39,6 +40,8 @@ export default function FinanceiroPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [titles, setTitles] = useState<Title[]>([]);
+  const [titlePage, setTitlePage] = useState(1);
+  const [titleTotal, setTitleTotal] = useState(0);
   const [onlyOverdue, setOnlyOverdue] = useState(false);
   const [panel, setPanel] = useState<'novo' | 'conta' | null>(null);
   const [settling, setSettling] = useState<Title | null>(null);
@@ -63,9 +66,10 @@ export default function FinanceiroPage() {
 
   const loadTitles = useCallback(() => {
     if (tab !== 'pagar' && tab !== 'receber') return;
-    api<{ items: Title[] }>(`/finance/titles?direction=${direction}${onlyOverdue ? '&overdue=true' : ''}&limit=200`).then((r) => setTitles(r.items)).catch(fail);
-  }, [tab, direction, onlyOverdue]);
+    api<{ items: Title[]; total: number }>(`/finance/titles?direction=${direction}${onlyOverdue ? '&overdue=true' : ''}&limit=${PAGE_SIZE}&offset=${(titlePage - 1) * PAGE_SIZE}`).then((r) => { setTitles(r.items); setTitleTotal(r.total); }).catch(fail);
+  }, [tab, direction, onlyOverdue, titlePage]);
   useEffect(loadTitles, [loadTitles]);
+  useEffect(() => { setTitlePage(1); }, [direction, onlyOverdue]);
 
   useEffect(() => {
     if (tab === 'caixa') api<NonNullable<typeof flow>>(`/finance/cashflow?from=${range.from}&to=${range.to}&granularity=${range.granularity}`).then(setFlow).catch(fail);
@@ -212,6 +216,7 @@ export default function FinanceiroPage() {
               ))}
             </tbody>
           </table></div>
+          <Pager page={titlePage} pageSize={PAGE_SIZE} total={titleTotal} onPage={setTitlePage} />
         </div>
       )}
 

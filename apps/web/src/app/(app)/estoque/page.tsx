@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
-import { useUi, PageHeader, Alert, Skeleton } from '@/components/ui';
+import { useUi, PageHeader, Alert, Pager, Skeleton } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { StockDialog, type StockProduct } from './stock-dialog';
 import { LotsTab } from './lots-tab';
@@ -18,6 +18,7 @@ const TYPES: [string, string, boolean][] = [
   ['INTERNAL_USE', 'Uso interno', false], ['LOSS', 'Perda', true], ['DAMAGE', 'Avaria', true], ['ADJUSTMENT', 'Ajuste (+/−)', true],
 ];
 const LABEL = Object.fromEntries([...TYPES.map(([v, l]) => [v, l]), ['TRANSFER_IN', 'Transferência (entrada)'], ['TRANSFER_OUT', 'Transferência (saída)'], ['REVERSAL', 'Estorno']]);
+const PAGE_SIZE = 50;
 
 export default function EstoquePage() {
   const { can } = useSession();
@@ -25,6 +26,8 @@ export default function EstoquePage() {
   const canMove = can('stock.move');
   const canAdjust = can('stock.adjust');
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [movs, setMovs] = useState<Movement[]>([]);
   const [whs, setWhs] = useState<Warehouse[]>([]);
   const [search, setSearch] = useState('');
@@ -36,12 +39,12 @@ export default function EstoquePage() {
   const [edit, setEdit] = useState<{ mode: 'edit' | 'delete'; product: StockProduct } | null>(null);
 
   const load = useCallback(() => {
-    const qs = new URLSearchParams({ limit: '100' });
+    const qs = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String((page - 1) * PAGE_SIZE) });
     if (search) qs.set('search', search);
     if (status) qs.set('status', status);
-    api<Row[]>(`/stock/overview?${qs}`).then(setRows).catch((e) => setError(e.message));
+    api<{ items: Row[]; total: number }>(`/stock/overview?${qs}`).then((r) => { setRows(r.items); setTotal(r.total); }).catch((e) => setError(e.message));
     api<{ items: Movement[] }>('/stock/movements?limit=20').then((r) => setMovs(r.items)).catch(() => undefined);
-  }, [search, status]);
+  }, [page, search, status]);
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
   useEffect(() => {
     api<Company[]>('/structure').then((t) => setWhs(t.flatMap((c) => c.establishments.flatMap((e) => e.warehouses)).filter((w) => w.active))).catch(() => undefined);
@@ -117,8 +120,8 @@ export default function EstoquePage() {
 
       <section className="card" style={{ marginBottom: 16 }}>
         <div className="row" style={{ marginBottom: 12 }}>
-          <input aria-label="Buscar" placeholder="Buscar por SKU, nome ou código de barras" value={search} onChange={(e) => setSearch(e.target.value)} style={{ maxWidth: 340 }} />
-          <select aria-label="Filtro" value={status} onChange={(e) => setStatus(e.target.value)} style={{ maxWidth: 220 }}>
+          <input aria-label="Buscar" placeholder="Buscar por SKU, nome ou código de barras" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} style={{ maxWidth: 340 }} />
+          <select aria-label="Filtro" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} style={{ maxWidth: 220 }}>
             <option value="">Todos</option><option value="below_min">Abaixo do mínimo</option><option value="out">Sem estoque</option>
           </select>
         </div>
@@ -144,6 +147,7 @@ export default function EstoquePage() {
             </tbody>
           </table>
         </div>
+        <Pager page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
       </section>
 
       <section className="card">

@@ -304,9 +304,10 @@ export class StockService {
   async overview(ctx: AuthContext, q: { search?: string; status?: 'below_min' | 'out'; limit?: number; offset?: number }) {
     const like = q.search ? `%${q.search.replace(/[%_\\]/g, '\\$&')}%` : null;
     const rows = await this.prisma.withContext(ctx, (tx) =>
-      tx.$queryRaw<{ id: string; sku: string; name: string; min_stock: number; on_hand: number; reserved: number; blocked: number; cost: string | null }[]>`
+      tx.$queryRaw<{ id: string; sku: string; name: string; min_stock: number; on_hand: number; reserved: number; blocked: number; cost: string | null; total_count: number }[]>`
         SELECT p.id, p.sku, p.name, p.min_stock, p.cost_price AS cost,
-               COALESCE(b.on_hand, 0)::int AS on_hand, COALESCE(b.reserved, 0)::int AS reserved, COALESCE(b.blocked, 0)::int AS blocked
+               COALESCE(b.on_hand, 0)::int AS on_hand, COALESCE(b.reserved, 0)::int AS reserved, COALESCE(b.blocked, 0)::int AS blocked,
+               count(*) OVER()::int AS total_count
         FROM products p
         LEFT JOIN (SELECT product_id, sum(on_hand) on_hand, sum(reserved) reserved, sum(blocked) blocked
                    FROM stock_balances GROUP BY product_id) b ON b.product_id = p.id
@@ -317,10 +318,10 @@ export class StockService {
                OR (${q.status ?? null} = 'below_min' AND COALESCE(b.on_hand - b.reserved - b.blocked, 0) < p.min_stock))
         ORDER BY p.name LIMIT ${q.limit ?? 50} OFFSET ${q.offset ?? 0}`,
     );
-    return rows.map((r) => ({
+    return { total: rows[0]?.total_count ?? 0, items: rows.map((r) => ({
       productId: r.id, sku: r.sku, name: r.name, minStock: r.min_stock,
       onHand: r.on_hand, reserved: r.reserved, blocked: r.blocked, available: r.on_hand - r.reserved - r.blocked,
-    }));
+    })) };
   }
 
   balances(ctx: AuthContext, productId: string) {
