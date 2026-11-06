@@ -5,6 +5,7 @@ import { AuthContext } from '../common/auth';
 import { onlyDigits } from '../common/cnpj';
 import { normalizeContact } from '../common/phone';
 import { PrismaService } from '../prisma/prisma.service';
+import { IbgeService } from '../fiscal/sefaz/ibge';
 import {
   CreateCompanyDto,
   CreateEstablishmentDto,
@@ -29,6 +30,7 @@ export class StructureService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly ibge: IbgeService,
   ) {}
 
   /** Retorna a hierarquia empresa → estabelecimento → depósito do tenant. */
@@ -66,11 +68,13 @@ export class StructureService {
   }
 
   async createEstablishment(ctx: AuthContext, dto: CreateEstablishmentDto) {
+    if (dto.state) await this.ibge.warm(dto.state);
+    const ibgeCode = dto.ibgeCode ?? (dto.city && dto.state ? this.ibge.lookup(dto.city, dto.state) : null);
     return this.prisma.withContext(ctx, async (tx) => {
       await this.mustExist(tx.company.findFirst({ where: { id: dto.companyId, tenantId: ctx.tenantId! }, select: { id: true } }));
       await this.enforceLimit(tx, ctx, 'establishments', () => tx.establishment.count({ where: { tenantId: ctx.tenantId!, active: true } }));
       const row = await tx.establishment
-        .create({ data: { ...normalizeContact(upperUf(dto)), cnpj: cnpjOrUndef(dto.cnpj), tenantId: ctx.tenantId! } })
+        .create({ data: { ...normalizeContact(upperUf(dto)), cnpj: cnpjOrUndef(dto.cnpj), ibgeCode, tenantId: ctx.tenantId! } })
         .catch((e) => mapUnique(e, 'Já existe um estabelecimento com este CNPJ.'));
       await this.audit.record(tx, ctx, { action: 'establishment.created', entity: 'establishment', entityId: row.id, metadata: { name: row.name, kind: row.kind } });
       return row;
@@ -78,6 +82,8 @@ export class StructureService {
   }
 
   async updateEstablishment(ctx: AuthContext, id: string, dto: UpdateEstablishmentDto) {
+    if (dto.state) await this.ibge.warm(dto.state);
+    const ibgeCode = dto.ibgeCode ?? (dto.city && dto.state ? this.ibge.lookup(dto.city, dto.state) : undefined);
     return this.prisma.withContext(ctx, async (tx) => {
       const current = await tx.establishment.findFirst({ where: { id, tenantId: ctx.tenantId! }, select: { cnpj: true, state: true, stateRegistration: true } });
       if (!current) throw new NotFoundException('Registro não encontrado.');
@@ -91,7 +97,7 @@ export class StructureService {
         if (docs + series > 0) throw new ConflictException('Este estabelecimento já possui documentos fiscais: CNPJ, UF e inscrição estadual não podem ser alterados. Cadastre um novo estabelecimento.');
       }
       const row = await tx.establishment
-        .update({ where: { id }, data: { ...normalizeContact(upperUf(dto)), cnpj: cnpjOrUndef(dto.cnpj) } })
+        .update({ where: { id }, data: { ...normalizeContact(upperUf(dto)), cnpj: cnpjOrUndef(dto.cnpj), ...(ibgeCode !== undefined ? { ibgeCode } : {}) } })
         .catch((e) => mapUnique(e, 'Já existe um estabelecimento com este CNPJ.'));
       await this.audit.record(tx, ctx, { action: 'establishment.updated', entity: 'establishment', entityId: id, metadata: { fields: Object.keys(dto) } });
       return row;

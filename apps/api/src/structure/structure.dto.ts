@@ -56,6 +56,7 @@ class AddressFields {
   @IsOptional() @IsString() @MaxLength(100) district?: string;
   @IsOptional() @IsString() @MaxLength(100) city?: string;
   @IsOptional() @Matches(UF, { message: 'UF inválida.' }) state?: string;
+  @IsOptional() @Matches(/^\d{7}$/, { message: 'Código IBGE deve ter 7 dígitos.' }) ibgeCode?: string;
 }
 
 export class CreateEstablishmentDto extends AddressFields {

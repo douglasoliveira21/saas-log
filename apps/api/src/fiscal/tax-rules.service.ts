@@ -167,7 +167,10 @@ export class TaxRulesService {
   }
 
   async compute(tx: Tx, tenantId: string, input: EngineInput, companyId?: string): Promise<EngineOutput> {
-    const cfg = await tx.federalTaxConfig.findFirst({ where: { tenantId, ...(companyId ? { companyId } : {}) }, orderBy: { updatedAt: 'desc' } });
+    const cfg = (companyId
+      ? await tx.federalTaxConfig.findFirst({ where: { tenantId, companyId } })
+      : null)
+      ?? await tx.federalTaxConfig.findFirst({ where: { tenantId }, orderBy: { updatedAt: 'desc' } });
     const federal = cfg ? {
       companyId: cfg.companyId, regime: cfg.regime, pisRate: Number(cfg.pisRate), cofinsRate: Number(cfg.cofinsRate),
       icmsByUf: Array.isArray(cfg.icmsByUf) ? cfg.icmsByUf as unknown as FederalTaxDefaults['icmsByUf'] : [],

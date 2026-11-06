@@ -362,10 +362,10 @@ export class FiscalOutgoingService {
       presence: model === '65' ? (channel === 'STORE' ? 'COUNTER' : 'DELIVERY') : channel === 'STORE' ? 'COUNTER' : channel === 'WEB' ? 'INTERNET' : channel === 'PHONE' ? 'PHONE' : 'OTHER',
       destination: est.state && cust.state && est.state !== cust.state.toUpperCase() ? 2 : 1,
       finalConsumer: cust.kind === 'PF' || model === '65',
-      emitter: { cnpj: onlyDigits(est.cnpj ?? ''), name: est.company.legalName, tradeName: est.company.tradeName, street: est.street ?? '', number: est.number ?? 'SN', district: est.district ?? '', city: est.city ?? '', cMun: this.ibge.lookup(est.city, est.state), uf: est.state ?? '', zip: onlyDigits(est.zipCode ?? ''), ie: est.stateRegistration ?? '', regime: regime as 1 | 3 | 4, cnae: est.cnae ? onlyDigits(est.cnae) : null },
+      emitter: { cnpj: onlyDigits(est.cnpj ?? ''), name: est.company.legalName, tradeName: est.company.tradeName, street: est.street ?? '', number: est.number ?? 'SN', district: est.district ?? '', city: est.city ?? '', cMun: est.ibgeCode ?? this.ibge.lookup(est.city, est.state), uf: est.state ?? '', zip: onlyDigits(est.zipCode ?? ''), ie: est.stateRegistration ?? '', regime: regime as 1 | 3 | 4, cnae: est.cnae ? onlyDigits(est.cnae) : null },
       recipient: cDoc || cust.name ? {
         document: cDoc || null, name: cust.name, ie: cust.stateRegistration, ieIndicator: cust.stateRegistration ? 1 : cust.kind === 'PF' ? 9 : 2,
-        street: cust.street, number: cust.number ?? 'SN', district: cust.district, city: cust.city, cMun: this.ibge.lookup(cust.city, cust.state), uf: cust.state?.toUpperCase() ?? null, zip: onlyDigits(cust.zipCode ?? '') || null, phone: onlyDigits(cust.phone ?? '') || null, email: cust.email,
+        street: cust.street, number: cust.number ?? 'SN', district: cust.district, city: cust.city, cMun: cust.ibgeCode ?? this.ibge.lookup(cust.city, cust.state), uf: cust.state?.toUpperCase() ?? null, zip: onlyDigits(cust.zipCode ?? '') || null, phone: onlyDigits(cust.phone ?? '') || null, email: cust.email,
       } : null,
       items: doc.items.map((i) => ({
         line: i.line, sku: i.supplierCode ?? String(i.line), description: i.description, ncm: i.ncm ?? '', cfop: i.cfop ?? '', unit: i.unit ?? 'UN', quantity: Number(i.quantity), unitValue: Number(i.unitValue), total: Number(i.totalValue),

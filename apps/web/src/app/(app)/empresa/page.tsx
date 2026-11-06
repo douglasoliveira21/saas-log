@@ -11,7 +11,7 @@ import { useSession } from '@/lib/session';
 interface Warehouse { id: string; code: string; name: string; kind: string; active: boolean; establishmentId: string }
 interface Establishment {
   id: string; companyId: string; name: string; kind: string; cnpj: string | null; stateRegistration: string | null; cnae: string | null; zipCode: string | null; street: string | null;
-  number: string | null; complement: string | null; district: string | null; city: string | null; state: string | null; active: boolean; warehouses: Warehouse[];
+  number: string | null; complement: string | null; district: string | null; city: string | null; state: string | null; ibgeCode?: string | null; active: boolean; warehouses: Warehouse[];
 }
 interface Company { id: string; legalName: string; tradeName: string | null; cnpj: string | null; taxRegime: string | null; responsible: string | null; contactEmail: string | null; contactPhone: string | null; active: boolean; establishments: Establishment[] }
 
@@ -356,6 +356,7 @@ export default function EmpresaPage() {
                       <div><label htmlFor="district">Bairro</label><input id="district" name="district" defaultValue={eItem?.district ?? ''} /></div>
                       <div><label htmlFor="city">Município</label><input id="city" name="city" defaultValue={eItem?.city ?? ''} /></div>
                       <div><label htmlFor="state">UF</label><UfSelect id="state" defaultValue={eItem?.state ?? ''} /></div>
+                      <div><label htmlFor="ibgeCode">Código IBGE do município</label><input id="ibgeCode" name="ibgeCode" inputMode="numeric" maxLength={7} defaultValue={eItem?.ibgeCode ?? ''} placeholder="Preenchido automaticamente ao salvar" /><small className="muted">Preenchido usando Município + UF.</small></div>
                     </div>
                   </Section>
                 </>

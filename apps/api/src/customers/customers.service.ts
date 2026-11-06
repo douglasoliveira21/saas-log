@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { purchaseProfiles } from './purchase-profile';
 import { ensureSalesperson } from '../sales/ensure-salesperson';
+import { IbgeService } from '../fiscal/sefaz/ibge';
 
 class CustomerFields {
   @IsOptional() @IsIn(['RETAIL', 'WHOLESALE']) priceTable?: 'RETAIL' | 'WHOLESALE';
@@ -26,6 +27,7 @@ class CustomerFields {
   @IsOptional() @IsString() @MaxLength(100) district?: string;
   @IsOptional() @IsString() @MaxLength(100) city?: string;
   @IsOptional() @Matches(/^[A-Za-z]{2}$/, { message: 'UF inválida.' }) state?: string;
+  @IsOptional() @Matches(/^\d{7}$/, { message: 'Código IBGE deve ter 7 dígitos.' }) ibgeCode?: string;
 }
 export class CreateCustomerDto extends CustomerFields {
   @IsEnum(CustomerKind) kind: CustomerKind;
@@ -50,6 +52,7 @@ export class CustomersService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly settings: SettingsService,
+    private readonly ibge: IbgeService,
   ) {}
 
   list(ctx: AuthContext, search?: string, page?: number, pageSize = 50) {
@@ -97,10 +100,25 @@ export class CustomersService {
   }
 
   create(ctx: AuthContext, dto: CreateCustomerDto) {
+    return this.saveWithIbge(ctx, dto);
+  }
+
+  private async saveWithIbge(ctx: AuthContext, dto: CreateCustomerDto | UpdateCustomerDto, id?: string) {
+    if (dto.state) await this.ibge.warm(dto.state);
+    const ibgeCode = dto.ibgeCode ?? (dto.city && dto.state ? this.ibge.lookup(dto.city, dto.state) : null);
     return this.prisma.withContext(ctx, async (tx) => {
-      const salespersonId = await this.portfolioOwner(tx, ctx, dto.salespersonId);
+      if (id) {
+        const cur = await tx.customer.findFirst({ where: { id, tenantId: ctx.tenantId! } });
+        if (!cur) throw new NotFoundException('Cliente não encontrado.');
+        const salespersonId = await this.portfolioOwner(tx, ctx, (dto as UpdateCustomerDto).salespersonId, cur.salespersonId);
+        const row = await tx.customer.update({ where: { id }, data: { ...normalizeContact(dto), ...(salespersonId !== undefined ? { salespersonId } : {}), document: dto.document ? onlyDigits(dto.document) : undefined, state: dto.state?.toUpperCase(), ...(ibgeCode !== null ? { ibgeCode } : {}) } }).catch(dup);
+        await this.audit.record(tx, ctx, { action: 'customer.updated', entity: 'customer', entityId: id, metadata: { fields: Object.keys(dto) } });
+        return row;
+      }
+      const createDto = dto as CreateCustomerDto;
+      const salespersonId = await this.portfolioOwner(tx, ctx, createDto.salespersonId);
       const row = await tx.customer
-        .create({ data: { ...normalizeContact(dto), salespersonId, document: dto.document ? onlyDigits(dto.document) : undefined, state: dto.state?.toUpperCase(), tenantId: ctx.tenantId! } })
+        .create({ data: { ...normalizeContact(createDto), salespersonId, document: createDto.document ? onlyDigits(createDto.document) : undefined, state: createDto.state?.toUpperCase(), ibgeCode, tenantId: ctx.tenantId! } })
         .catch(dup);
       await this.audit.record(tx, ctx, { action: 'customer.created', entity: 'customer', entityId: row.id, metadata: { name: row.name, kind: row.kind } });
       return row;
@@ -108,14 +126,7 @@ export class CustomersService {
   }
 
   update(ctx: AuthContext, id: string, dto: UpdateCustomerDto) {
-    return this.prisma.withContext(ctx, async (tx) => {
-      const cur = await tx.customer.findFirst({ where: { id, tenantId: ctx.tenantId! } });
-      if (!cur) throw new NotFoundException('Cliente não encontrado.');
-      const salespersonId = await this.portfolioOwner(tx, ctx, dto.salespersonId, cur.salespersonId);
-      const row = await tx.customer.update({ where: { id }, data: { ...normalizeContact(dto), ...(salespersonId !== undefined ? { salespersonId } : {}), document: dto.document ? onlyDigits(dto.document) : undefined, state: dto.state?.toUpperCase() } }).catch(dup);
-      await this.audit.record(tx, ctx, { action: 'customer.updated', entity: 'customer', entityId: id, metadata: { fields: Object.keys(dto) } });
-      return row;
-    });
+    return this.saveWithIbge(ctx, dto, id);
   }
 }
 

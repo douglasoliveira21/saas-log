@@ -6,6 +6,7 @@ import { Injectable } from '@nestjs/common';
  * transação (`lookup`) é só leitura do cache. Nome ambíguo ou desconhecido ⇒ null (a nota fica pendente, nada é presumido).
  */
 const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const BUILTIN: Record<string, string> = { 'MG|contagem': '3118601' };
 
 @Injectable()
 export class IbgeService {
@@ -37,6 +38,6 @@ export class IbgeService {
 
   lookup(city: string | null | undefined, uf: string | null | undefined): string | null {
     if (!city || !uf) return null;
-    return this.cache.get(uf.toUpperCase())?.names.get(norm(city)) ?? null;
+    return this.cache.get(uf.toUpperCase())?.names.get(norm(city)) ?? BUILTIN[`${uf.toUpperCase()}|${norm(city)}`] ?? null;
   }
 }

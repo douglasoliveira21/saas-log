@@ -10,7 +10,7 @@ import { useSession } from '@/lib/session';
 import { PurchaseBadge, type PurchaseInfo } from '@/components/purchase-badge';
 import { CreditDialog } from '@/components/credit-dialog';
 
-interface Customer { id: string; kind: 'PF' | 'PJ'; name: string; document: string | null; email: string | null; phone: string | null; city: string | null; state: string | null; stateRegistration?: string | null; zipCode?: string | null; street?: string | null; number?: string | null; district?: string | null; active: boolean; priceTable?: string; salespersonId?: string | null; purchase?: PurchaseInfo }
+interface Customer { id: string; kind: 'PF' | 'PJ'; name: string; document: string | null; email: string | null; phone: string | null; city: string | null; state: string | null; ibgeCode?: string | null; stateRegistration?: string | null; zipCode?: string | null; street?: string | null; number?: string | null; district?: string | null; active: boolean; priceTable?: string; salespersonId?: string | null; purchase?: PurchaseInfo }
 interface Seller { id: string; name: string; active: boolean }
 interface CustomerPage { items: Customer[]; total: number }
 
@@ -94,6 +94,7 @@ export default function ClientesPage() {
             <div><label htmlFor="district">Bairro</label><input id="district" name="district" defaultValue={editing?.district ?? ''} /></div>
             <div><label htmlFor="city">Município</label><input id="city" name="city" defaultValue={editing?.city ?? ''} /></div>
             <div><label htmlFor="state">UF</label><UfSelect id="state" defaultValue={editing?.state ?? ''} /></div>
+            <div><label htmlFor="ibgeCode">Código IBGE do município</label><input id="ibgeCode" name="ibgeCode" inputMode="numeric" maxLength={7} defaultValue={editing?.ibgeCode ?? ''} placeholder="Preenchido automaticamente ao salvar" /><small className="muted">O sistema preenche usando Município + UF.</small></div>
             <div><label htmlFor="priceTable">Tabela de preço padrão</label><select id="priceTable" name="priceTable" defaultValue={editing?.priceTable ?? 'RETAIL'}><option value="RETAIL">Varejo</option><option value="WHOLESALE">Atacado</option></select></div>
             {!editing && sellers.length > 0 && <div><label htmlFor="salespersonId">Vendedor da carteira</label><select id="salespersonId" name="salespersonId" defaultValue=""><option value="">Sem carteira (ou a minha)</option>{sellers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>}
           </div>

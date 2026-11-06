@@ -331,6 +331,7 @@ model Establishment {
   district              String?
   city                  String?
   state                 String?           @db.Char(2)
+  ibgeCode              String?           @map("ibge_code")
   /// Coordenadas do endereço (geocodificadas): ponto de partida das rotas de entrega.
   geoLat                Decimal?          @map("geo_lat") @db.Decimal(9, 6)
   geoLng                Decimal?          @map("geo_lng") @db.Decimal(9, 6)
@@ -794,6 +795,7 @@ model Customer {
   district          String?
   city              String?
   state             String?      @db.Char(2)
+  ibgeCode          String?      @map("ibge_code")
   active            Boolean      @default(true)
   /// Liberação manual do bloqueio por inadimplência (vale até a data informada).
   blockReleasedUntil  DateTime?  @map("block_released_until")
