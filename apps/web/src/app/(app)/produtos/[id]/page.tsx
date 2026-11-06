@@ -217,7 +217,7 @@ export default function ProdutoEditorPage() {
               <div className="form-grid">
                 <Field id="ncm" label="NCM (8 dígitos)"><input id="ncm" name="ncm" inputMode="numeric" maxLength={8} defaultValue={p?.ncm ?? ''} /></Field>
                 <Field id="cest" label="CEST (7 dígitos)"><input id="cest" name="cest" inputMode="numeric" maxLength={7} defaultValue={p?.cest ?? ''} /></Field>
-                <Field id="taxOrigin" label="Origem da mercadoria (0 a 8)"><input id="taxOrigin" name="taxOrigin" type="number" min={0} max={8} defaultValue={v('taxOrigin')} /></Field>
+                <Field id="taxOrigin" label="Origem da mercadoria (0 a 8)" hint="Padrão: 0 — Nacional. Altere somente quando a origem fiscal for diferente."><input id="taxOrigin" name="taxOrigin" type="number" min={0} max={8} defaultValue={isNew ? 0 : v('taxOrigin')} /></Field>
                 <Field id="taxUnit" label="Unidade tributável"><input id="taxUnit" name="taxUnit" maxLength={6} defaultValue={p?.taxUnit ?? ''} /></Field>
                 <Field id="taxGtin" label="GTIN tributável"><input id="taxGtin" name="taxGtin" inputMode="numeric" maxLength={14} defaultValue={p?.taxGtin ?? ''} placeholder="8 a 14 dígitos" /></Field>
               </div>

@@ -471,7 +471,8 @@ model Product {
   // Fiscal: nunca preenchido automaticamente; ausência = pendência.
   ncm              String?
   cest             String?
-  taxOrigin        Int?        @map("tax_origin")
+  /// Origem fiscal padrão: 0 = nacional. Pode ser alterada manualmente quando aplicável.
+  taxOrigin        Int?        @default(0) @map("tax_origin")
   taxUnit          String?     @map("tax_unit")
   taxGtin          String?     @map("tax_gtin")
   // Dados de anúncio (padrão de marketplace): título comercial, condição, garantia, código do fabricante e ficha técnica.
