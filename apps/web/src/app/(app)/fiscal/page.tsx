@@ -25,7 +25,7 @@ interface ConfigView {
 interface Issue { severity: string; code: string; message: string }
 interface InDoc { id: string; accessKey: string; number: number; series: number; status: string; emitterName: string; totalInvoice: string; environment: string; issues: Issue[]; supplierId: string | null }
 interface InItem { id: string; line: number; supplierCode: string | null; description: string; unit: string; quantity: string; totalValue: string; ncm: string | null; productId: string | null; matchedBy: string | null; stockQty: number | null; product: { sku: string } | null }
-interface RuleVersion { id: string; version: number; status: string; validFrom: string; validTo: string | null; sourceReference: string; config: { cfop?: string; taxes: Record<string, { ratePct?: number; cst?: string; csosn?: string; kind?: string }> } }
+interface RuleVersion { id: string; version: number; status: string; validFrom: string; validTo: string | null; sourceReference: string; config: { cfop?: string; includeFreightInBase?: boolean; taxes: Record<string, { ratePct?: number; cst?: string; csosn?: string; kind?: string }> } }
 interface Rule { id: string; name: string; operation: string; originUf: string | null; destUf: string | null; ncmPrefix: string | null; regime: string | null; active: boolean; versions: RuleVersion[] }
 interface OutDoc { id: string; purpose?: string; model?: string; splitIndex?: number | null; splitTotal?: number | null; status: string; number: number | null; series: number | null; accessKey: string | null; environment: string; totalInvoice: string; issues: Issue[]; authProtocol: string | null; salesOrder: { number: number; customer: { name: string } } | null }
 interface Product { id: string; sku: string; name: string }
@@ -267,6 +267,7 @@ function RulesTab({ act, can }: TabProps) {
   const ui = useUi();
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<{ id: string; validFrom: string; sourceReference: string; config: RuleVersion['config'] } | null>(null);
   const [calc, setCalc] = useState<any>(null);
   const load = useCallback(() => { api<Rule[]>('/fiscal/rules').then(setRules).catch(() => setRules([])); }, []);
   useEffect(load, [load]);
@@ -282,11 +283,10 @@ function RulesTab({ act, can }: TabProps) {
     }
     const form = e.currentTarget;
     await act(async () => {
-      await api('/fiscal/rules', 'POST', {
-        rule: { name: f.get('name'), operation: f.get('op'), originUf: f.get('ouf') || undefined, destUf: f.get('duf') || undefined, ncmPrefix: f.get('ncm') || undefined, regime: f.get('regime') || undefined },
-        version: { validFrom: new Date(String(f.get('from'))).toISOString(), sourceReference: f.get('src'), config: { cfop: f.get('cfop') || undefined, includeFreightInBase: f.get('frete') === 'on', taxes } },
-      });
-      form.reset(); setAdding(false);
+      const config = { cfop: f.get('cfop') || undefined, includeFreightInBase: f.get('frete') === 'on', taxes };
+      if (editing) await api(`/fiscal/rules/versions/${editing.id}`, 'PUT', { validFrom: new Date(String(f.get('from'))).toISOString(), sourceReference: f.get('src'), config });
+      else await api('/fiscal/rules', 'POST', { rule: { name: f.get('name'), operation: f.get('op'), originUf: f.get('ouf') || undefined, destUf: f.get('duf') || undefined, ncmPrefix: f.get('ncm') || undefined, regime: f.get('regime') || undefined }, version: { validFrom: new Date(String(f.get('from'))).toISOString(), sourceReference: f.get('src'), config } });
+      form.reset(); setAdding(false); setEditing(null);
     }, 'Regra criada como rascunho. Revise e aprove para ativá-la.', load);
   }
 
@@ -307,33 +307,33 @@ function RulesTab({ act, can }: TabProps) {
       </div>
       {adding && (
         <form className="card" style={{ marginBottom: 16 }} onSubmit={create}>
-          <h2>Nova regra (rascunho)</h2>
+          <h2>{editing ? 'Editar regra (rascunho)' : 'Nova regra (rascunho)'}</h2>
           <div className="form-grid">
-            <div><label htmlFor="rn">Nome *</label><input id="rn" name="name" required /></div>
+            {!editing && <div><label htmlFor="rn">Nome *</label><input id="rn" name="name" required /></div>}
             <div>
               <label htmlFor="op">Operação *</label>
-              <select id="op" name="op">{OPS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+              <select id="op" name="op" disabled={!!editing}>{OPS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
               <small className="muted">Indique o movimento fiscal que esta regra deverá atender.</small>
             </div>
             <div><label htmlFor="ouf">UF de origem</label><input id="ouf" name="ouf" maxLength={2} /></div>
             <div><label htmlFor="duf">UF de destino</label><input id="duf" name="duf" maxLength={2} /></div>
             <div><label htmlFor="rncm">NCM (prefixo)</label><input id="rncm" name="ncm" inputMode="numeric" /></div>
             <div><label htmlFor="rreg">Regime</label><select id="rreg" name="regime" defaultValue=""><option value="">Qualquer</option><option>SIMPLES_NACIONAL</option><option>LUCRO_PRESUMIDO</option><option>LUCRO_REAL</option><option>MEI</option></select></div>
-            <div><label htmlFor="from">Vigência a partir de *</label><input id="from" name="from" type="date" required /></div>
-            <div><label htmlFor="cfop">CFOP</label><input id="cfop" name="cfop" maxLength={4} inputMode="numeric" /></div>
+            <div><label htmlFor="from">Vigência a partir de *</label><input id="from" name="from" type="date" required defaultValue={editing?.validFrom?.slice(0, 10)} /></div>
+            <div><label htmlFor="cfop">CFOP</label><input id="cfop" name="cfop" maxLength={4} inputMode="numeric" defaultValue={editing?.config.cfop ?? ''} /></div>
           </div>
           <h2 style={{ marginTop: 12 }}>Tributos</h2>
           {['ICMS', 'IPI', 'PIS', 'COFINS'].map((c) => (
             <div className="row" key={c} style={{ marginBottom: 6 }}>
               <strong style={{ width: 70 }}>{c}</strong>
-              <input name={`${c}_cst`} placeholder={c === 'ICMS' ? 'CST (2) ou CSOSN (3)' : 'CST'} style={{ width: 170 }} aria-label={`${c} CST`} />
-              <input name={`${c}_rate`} placeholder="Alíquota %" inputMode="decimal" style={{ width: 120 }} aria-label={`${c} alíquota`} />
+              <input name={`${c}_cst`} placeholder={c === 'ICMS' ? 'CST (2) ou CSOSN (3)' : 'CST'} defaultValue={editing?.config.taxes[c]?.cst ?? editing?.config.taxes[c]?.csosn ?? ''} style={{ width: 170 }} aria-label={`${c} CST`} />
+              <input name={`${c}_rate`} placeholder="Alíquota %" inputMode="decimal" defaultValue={editing?.config.taxes[c]?.ratePct ?? ''} style={{ width: 120 }} aria-label={`${c} alíquota`} />
               <input name={`${c}_red`} placeholder="Redução de base %" inputMode="decimal" style={{ width: 150 }} aria-label={`${c} redução de base`} />
             </div>
           ))}
-          <label className="row" style={{ fontWeight: 400 }}><input type="checkbox" name="frete" style={{ width: 'auto' }} /> Incluir frete na base</label>
-          <div className="field"><label htmlFor="src">Fonte / base legal / referência interna * (mín. 10 caracteres)</label><input id="src" name="src" required minLength={10} /></div>
-          <div className="row"><button className="btn primary">Salvar rascunho</button><button type="button" className="btn" onClick={() => setAdding(false)}>Cancelar</button></div>
+          <label className="row" style={{ fontWeight: 400 }}><input type="checkbox" name="frete" defaultChecked={editing?.config.includeFreightInBase} style={{ width: 'auto' }} /> Incluir frete na base</label>
+          <div className="field"><label htmlFor="src">Fonte / base legal / referência interna * (mín. 10 caracteres)</label><input id="src" name="src" required minLength={10} defaultValue={editing?.sourceReference ?? ''} /></div>
+          <div className="row"><button className="btn primary">{editing ? 'Salvar alterações' : 'Salvar rascunho'}</button><button type="button" className="btn" onClick={() => { setAdding(false); setEditing(null); }}>Cancelar</button></div>
         </form>
       )}
       <section className="card" style={{ marginBottom: 16 }}>
@@ -349,7 +349,7 @@ function RulesTab({ act, can }: TabProps) {
                 <td className="muted">{new Date(v.validFrom).toLocaleDateString('pt-BR')} → {v.validTo ? new Date(v.validTo).toLocaleDateString('pt-BR') : 'em aberto'}</td>
                 <td className="muted">{v.config.cfop && `CFOP ${v.config.cfop} · `}{summary(v)}<div>{v.sourceReference}</div></td>
                 <td>
-                  {v.status === 'DRAFT' && can('fiscal.rules') && <button className="btn sm" onClick={() => act(() => api(`/fiscal/rules/versions/${v.id}/submit`, 'POST'), 'Enviada para aprovação.', load)}>Enviar p/ aprovação</button>}
+                  {v.status === 'DRAFT' && can('fiscal.rules') && <><button className="btn sm" onClick={() => { setEditing({ id: v.id, validFrom: v.validFrom, sourceReference: v.sourceReference, config: v.config }); setAdding(true); }}>Editar</button> <button className="btn sm" onClick={() => act(() => api(`/fiscal/rules/versions/${v.id}/submit`, 'POST'), 'Enviada para aprovação.', load)}>Enviar p/ aprovação</button></>}
                   {v.status === 'PENDING_APPROVAL' && can('fiscal.rules') && <>
                     <button className="btn sm primary" onClick={() => act(() => api(`/fiscal/rules/versions/${v.id}/approve`, 'POST'), 'Versão aprovada.', load)}>Aprovar</button>{' '}
                     <button className="btn sm" onClick={async () => { const re = await ui.prompt({ title: 'Devolver a rascunho', label: 'Motivo', multiline: true, confirmLabel: 'Devolver' }); if (re) void act(() => api(`/fiscal/rules/versions/${v.id}/reject`, 'POST', { reason: re }), 'Devolvida a rascunho.', load); }}>Devolver</button>
