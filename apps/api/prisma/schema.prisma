@@ -165,10 +165,37 @@ model Tenant {
   backgroundJobs         BackgroundJob[]
   subscriptions          Subscription[]
   branding               TenantBranding?
+  bankIntegration        BankIntegration?
   migrationRuns          MigrationRun[]
   legacyImportRecords    LegacyImportRecord[]
 
   @@map("tenants")
+}
+
+/// Configuração bancária por tenant. Segredos ficam cifrados pela aplicação;
+/// nunca são retornados pela API depois de salvos.
+model BankIntegration {
+  id                    String   @id @default(uuid()) @db.Uuid
+  tenantId              String   @unique @map("tenant_id") @db.Uuid
+  provider              String   // SICOOB (outros provedores serão adicionados)
+  environment           String   @default("SANDBOX") // SANDBOX | PRODUCTION
+  clientIdEnc           String?  @map("client_id_enc")
+  clientSecretEnc       String?  @map("client_secret_enc")
+  certificateEnc        String?  @map("certificate_enc")
+  certificatePasswordEnc String? @map("certificate_password_enc")
+  cooperative           String?
+  agency                String?
+  accountNumber         String?  @map("account_number")
+  wallet                String?
+  pixKey                String?  @map("pix_key")
+  webhookRegisteredAt   DateTime? @map("webhook_registered_at")
+  enabled               Boolean  @default(false)
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("bank_integrations")
 }
 
 /// Uma execução de migração. Guarda somente resumo e erros; o CSV original não é persistido.

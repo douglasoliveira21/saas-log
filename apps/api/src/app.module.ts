@@ -60,6 +60,7 @@ import { MediaController, ProductImagesController, ProductImagesService } from '
 import { ProductQualityController, ProductQualityService } from './catalog/product-quality';
 import { ChannelProductsController, ChannelProductsService } from './integrations/channel-products.service';
 import { BankService } from './finance/bank.service';
+import { BankIntegrationController, BankIntegrationService } from './finance/bank-integration.service';
 import { FinanceController } from './finance/finance.controller';
 import { FinanceService } from './finance/finance.service';
 import { MarketplaceFinanceService } from './finance/marketplace-finance.service';
@@ -103,7 +104,7 @@ class HealthController {
       skipIf: () => process.env.NODE_ENV === 'test',
     }),
   ],
-  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, SmartPurchasingController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, MdfeController, InvitesController, NotificationsController, PortfolioController, FederalTaxController, DispatchController, GoalBonusController, FinanceController, ReportsController, DeliveryController, DriverTrackingController, DelinquencyController, NegotiationsController, ManagementController, CreditController, QuotesController, WarehouseController, FleetController, OrdersDashboardController, LogisticsController, BillingController, PlatformController, TenantSupportController, ObservabilityController, LookupController, BrandingController, ProductImagesController, MediaController, ProductQualityController, ChannelProductsController, WorkspaceController],
+  controllers: [HealthController, AuthController, StructureController, UsersController, AuditController, CatalogController, StockController, CustomersController, SalesController, SmartPurchasingController, PurchasingController, SettingsController, IntegrationsController, WebhooksController, FiscalController, MdfeController, InvitesController, NotificationsController, PortfolioController, FederalTaxController, DispatchController, GoalBonusController, FinanceController, BankIntegrationController, ReportsController, DeliveryController, DriverTrackingController, DelinquencyController, NegotiationsController, ManagementController, CreditController, QuotesController, WarehouseController, FleetController, OrdersDashboardController, LogisticsController, BillingController, PlatformController, TenantSupportController, ObservabilityController, LookupController, BrandingController, ProductImagesController, MediaController, ProductQualityController, ChannelProductsController, WorkspaceController],
   providers: [
     AuthService,
     StructureService,
@@ -144,6 +145,7 @@ class HealthController {
     TaxRulesService,
     FinanceService,
     BankService,
+    BankIntegrationService,
     StatementsService,
     MarketplaceFinanceService,
     ReportsService,
