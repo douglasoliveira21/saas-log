@@ -46,7 +46,51 @@ const date = (v: unknown) => {
 const dec = (v: unknown) => (v === null || v === undefined || v === '' ? 0 : Number(v));
 const int = (v: unknown) => Math.max(0, Math.round(dec(v)));
 const digits = (v: unknown) => String(v ?? '').replace(/\D/g, '') || undefined;
+const text = (v: unknown) => {
+  const value = String(v ?? '').trim();
+  return value || undefined;
+};
 const json = (v: unknown) => v as Prisma.InputJsonValue;
+
+function primaryAddress(row: AnyRow) {
+  const addresses = Array.isArray(row.ENDERECOS) ? row.ENDERECOS.filter((address: AnyRow) => address?.EXCLUIDO !== 'S') : [];
+  return addresses.find((address: AnyRow) => address.PRINCIPAL === 'S')
+    ?? addresses.find((address: AnyRow) => address.TIPO === 'E')
+    ?? addresses.find((address: AnyRow) => address.TIPO === 'B')
+    ?? addresses[0];
+}
+
+function customerData(row: AnyRow) {
+  const address = primaryAddress(row);
+  const city = address?.CIDADE;
+  const state = address?.ESTADO;
+  const email = Array.isArray(row.EMAILS)
+    ? row.EMAILS.find((item: AnyRow) => item?.PRINCIPAL === 'S' && item?.EXCLUIDO !== 'S') ?? row.EMAILS.find((item: AnyRow) => item?.EXCLUIDO !== 'S')
+    : undefined;
+  const phone = Array.isArray(row.TELEFONES)
+    ? row.TELEFONES.find((item: AnyRow) => item?.PRINCIPAL === 'S' && item?.EXCLUIDO !== 'S') ?? row.TELEFONES.find((item: AnyRow) => item?.EXCLUIDO !== 'S')
+    : undefined;
+  const data: AnyRow = {
+    name: String(row.NOME).trim(),
+    kind: digits(row.DOCUMENTO)?.length === 11 ? 'PF' : 'PJ',
+    document: digits(row.DOCUMENTO) ?? null,
+    email: text(email?.EMAIL) ?? null,
+    phone: text(phone?.TELEFONE ?? phone?.NUMERO) ?? null,
+  };
+  const addressFields: AnyRow = {
+    zipCode: digits(address?.CEP),
+    street: text(address?.ENDERECO ?? address?.LOGRADOURO),
+    number: text(address?.NUMERO),
+    district: text(address?.BAIRRO),
+    city: text(city?.NOME ?? address?.CIDADE),
+    state: text(state?.SIGLA ?? address?.UF)?.toUpperCase(),
+    ibgeCode: text(city?.CODIGO_IBGE ?? city?.IBGE ?? address?.CODIGO_IBGE),
+  };
+  for (const [field, value] of Object.entries(addressFields)) {
+    if (value !== undefined) data[field] = value;
+  }
+  return data;
+}
 
 async function main() {
   const direct = new PrismaClient({ datasources: { db: { url: process.env.DIRECT_URL ?? process.env.DATABASE_URL } } });
@@ -76,9 +120,9 @@ async function main() {
         const existing = document ? await tx.customer.findFirst({ where: { tenantId: tenant.id, document }, select: { id: true } }) : null;
         customerId = existing?.id;
       }
-      const data = { name: String(row.NOME).trim(), kind: document?.length === 11 ? 'PF' as const : 'PJ' as const, document: document ?? null, email: row.EMAILS?.find((x: AnyRow) => x.PRINCIPAL === 'S')?.EMAIL ?? null, phone: row.TELEFONES?.find((x: AnyRow) => x.PRINCIPAL === 'S')?.NUMERO ?? null, city: row.ENDERECOS?.[0]?.CIDADE ?? null, state: row.ENDERECOS?.[0]?.ESTADO?.SIGLA ?? null };
+      const data = customerData(row);
       if (customerId) await tx.customer.update({ where: { id: customerId }, data });
-      else customerId = (await tx.customer.create({ data: { tenantId: tenant.id, ...data } })).id;
+      else customerId = (await tx.customer.create({ data: { tenantId: tenant.id, ...data } as Prisma.CustomerUncheckedCreateInput })).id;
       customerMap.set(sourceId, customerId);
       await tx.legacyImportRecord.upsert({ where: { tenantId_kind_externalId: { tenantId: tenant.id, kind: 'ALKORD_CUSTOMER', externalId: String(sourceId) } }, create: { tenantId: tenant.id, externalId: String(sourceId), kind: 'ALKORD_CUSTOMER', description: data.name, payload: json({ sourceId, targetId: customerId, source: row }) }, update: { description: data.name, payload: json({ sourceId, targetId: customerId, source: row }) } });
       customerCount++;
