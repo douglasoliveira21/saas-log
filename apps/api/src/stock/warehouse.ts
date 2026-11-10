@@ -1,5 +1,6 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, Injectable, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { signedMediaUrl } from '../catalog/product-images.service';
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { AuditService } from '../audit/audit.service';
@@ -178,7 +179,7 @@ export class WarehouseService {
   pickingList(ctx: AuthContext, orderIds: string[]) {
     if (!orderIds.length || orderIds.length > 50) throw new BadRequestException('Escolha de 1 a 50 pedidos.');
     return this.prisma.withContext(ctx, async (tx) => {
-      const orders = await tx.salesOrder.findMany({ where: { tenantId: ctx.tenantId!, id: { in: orderIds } }, include: { customer: { select: { name: true, minShelfLifeDays: true } }, warehouse: { select: { code: true, id: true } }, items: { include: { product: { select: { sku: true, name: true, barcode: true, trackLots: true, saleUnit: true } } } } }, orderBy: { number: 'asc' } });
+      const orders = await tx.salesOrder.findMany({ where: { tenantId: ctx.tenantId!, id: { in: orderIds } }, include: { customer: { select: { name: true, minShelfLifeDays: true } }, warehouse: { select: { code: true, id: true } }, items: { include: { product: { select: { sku: true, name: true, barcode: true, trackLots: true, saleUnit: true, images: { where: { position: 0 }, select: { id: true }, take: 1 } } } } } }, orderBy: { number: 'asc' } });
       if (orders.length !== new Set(orderIds).size) throw new NotFoundException('Algum pedido não foi encontrado.');
       if (orders.some((o) => !['CONFIRMED', 'PICKING'].includes(o.status))) throw new ConflictException('A lista é só para pedidos confirmados ou em separação.');
       if (new Set(orders.map((o) => o.warehouse.id)).size > 1) throw new ConflictException('Os pedidos são de depósitos diferentes: gere uma lista por depósito.');
@@ -188,9 +189,9 @@ export class WarehouseService {
       const minOf = (o: (typeof orders)[number]) => (o.channel === 'MARKETPLACE' ? (typeof mkSetting?.value === 'number' ? mkSetting.value : 0) : o.customer.minShelfLifeDays ?? 0);
       const minDays = new Map<string, number>(); // por produto: a maior exigência entre os pedidos da lista
       for (const o of orders) for (const i of o.items) minDays.set(i.productId, Math.max(minDays.get(i.productId) ?? 0, minOf(o)));
-      const need = new Map<string, { sku: string; name: string; barcode: string | null; unit: string; tracked: boolean; qty: number; orders: { number: number; qty: number }[] }>();
+      const need = new Map<string, { sku: string; name: string; barcode: string | null; imageId?: string; unit: string; tracked: boolean; qty: number; orders: { number: number; qty: number }[] }>();
       for (const o of orders) for (const i of o.items) {
-        const n = need.get(i.productId) ?? { sku: i.product.sku, name: i.product.name, barcode: i.product.barcode, unit: i.product.saleUnit, tracked: i.product.trackLots, qty: 0, orders: [] };
+        const n = need.get(i.productId) ?? { sku: i.product.sku, name: i.product.name, barcode: i.product.barcode, imageId: i.product.images[0]?.id, unit: i.product.saleUnit, tracked: i.product.trackLots, qty: 0, orders: [] };
         n.qty += i.quantity; n.orders.push({ number: o.number, qty: i.quantity }); need.set(i.productId, n);
       }
       const lines = [];
@@ -214,7 +215,7 @@ export class WarehouseService {
           for (const h of here) { if (left === 0) break; const t = Math.min(left, h.quantity); picks.push({ lotCode: null, expiresAt: null, location: h.location.code, qty: t }); left -= t; }
           if (left > 0) { picks.push({ lotCode: null, expiresAt: null, location: null, qty: left }); left = 0; }
         }
-        lines.push({ productId, sku: n.sku, name: n.name, barcode: n.barcode, unit: n.unit, quantity: n.qty, shortage: left, picks, orders: n.orders });
+        lines.push({ productId, sku: n.sku, name: n.name, barcode: n.barcode, photoUrl: n.imageId ? signedMediaUrl(n.imageId, 3600) : null, unit: n.unit, quantity: n.qty, shortage: left, picks, orders: n.orders });
       }
       // caminho: ordena pelo primeiro endereço de cada linha (sem endereço por último)
       lines.sort((a, b) => (a.picks[0]?.location ?? '￿').localeCompare(b.picks[0]?.location ?? '￿') || a.sku.localeCompare(b.sku));

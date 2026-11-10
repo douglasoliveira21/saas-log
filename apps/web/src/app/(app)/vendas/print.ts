@@ -8,7 +8,7 @@ interface PrintData {
     number: number; status: string; createdAt: string; priceTable?: string; paymentMethod: string | null; installmentCount: number; notes?: string | null; fiscalDocType?: string;
     subtotal: string; discountTotal: string; shipping: string; total: string;
     customer: { name: string; document: string | null }; salesperson: { name: string } | null; warehouse: { code: string; name: string };
-    items: { quantity: number; unitPrice: string; discountPct: string; total: string; product: { sku: string; name: string } }[];
+    items: { quantity: number; unitPrice: string; discountPct: string; total: string; product: { sku: string; name: string; photoUrl?: string | null } }[];
     installments: { installmentNo: number; installmentTotal: number; dueDate: string; amount: string; status: string }[];
     fiscalDocuments?: { model: string; number: number | null; series: number | null; status: string; accessKey: string | null }[];
   };
@@ -17,6 +17,7 @@ interface PrintData {
 }
 
 export const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+export const printProductPhoto = (url?: string | null) => url ? `<img class="product-photo" src="${esc(url)}" alt="" onerror="this.remove()">` : '';
 const STATUS: Record<string, string> = { DRAFT: 'Rascunho', PENDING_APPROVAL: 'Aguardando aprovação', CONFIRMED: 'Confirmado', PICKING: 'Em separação', PACKED: 'Embalado', SHIPPED: 'Enviado', DELIVERED: 'Entregue', CLOSED: 'Concluído', CANCELLED: 'Cancelado' };
 const INSTALLMENT: Record<string, string> = { OPEN: 'Em aberto', PARTIAL: 'Parcial', PAID: 'Paga', CANCELLED: 'Cancelada' };
 export const cnpjFmt = (v: string | null) => { const d = (v ?? '').replace(/\D/g, ''); return d.length === 14 ? d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') : v ?? ''; };
@@ -47,6 +48,7 @@ th{background:#1d4ed8;color:#fff;text-align:left;font-size:10px;text-transform:u
 th:first-child{border-radius:6px 0 0 6px}th:last-child{border-radius:0 6px 6px 0}
 td{padding:7px 8px;border-bottom:1px solid #e6ebf3;vertical-align:top}
 tbody tr:nth-child(even) td{background:#f8fafd}
+.print-items{break-inside:auto}.print-items tr{break-inside:avoid}.product-line{display:flex;align-items:center;gap:8px}.product-line>div{min-width:0;overflow-wrap:anywhere}.product-photo{width:44px;height:44px;object-fit:contain;flex:none;background:#fff;border:1px solid #e6ebf3;border-radius:5px}
 .r{text-align:right}.c{text-align:center;color:#6a7686}th.c{color:#fff}
 .sku{color:#6a7686;font-size:10px}.key{font-family:Consolas,monospace;font-size:10px;word-break:break-all}
 .totals{margin-left:auto;margin-top:10px;width:290px}
@@ -60,7 +62,7 @@ tbody tr:nth-child(even) td{background:#f8fafd}
 export function printHtml(d: PrintData): string {
   const o = d.order;
   const disc = Number(o.discountTotal) > 0;
-  const rows = o.items.map((i, k) => `<tr><td class="c">${k + 1}</td><td><b>${esc(i.product.name)}</b><div class="sku">${esc(i.product.sku)}</div></td><td class="r">${i.quantity}</td><td class="r">${esc(brl(i.unitPrice))}</td><td class="r">${Number(i.discountPct) ? `${Number(i.discountPct)}%` : '—'}</td><td class="r"><b>${esc(brl(i.total))}</b></td></tr>`).join('');
+  const rows = o.items.map((i, k) => `<tr><td class="c">${k + 1}</td><td><div class="product-line">${printProductPhoto(i.product.photoUrl)}<div><b>${esc(i.product.name)}</b><div class="sku">${esc(i.product.sku)}</div></div></div></td><td class="r">${i.quantity}</td><td class="r">${esc(brl(i.unitPrice))}</td><td class="r">${Number(i.discountPct) ? `${Number(i.discountPct)}%` : '—'}</td><td class="r"><b>${esc(brl(i.total))}</b></td></tr>`).join('');
   const inst = o.installments.length ? `<section><h3>Parcelas a receber</h3><table><thead><tr><th>Parcela</th><th>Vencimento</th><th class="r">Valor</th><th>Situação</th></tr></thead><tbody>${o.installments.map((t) => `<tr><td>${t.installmentNo}/${t.installmentTotal}</td><td>${esc(dateBr(t.dueDate))}</td><td class="r">${esc(brl(t.amount))}</td><td>${esc(INSTALLMENT[t.status] ?? t.status)}</td></tr>`).join('')}</tbody></table></section>` : '';
   const notes = o.fiscalDocuments?.length ? `<section><h3>Documentos fiscais</h3><table><thead><tr><th>Documento</th><th>Número/série</th><th>Situação</th><th>Chave de acesso</th></tr></thead><tbody>${o.fiscalDocuments.map((n) => `<tr><td>${n.model === '65' ? 'NFC-e' : 'NF-e'}</td><td>${n.number ?? '—'}/${n.series ?? '—'}</td><td>${n.status === 'AUTHORIZED' ? 'Autorizada' : esc(n.status)}</td><td class="key">${esc(n.accessKey ?? '—')}</td></tr>`).join('')}</tbody></table></section>` : '';
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Venda ${o.number} — ${esc(d.company.name)}</title><style>${PRINT_CSS}</style></head><body>
@@ -70,7 +72,7 @@ export function printHtml(d: PrintData): string {
 <div class="card"><small>Cliente</small><b>${esc(o.customer.name)}</b>${o.customer.document ? `<div>${esc(docFmt(o.customer.document))}</div>` : ''}</div>
 <div class="card"><small>Vendedor</small><b>${esc(o.salesperson?.name ?? '—')}</b><div>Depósito ${esc(o.warehouse.code)}</div></div>
 <div class="card"><small>Condições</small><b>${esc(o.paymentMethod ? PAYMENT_LABEL[o.paymentMethod] ?? o.paymentMethod : 'Não informado')}${o.paymentMethod === 'BOLETO' ? ` em ${o.installmentCount}x` : ''}</b><div>Tabela de ${o.priceTable === 'WHOLESALE' ? 'atacado' : 'varejo'} · ${esc(FISCAL_LABEL[(o.fiscalDocType ?? 'NONE') as keyof typeof FISCAL_LABEL] ?? '')}</div></div></div>
-<section><h3>Itens</h3><table><thead><tr><th style="width:28px" class="c">#</th><th>Produto</th><th class="r" style="width:50px">Qtd.</th><th class="r" style="width:80px">Preço</th><th class="r" style="width:54px">Desc.</th><th class="r" style="width:90px">Total</th></tr></thead><tbody>${rows}</tbody></table></section>
+<section class="print-items"><h3>Itens</h3><table><thead><tr><th style="width:28px" class="c">#</th><th>Produto</th><th class="r" style="width:50px">Qtd.</th><th class="r" style="width:80px">Preço</th><th class="r" style="width:54px">Desc.</th><th class="r" style="width:90px">Total</th></tr></thead><tbody>${rows}</tbody></table></section>
 <div class="totals"><div><span>Produtos</span><span>${esc(brl(o.subtotal))}</span></div>${disc ? `<div><span>Descontos</span><span>− ${esc(brl(o.discountTotal))}</span></div>` : ''}${Number(o.shipping) > 0 ? `<div><span>Frete</span><span>${esc(brl(o.shipping))}</span></div>` : ''}<div class="g"><span>Total</span><span>${esc(brl(o.total))}</span></div></div>
 ${inst}${notes}
 ${o.notes ? `<div class="note"><b>Observações:</b> ${esc(o.notes)}</div>` : ''}

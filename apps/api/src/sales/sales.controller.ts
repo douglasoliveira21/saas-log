@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
+import { signedMediaUrl } from '../catalog/product-images.service';
 import { FiscalDocChoice, CommissionRuleKind, CommissionStatus, OrderStatus, SalesChannel } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
@@ -122,7 +123,11 @@ export class SalesController {
     const company = await this.sales.printCompany(ctx, id);
     let logo: string | null = null;
     try { const l = await this.branding.get(ctx); logo = `data:${l.contentType};base64,${l.content.toString('base64')}`; } catch { logo = null; }
-    return { order, company, logo };
+    const items = order.items.map(({ product, ...item }) => ({
+      ...item,
+      product: { sku: product.sku, name: product.name, photoUrl: product.images[0] ? signedMediaUrl(product.images[0].id, 300) : null },
+    }));
+    return { order: { ...order, items }, company, logo };
   }
 
   /** DANFE/XML de uma nota da venda, com o escopo da venda (o vendedor não precisa da permissão do módulo Fiscal). */

@@ -94,7 +94,7 @@ export class SalesService {
         where: { id, tenantId: ctx.tenantId!, AND: [await this.scope(tx, ctx)] },
         include: {
           customer: { select: { id: true, name: true, document: true } }, salesperson: { select: { id: true, name: true } }, warehouse: { select: { code: true, name: true } },
-          items: { include: { product: { select: { sku: true, name: true } }, returnItems: { select: { quantity: true } } }, orderBy: { id: 'asc' } },
+          items: { include: { product: { select: { sku: true, name: true, images: { where: { position: 0 }, select: { id: true }, take: 1 } } }, returnItems: { select: { quantity: true } } }, orderBy: { id: 'asc' } },
           returns: { include: { items: true }, orderBy: { createdAt: 'desc' } },
         },
       });

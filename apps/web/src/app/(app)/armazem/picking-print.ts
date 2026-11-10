@@ -1,11 +1,11 @@
 import { dateBr } from '@/lib/format';
-import { cnpjFmt, esc, PRINT_CSS } from '../vendas/print';
+import { cnpjFmt, esc, PRINT_CSS, printProductPhoto } from '../vendas/print';
 
 export interface PickList {
   warehouse: string; generatedAt: string; logo?: string | null;
   company?: { name: string; legalName: string; cnpj: string | null; address: string; phone: string | null; email: string | null } | null;
   orders: { id: string; number: number; customer: string; dispatchDate?: string | null; channel?: string }[];
-  lines: { productId: string; sku: string; name: string; barcode: string | null; unit: string; quantity: number; shortage: number; picks: { lotCode: string | null; expiresAt: string | null; location: string | null; qty: number }[]; orders: { number: number; qty: number }[] }[];
+  lines: { productId: string; sku: string; name: string; barcode: string | null; photoUrl?: string | null; unit: string; quantity: number; shortage: number; picks: { lotCode: string | null; expiresAt: string | null; location: string | null; qty: number }[]; orders: { number: number; qty: number }[] }[];
 }
 
 /** Resumo para os indicadores (tela e impressão). */
@@ -44,12 +44,13 @@ export function pickingHtml(l: PickList): string {
   const c = l.company ?? null;
   const s = pickSummary(l);
   const rows = l.lines.map((ln) => {
+    const photo = printProductPhoto(ln.photoUrl);
     const body = ln.picks.map((p, i) => {
       const d = p.expiresAt ? daysTo(p.expiresAt) : null;
       const first = i === 0;
-      return `<tr class="${first ? '' : 'cont'}"><td class="c">${p.location ? `<span class="loc">${esc(p.location)}</span>` : '<span class="loc none">sem endereço</span>'}</td><td>${first ? `<div class="pn">${esc(ln.name)}</div><div class="bar">${esc(ln.sku)}${ln.barcode ? ` · ${esc(ln.barcode)}` : ''}</div>` : ''}</td><td>${p.lotCode ? `<div class="lot">${esc(p.lotCode)}</div>` : '<span class="exp">—</span>'}${p.expiresAt ? `<div class="exp ${d !== null && d < 0 ? 'over' : d !== null && d <= 30 ? 'soon' : ''}">vence ${esc(dateBr(p.expiresAt))}${d !== null && d >= 0 && d <= 30 ? ` (${d} d)` : ''}</div>` : ''}</td><td class="r"><span class="qty">${p.qty}</span> <small>${esc(ln.unit)}</small></td><td class="ords">${first ? ln.orders.map((o) => `#${o.number}: <b>${o.qty}</b>`).join(' · ') : ''}</td><td class="c"><span class="box"></span></td></tr>`;
+      return `<tr class="${first ? '' : 'cont'}"><td class="c">${p.location ? `<span class="loc">${esc(p.location)}</span>` : '<span class="loc none">sem endereço</span>'}</td><td>${first ? `<div class="product-line">${photo}<div><div class="pn">${esc(ln.name)}</div><div class="bar">${esc(ln.sku)}${ln.barcode ? ` · ${esc(ln.barcode)}` : ''}</div></div></div>` : ''}</td><td>${p.lotCode ? `<div class="lot">${esc(p.lotCode)}</div>` : '<span class="exp">—</span>'}${p.expiresAt ? `<div class="exp ${d !== null && d < 0 ? 'over' : d !== null && d <= 30 ? 'soon' : ''}">vence ${esc(dateBr(p.expiresAt))}${d !== null && d >= 0 && d <= 30 ? ` (${d} d)` : ''}</div>` : ''}</td><td class="r"><span class="qty">${p.qty}</span> <small>${esc(ln.unit)}</small></td><td class="ords">${first ? ln.orders.map((o) => `#${o.number}: <b>${o.qty}</b>`).join(' · ') : ''}</td><td class="c"><span class="box"></span></td></tr>`;
     }).join('');
-    return body + (ln.shortage ? `<tr class="short"><td colspan="6">Faltam ${ln.shortage} ${esc(ln.unit)} de ${esc(ln.sku)} — ${esc(ln.name)} (sem saldo válido disponível)</td></tr>` : '');
+    return body + (ln.shortage ? `<tr class="short"><td colspan="6"><div class="product-line">${ln.picks.length ? '' : photo}<div>Faltam ${ln.shortage} ${esc(ln.unit)} de ${esc(ln.sku)} — ${esc(ln.name)} (sem saldo válido disponível)</div></div></td></tr>` : '');
   }).join('');
   const alerts = [
     s.short ? `<div class="alertbox bad">${s.short} produto(s) sem saldo válido suficiente. Confira estoque e lotes vencidos antes de separar.</div>` : '',
@@ -61,7 +62,7 @@ export function pickingHtml(l: PickList): string {
 <div class="cards4"><div class="card"><small>Pedidos</small><b>${s.orders} pedido(s)</b></div><div class="card"><small>Para separar</small><div class="chips">${l.orders.map((o) => `<span class="chip">#${o.number}</span>`).join('')}</div></div><div class="card"><small>Itens da lista</small><b>${s.products} produto(s)</b></div></div>
 <div class="kpis"><div class="kpi"><b>${s.products}</b><small>Produtos</small></div><div class="kpi"><b>${s.units}</b><small>Unidades</small></div><div class="kpi"><b>${s.places}</b><small>Endereços a visitar</small></div><div class="kpi"><b>${s.short ? s.short : '0'}</b><small>Com falta</small></div></div>
 ${alerts}
-<section><h3>Caminho de separação</h3><table><thead><tr><th class="c" style="width:100px">Endereço</th><th>Produto</th><th style="width:118px">Lote / validade</th><th class="r" style="width:68px">Qtd.</th><th style="width:96px">Pedidos</th><th class="c" style="width:30px">OK</th></tr></thead><tbody>${rows}</tbody></table></section>
+<section class="print-items"><h3>Caminho de separação</h3><table><thead><tr><th class="c" style="width:100px">Endereço</th><th>Produto</th><th style="width:118px">Lote / validade</th><th class="r" style="width:68px">Qtd.</th><th style="width:96px">Pedidos</th><th class="c" style="width:30px">OK</th></tr></thead><tbody>${rows}</tbody></table></section>
 <section><h3>Pedidos desta lista</h3><ul class="ol">${l.orders.map((o) => `<li><b>#${o.number}</b> ${esc(o.customer)}${o.dispatchDate ? ` · saída ${esc(dateBr(o.dispatchDate))}` : ''}</li>`).join('')}</ul></section>
 <div class="sign3"><div>Separador</div><div>Conferente</div><div>Data e hora</div></div>
 <div class="legal">Os lotes seguem a ordem de validade (o que vence primeiro sai primeiro) e os endereços estão na ordem de caminho. Depois de separar, confira cada pedido com o leitor de código de barras antes de embalar.</div>
