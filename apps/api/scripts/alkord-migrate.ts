@@ -47,6 +47,10 @@ const date = (v: unknown) => {
 const dec = (v: unknown) => (v === null || v === undefined || v === '' ? 0 : Number(v));
 const int = (v: unknown) => Math.max(0, Math.round(dec(v)));
 const digits = (v: unknown) => String(v ?? '').replace(/\D/g, '') || undefined;
+const customerDocument = (v: unknown) => {
+  const document = digits(v);
+  return document && [11, 14].includes(document.length) && !/^(\d)\1+$/.test(document) ? document : undefined;
+};
 const text = (v: unknown) => {
   const value = String(v ?? '').trim();
   return value || undefined;
@@ -111,15 +115,38 @@ async function main() {
   const ctx = { tenantId: tenant.id, userId: owner.userId };
   if (addressesOnly) {
     await direct.$disconnect();
-    let updated = 0, unlinked = 0;
+    let updated = 0, unlinked = 0, matchedByDocument = 0, ambiguousDocument = 0;
     try {
       const customers = await all('clientes');
+      const sourceDocuments = new Map<string, number>();
+      for (const row of customers) {
+        const document = customerDocument(row.DOCUMENTO);
+        if (document) sourceDocuments.set(document, (sourceDocuments.get(document) ?? 0) + 1);
+      }
+      const targetDocuments = new Map<string, string | null>();
+      const targets = await runtime.withContext(ctx, (tx) => tx.customer.findMany({
+        where: { tenantId: tenant.id, document: { not: null } },
+        select: { id: true, document: true },
+      }));
+      for (const target of targets) {
+        const document = customerDocument(target.document);
+        if (document) targetDocuments.set(document, targetDocuments.has(document) ? null : target.id);
+      }
       for (const row of customers) {
         const sourceId = Number(row.CODIGO);
         if (!sourceId) continue;
         const result = await runtime.withContext(ctx, async (tx) => {
           const link = await tx.legacyImportRecord.findUnique({ where: { tenantId_kind_externalId: { tenantId: tenant.id, kind: 'ALKORD_CUSTOMER', externalId: String(sourceId) } } });
-          const id = (link?.payload as AnyRow | null)?.targetId;
+          let id = (link?.payload as AnyRow | null)?.targetId;
+          if (typeof id !== 'string') {
+            const document = customerDocument(row.DOCUMENTO);
+            if (!document) return 'unlinked';
+            const targetId = targetDocuments.get(document);
+            if (sourceDocuments.get(document) !== 1 || targetId === null) return 'ambiguous';
+            if (!targetId) return 'unlinked';
+            id = targetId;
+            matchedByDocument++;
+          }
           if (typeof id !== 'string') return 'unlinked';
           let changed = false;
           for (const [field, value] of Object.entries(customerAddress(row))) {
@@ -134,8 +161,9 @@ async function main() {
         });
         if (result === 'updated') updated++;
         if (result === 'unlinked') unlinked++;
+        if (result === 'ambiguous') ambiguousDocument++;
       }
-      console.log(JSON.stringify({ tenant: tenant.name, sourceCustomers: customers.length, updated, unlinked }, null, 2));
+      console.log(JSON.stringify({ tenant: tenant.name, sourceCustomers: customers.length, updated, matchedByDocument, unlinked, ambiguousDocument }, null, 2));
     } finally {
       await runtime.$disconnect();
     }
