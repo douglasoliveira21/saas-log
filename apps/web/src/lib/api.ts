@@ -49,6 +49,7 @@ export async function api<T>(path: string, method = 'GET', body?: unknown): Prom
 }
 
 function startRequestLoading(path: string) {
+  if (/^\/sales\/orders\/[^/]+\/cancel$/.test(path)) return startServiceLoading('Cancelando pedido e verificando documentos fiscais…', true);
   const document = path.startsWith('/fiscal/mdfe/') ? 'MDF-e' : 'nota fiscal';
   const action = path.match(/^\/fiscal\/(?:outgoing|mdfe)\/(?:[^/]+\/)?(prepare|prepare-return|transmit)$/)?.[1];
   switch (action) {

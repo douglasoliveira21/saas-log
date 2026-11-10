@@ -6,6 +6,7 @@ import { AuthContext, CurrentAuth, RequirePermissions } from '../../common/auth'
 import { isValidCnpj, isValidCpf, onlyDigits } from '../../common/cnpj';
 import { PrismaService } from '../../prisma/prisma.service';
 import { localToday } from '../../sales/cutoff';
+import { lockOrdersForFiscal } from '../../sales/fiscal-cancellation';
 import { buildChave } from '../chave';
 import { FiscalEnvironment, ProviderCtx } from '../fiscal-provider';
 import { ProviderContextService } from '../fiscal-provider.router';
@@ -204,6 +205,8 @@ export class MdfeService {
     await this.warmCities(ctx, routeId);
     // 1) reserva número e chave, grava o XML assinado e marca TRANSMITTING (transação curta)
     const prep = await this.prisma.withContext(ctx, async (tx) => {
+      const stops = await tx.deliveryStop.findMany({ where: { tenantId: ctx.tenantId!, routeId, status: { not: 'CANCELLED' } }, select: { salesOrderId: true } });
+      await lockOrdersForFiscal(tx, ctx.tenantId!, stops.map((stop) => stop.salesOrderId));
       await tx.$queryRaw`SELECT id FROM mdfe_documents WHERE id = ${id}::uuid AND tenant_id = ${ctx.tenantId}::uuid FOR UPDATE`;
       const d = await tx.mdfeDocument.findFirstOrThrow({ where: { id, tenantId: ctx.tenantId! } });
       if (d.status === 'PENDING_CONSULT') throw new ConflictException('A resposta da transmissão anterior é desconhecida: use "Consultar situação" antes de qualquer reenvio.');
@@ -334,7 +337,17 @@ export class MdfeService {
   async cancel(ctx: AuthContext, id: string, reason: string) {
     const { d, pc } = await this.loadForCall(ctx, id, (s) => s === 'AUTHORIZED', 'Só um MDF-e autorizado (e ainda não encerrado) pode ser cancelado.');
     const payload = d.payload as unknown as Payload;
-    const r = await this.sendEvent(pc, d.environment as FiscalEnvironment, '110111', d.accessKey!, cancelDetail(d.protocol ?? '', reason), payload.emitter.cnpj);
+    const r = await this.sendEvent(pc, d.environment as FiscalEnvironment, '110111', d.accessKey!, cancelDetail(d.protocol ?? '', reason), payload.emitter.cnpj)
+      .catch(async (error: unknown) => {
+        const result = await this.consult(ctx, id).catch(() => null);
+        if (result?.status === 'CANCELLED') return null;
+        throw error;
+      });
+    if (!r) return { id, status: 'CANCELLED' as const };
+    if ((r.event?.cStat ?? r.cStat) === '573') {
+      const result = await this.consult(ctx, id).catch(() => null);
+      if (result?.status === 'CANCELLED') return { id, status: 'CANCELLED' as const };
+    }
     const done = await this.prisma.withContext(ctx, async (tx) => {
       const ok = !!r.event && MDFE_EVENT_OK.includes(r.event.cStat);
       if (ok) await tx.mdfeDocument.update({ where: { id }, data: { status: 'CANCELLED', cancelProtocol: r.event!.protocol, statusCode: r.event!.cStat, statusMessage: reason.trim() } });

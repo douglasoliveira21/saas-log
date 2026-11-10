@@ -6,7 +6,7 @@ import { validShelfLifeQty } from '../stock/lots-core';
 import { purchaseProfiles } from '../customers/purchase-profile';
 import { DelinquencyService } from '../finance/delinquency';
 import { assertWithinPlan } from '../billing/limits';
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { FiscalDocChoice, OrderStatus, Prisma, SalesChannel } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AuthContext } from '../common/auth';
@@ -16,6 +16,9 @@ import { ensureSalesperson } from './ensure-salesperson';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { StockService } from '../stock/stock.service';
+import { FiscalOutgoingService } from '../fiscal/fiscal-outgoing.service';
+import { MdfeService } from '../fiscal/mdfe/mdfe.service';
+import { assertNoFiscalCancellation } from './fiscal-cancellation';
 
 type Tx = Prisma.TransactionClient;
 
@@ -43,6 +46,8 @@ export const lineCents = (unitCents: number, qty: number, discountPct: number) =
 
 @Injectable()
 export class SalesService {
+  private readonly logger = new Logger(SalesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -51,6 +56,8 @@ export class SalesService {
     private readonly settings: SettingsService,
     private readonly delinquency: DelinquencyService,
     private readonly notifications: NotificationsService,
+    private readonly fiscal: FiscalOutgoingService,
+    private readonly mdfe: MdfeService,
   ) {}
 
   // ───────────── consulta ─────────────
@@ -270,6 +277,7 @@ export class SalesService {
   async advanceInTx(tx: Tx, ctx: AuthContext, id: string, to: OrderStatus, opts: { unscoped?: boolean } = {}) {
     {
       const order = await this.lock(tx, ctx, id, !opts.unscoped);
+      assertNoFiscalCancellation(order.fiscalCancellationStartedAt);
       if (NEXT[order.status] !== to) throw new ConflictException(`Transição inválida: ${order.status} → ${to}.`);
       if (to === 'PACKED' && (await this.settings.load(tx, ctx))['warehouse.requireCheck']) {
         const last = await tx.orderCheck.findFirst({ where: { tenantId: ctx.tenantId!, orderId: id }, orderBy: { createdAt: 'desc' }, select: { status: true } });
@@ -294,26 +302,123 @@ export class SalesService {
     }
   }
 
-  cancel(ctx: AuthContext, id: string, reason: string) {
-    return this.prisma.withContext(ctx, (tx) => this.cancelInTx(tx, ctx, id, reason));
+  async cancel(ctx: AuthContext, id: string, reason: string) {
+    reason = reason.trim();
+    if (!reason) throw new BadRequestException('Informe o motivo do cancelamento.');
+    const plan = await this.prisma.withContext(ctx, async (tx) => {
+      const order = await this.lock(tx, ctx, id);
+      assertNoFiscalCancellation(order.fiscalCancellationStartedAt);
+      await this.cancellableTitles(tx, ctx, order);
+      const documents = await this.fiscalCancellationPlan(tx, ctx, id);
+      if (!documents.invoices.length && !documents.manifests.length) {
+        return { result: await this.cancelInTx(tx, ctx, id, reason) };
+      }
+      if (!ctx.permissions.has('fiscal.emit')) throw new ForbiddenException('O pedido possui documentos fiscais autorizados. É necessária a permissão de emissão fiscal para cancelá-los junto com o pedido.');
+      if (reason.length < 15 || reason.length > 255) throw new BadRequestException('Para cancelar documentos fiscais, informe uma justificativa de 15 a 255 caracteres.');
+      const startedAt = new Date();
+      await tx.salesOrder.update({ where: { id }, data: { fiscalCancellationStartedAt: startedAt } });
+      return { ...documents, startedAt };
+    });
+    if (plan.result) return plan.result;
+
+    const cancelled: string[] = [];
+    let step = 'a venda';
+    try {
+      for (const manifest of plan.manifests) {
+        step = `MDF-e ${manifest.number ?? manifest.id}`;
+        await this.mdfe.cancel(ctx, manifest.id, reason);
+        cancelled.push(step);
+      }
+      for (const invoice of plan.invoices) {
+        step = `${invoice.model === '65' ? 'NFC-e' : 'NF-e'} ${invoice.number ?? invoice.id}`;
+        await this.fiscal.cancel(ctx, invoice.id, reason);
+        cancelled.push(step);
+      }
+      step = 'a venda';
+      return await this.prisma.withContext(ctx, (tx) => this.cancelInTx(tx, ctx, id, reason, plan.startedAt));
+    } catch (error) {
+      await this.prisma.withContext(ctx, (tx) => tx.salesOrder.updateMany({
+        where: { id, tenantId: ctx.tenantId!, fiscalCancellationStartedAt: plan.startedAt },
+        data: { fiscalCancellationStartedAt: null },
+      })).catch((cleanupError) => this.logger.error(`Falha ao liberar o cancelamento do pedido ${id}.`, cleanupError));
+      const message = error instanceof Error ? error.message : 'Falha inesperada.';
+      const progress = cancelled.length ? ` Já cancelados: ${cancelled.join(', ')}.` : '';
+      throw new ConflictException(`Não foi possível concluir o cancelamento de ${step}. ${message}${progress} A venda continua ativa. Após resolver a pendência, tente novamente.`);
+    }
   }
 
-  async cancelInTx(tx: Tx, ctx: AuthContext, id: string, reason: string) {
-    {
-      const order = await this.lock(tx, ctx, id);
-      if (!CANCELLABLE.includes(order.status)) {
-        throw new ConflictException(order.status === 'CANCELLED' ? 'O pedido já está cancelado.' : 'Pedido já expedido: registre uma devolução em vez de cancelar.');
-      }
-      for (const i of order.items) if (i.reservationId) await this.stock.resolveReservationTx(tx, ctx, i.reservationId, 'RELEASED');
-      const titles = await tx.financialTitle.findMany({ where: { tenantId: ctx.tenantId!, origin: 'SALES_ORDER', originRef: { startsWith: `${id}:` }, NOT: { status: 'CANCELLED' } }, select: { id: true, paidPrincipal: true } });
-      if (titles.some((t) => toCents(t.paidPrincipal) > 0)) throw new ConflictException('Há parcelas deste pedido já pagas: estorne a baixa no Financeiro antes de cancelar.');
-      if (titles.length) await tx.financialTitle.updateMany({ where: { tenantId: ctx.tenantId!, id: { in: titles.map((t) => t.id) } }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: `Pedido ${order.number} cancelado: ${reason}` } });
-      await this.commissions.reverseAll(tx, ctx, id, `Cancelamento: ${reason}`);
-      await tx.salesOrder.update({ where: { id }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: reason } });
-      await this.notifications.onOrderStatus(tx, ctx.tenantId!, id, 'CANCELLED');
-      await this.audit.record(tx, ctx, { action: 'sales.cancelled', entity: 'sales_order', entityId: id, metadata: { reason, from: order.status } });
-      return { id, status: 'CANCELLED' as const };
+  private async cancellableTitles(tx: Tx, ctx: AuthContext, order: { id: string; status: OrderStatus }) {
+    if (!CANCELLABLE.includes(order.status)) {
+      throw new ConflictException(order.status === 'CANCELLED' ? 'O pedido já está cancelado.' : 'Pedido já expedido: registre uma devolução em vez de cancelar.');
     }
+    const titles = await tx.$queryRaw<{ id: string; paidPrincipal: Prisma.Decimal }[]>`
+      SELECT id, paid_principal AS "paidPrincipal"
+      FROM financial_titles
+      WHERE tenant_id = ${ctx.tenantId}::uuid AND origin = 'SALES_ORDER'
+        AND origin_ref LIKE ${`${order.id}:%`} AND status <> 'CANCELLED'
+      ORDER BY id FOR UPDATE
+    `;
+    if (titles.some((t) => toCents(t.paidPrincipal) > 0)) throw new ConflictException('Há parcelas deste pedido já pagas: estorne a baixa no Financeiro antes de cancelar.');
+    return titles;
+  }
+
+  private async fiscalCancellationPlan(tx: Tx, ctx: AuthContext, id: string) {
+    const linkedNotes = await tx.fiscalDocument.findMany({
+      where: { tenantId: ctx.tenantId!, salesOrderId: id, direction: 'EXIT', purpose: 'NORMAL' },
+      select: { id: true, model: true, number: true, status: true },
+      orderBy: [{ splitIndex: 'asc' }, { id: 'asc' }],
+    });
+    const notes = linkedNotes.filter((note) => note.status !== 'CANCELLED');
+    const uncertain = notes.find((note) => !['AUTHORIZED', 'DRAFT', 'PENDING_VALIDATION', 'READY_TO_TRANSMIT', 'REJECTED'].includes(note.status));
+    if (uncertain) throw new ConflictException(`Consulte a situação da ${uncertain.model === '65' ? 'NFC-e' : 'NF-e'} ${uncertain.number ?? uncertain.id} antes de cancelar o pedido (transmissão em andamento ou situação pendente).`);
+
+    // O vínculo fiscal vem das chaves gravadas no manifesto, mesmo se a rota tiver sido editada.
+    const manifests = linkedNotes.some((note) => note.model === '55') ? await tx.$queryRaw<{ id: string; number: number | null; status: string; startedAt: Date | null }[]>`
+      SELECT m.id, m.number, m.status, r.started_at AS "startedAt"
+      FROM mdfe_documents m
+      LEFT JOIN delivery_routes r ON r.tenant_id = m.tenant_id AND r.id = m.route_id
+      WHERE m.tenant_id = ${ctx.tenantId}::uuid AND m.status NOT IN ('CANCELLED', 'REJECTED', 'DRAFT')
+        AND EXISTS (
+          SELECT 1 FROM fiscal_documents n
+          CROSS JOIN LATERAL jsonb_array_elements(COALESCE(m.payload->'unload', '[]'::jsonb)) AS city(data)
+          WHERE n.tenant_id = m.tenant_id AND n.sales_order_id = ${id}::uuid
+            AND n.direction = 'EXIT' AND n.purpose = 'NORMAL' AND n.model = '55'
+            AND COALESCE(n.environment, 'HOMOLOGACAO') = m.environment
+            AND (city.data->'nfeKeys') ? n.access_key
+        )
+      ORDER BY m.id
+    ` : [];
+    for (const manifest of manifests) {
+      const label = `MDF-e ${manifest.number ?? manifest.id}`;
+      if (manifest.status === 'CLOSED' || manifest.startedAt) throw new ConflictException(`${label}: a viagem já foi iniciada ou encerrada. O cancelamento conjunto foi bloqueado.`);
+      if (manifest.status !== 'AUTHORIZED') throw new ConflictException(`Consulte a situação do ${label} antes de cancelar o pedido.`);
+    }
+    return { manifests, invoices: notes.filter((note) => note.status === 'AUTHORIZED'), drafts: notes.filter((note) => note.status !== 'AUTHORIZED') };
+  }
+
+  async cancelInTx(tx: Tx, ctx: AuthContext, id: string, reason: string, startedAt?: Date) {
+    const order = await this.lock(tx, ctx, id);
+    if (startedAt) {
+      if (order.fiscalCancellationStartedAt?.getTime() !== startedAt.getTime()) throw new ConflictException('A operação de cancelamento precisa ser retomada.');
+    } else {
+      assertNoFiscalCancellation(order.fiscalCancellationStartedAt);
+    }
+    const titles = await this.cancellableTitles(tx, ctx, order);
+    const plan = await this.fiscalCancellationPlan(tx, ctx, id);
+    if (plan.invoices.length || plan.manifests.length) throw new ConflictException('Cancele o pedido pelo painel de Vendas para cancelar também os documentos fiscais autorizados.');
+    const now = new Date();
+    for (const i of order.items) if (i.reservationId) await this.stock.resolveReservationTx(tx, ctx, i.reservationId, 'RELEASED');
+    if (titles.length) await tx.financialTitle.updateMany({ where: { tenantId: ctx.tenantId!, id: { in: titles.map((t) => t.id) } }, data: { status: 'CANCELLED', cancelledAt: now, cancelReason: `Pedido ${order.number} cancelado: ${reason}` } });
+    for (const draft of plan.drafts) {
+      await tx.fiscalDocument.update({ where: { id: draft.id }, data: { status: 'CANCELLED' } });
+      await this.audit.record(tx, ctx, { action: 'fiscal.discarded', entity: 'fiscal_document', entityId: draft.id, metadata: { reason, orderId: id } });
+    }
+    await tx.deliveryStop.updateMany({ where: { tenantId: ctx.tenantId!, salesOrderId: id, status: 'PENDING' }, data: { status: 'CANCELLED' } });
+    await this.commissions.reverseAll(tx, ctx, id, `Cancelamento: ${reason}`);
+    await tx.salesOrder.update({ where: { id }, data: { status: 'CANCELLED', cancelledAt: now, cancelReason: reason, fiscalCancellationStartedAt: null } });
+    await this.notifications.onOrderStatus(tx, ctx.tenantId!, id, 'CANCELLED');
+    await this.audit.record(tx, ctx, { action: 'sales.cancelled', entity: 'sales_order', entityId: id, metadata: { reason, from: order.status } });
+    return { id, status: 'CANCELLED' as const };
   }
 
   /** Devolução total/parcial de itens já expedidos. Repõe estoque (se `restock`) e estorna comissão proporcional. */

@@ -74,6 +74,14 @@ export class OrderImportService {
         if (so.status === 'CANCELLED') { await save('CANCELLED', { reason: null }); return 'cancelled'; }
         if (policy === 'MANUAL_REVIEW') { await save('NEEDS_ATTENTION', { reason: `Cancelado no canal; revise o pedido ${so.number} (política: revisão manual).` }); return 'needsAttention'; }
         if (['DRAFT', 'PENDING_APPROVAL', 'CONFIRMED', 'PICKING', 'PACKED'].includes(so.status)) {
+          const needsFiscalReview = await tx.fiscalDocument.findFirst({
+            where: { tenantId, salesOrderId: so.id, direction: 'EXIT', purpose: 'NORMAL', status: { in: ['AUTHORIZED', 'TRANSMITTING', 'PENDING_CONSULT', 'COMMUNICATION_FAILURE'] } },
+            select: { id: true },
+          });
+          if (needsFiscalReview) {
+            await save('NEEDS_ATTENTION', { reason: `Cancelado no canal. Cancele o pedido ${so.number} em Vendas para tratar os documentos fiscais vinculados.` });
+            return 'needsAttention';
+          }
           await this.sales.cancelInTx(tx, ctx, so.id, 'Cancelado no marketplace');
           await save('CANCELLED', { reason: null });
           return 'cancelled';

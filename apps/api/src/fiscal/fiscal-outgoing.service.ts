@@ -5,6 +5,7 @@ import { BrandingService } from '../branding/branding.service';
 import { AuthContext } from '../common/auth';
 import { isValidCnpj, isValidCpf, onlyDigits } from '../common/cnpj';
 import { PrismaService } from '../prisma/prisma.service';
+import { lockOrdersForFiscal } from '../sales/fiscal-cancellation';
 import { buildChave } from './chave';
 import { returnCfop } from './return-cfop';
 import { renderDanfce, renderDanfe } from './danfe';
@@ -82,6 +83,7 @@ export class FiscalOutgoingService {
   async prepare(ctx: AuthContext, dto: { salesOrderId: string; establishmentId?: string; model?: FiscalModel; paymentMethod?: string }) {
     await this.warmCities(ctx, { orderId: dto.salesOrderId });
     return this.prisma.withContext(ctx, async (tx) => {
+      await lockOrdersForFiscal(tx, ctx.tenantId!, [dto.salesOrderId]);
       const order = await tx.salesOrder.findFirst({
         where: { id: dto.salesOrderId, tenantId: ctx.tenantId! },
         include: { customer: true, items: { include: { product: true }, orderBy: { id: 'asc' } } },
@@ -286,6 +288,8 @@ export class FiscalOutgoingService {
   async transmit(ctx: AuthContext, id: string) {
     await this.warmCities(ctx, { docId: id });
     const prep = await this.prisma.withContext(ctx, async (tx) => {
+      const ref = await tx.fiscalDocument.findFirst({ where: { id, tenantId: ctx.tenantId! }, select: { salesOrderId: true } });
+      if (ref?.salesOrderId) await lockOrdersForFiscal(tx, ctx.tenantId!, [ref.salesOrderId]);
       const doc = await this.lock(tx, ctx, id);
       const est = await tx.establishment.findFirstOrThrow({ where: { id: doc.establishmentId!, tenantId: ctx.tenantId! }, include: { company: true } });
       const cfg = await tx.fiscalConfiguration.findFirstOrThrow({ where: { tenantId: ctx.tenantId!, establishmentId: est.id } });
@@ -506,7 +510,12 @@ export class FiscalOutgoingService {
       }
       return { id: d.id, pc, accessKey: d.accessKey, protocol: d.authProtocol };
     });
-    const r = await this.provider.cancel!(ref.id, reason.trim(), ref.pc, { accessKey: ref.accessKey, protocol: ref.protocol });
+    let r = await this.provider.cancel!(ref.id, reason.trim(), ref.pc, { accessKey: ref.accessKey, protocol: ref.protocol });
+    if (r.kind === 'UNAVAILABLE' || (r.kind === 'REJECTED' && r.statusCode === '573')) {
+      const key = this.numberingOf(ref.pc) === 'PROVIDER' ? ref.id : ref.accessKey;
+      const situation = key ? await this.provider.consult(key, ref.pc.environment, ref.pc).catch(() => null) : null;
+      if (situation?.kind === 'CANCELLED') r = { kind: 'CANCELLED', statusCode: situation.statusCode ?? 'CANCELLED' };
+    }
     return this.prisma.withContext(ctx, async (tx) => {
       await this.lock(tx, ctx, id);
       if (r.kind === 'CANCELLED') {

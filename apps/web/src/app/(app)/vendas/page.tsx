@@ -159,7 +159,11 @@ export default function VendasPage() {
   }
 
   const cancel = async (d: Detail) => {
-    const reason = await ui.prompt({ title: 'Cancelar pedido', message: 'As reservas de estoque serão liberadas e as comissões estornadas.', label: 'Motivo do cancelamento', danger: true, confirmLabel: 'Cancelar pedido', cancelLabel: 'Voltar' });
+    const reason = await ui.prompt({
+      title: 'Cancelar pedido',
+      message: 'Se houver documentos fiscais autorizados, o sistema cancela primeiro o MDF-e e depois a NF-e ou o cupom fiscal. Um MDF-e compartilhado é cancelado por inteiro e deve ser reemitido para os demais pedidos. Para cancelamento fiscal, informe de 15 a 255 caracteres.',
+      label: 'Motivo do cancelamento', required: true, danger: true, confirmLabel: 'Cancelar pedido', cancelLabel: 'Voltar',
+    });
     if (reason) await act(() => api(`/sales/orders/${d.id}/cancel`, 'POST', { reason }), 'Pedido cancelado.');
   };
 

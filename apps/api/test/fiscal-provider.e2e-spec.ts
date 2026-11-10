@@ -3,8 +3,10 @@ import { Test } from '@nestjs/testing';
 import { PrismaClient } from '@prisma/client';
 import { createServer, IncomingMessage, Server, ServerResponse } from 'node:http';
 import { AddressInfo } from 'node:net';
+import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { AppModule, configureApp } from '../src/app.module';
+import { MdfeService } from '../src/fiscal/mdfe/mdfe.service';
 
 /**
  * ATENÇÃO: o servidor abaixo SIMULA o Focus NFe conforme as páginas oficiais lidas (docs/FISCAL-PROVIDER.md). Estes testes provam o
@@ -16,6 +18,7 @@ class MockFocus {
   base = '';
   token = 'TOKEN-HOMOLOG-1234';
   mode: Mode = 'async';
+  rejectCancellation = false;
   requests: { method: string; path: string; ref: string | null; body: any; auth: string | null }[] = [];
   notes = new Map<string, { kind: string; body: any; polls: number; cancelled?: boolean }>();
   n = 0;
@@ -74,6 +77,7 @@ class MockFocus {
       const note = this.notes.get(m[2]);
       if (!note) return send(404, { codigo: 'nao_encontrado', mensagem: 'não encontrada' });
       if (!body?.justificativa || String(body.justificativa).length < 15) return send(400, { codigo: 'requisicao_invalida', mensagem: 'justificativa deve ter de 15 a 255 caracteres' });
+      if (this.rejectCancellation) return send(422, { status: 'erro_cancelamento', status_sefaz: '501', mensagem_sefaz: 'Cancelamento recusado no simulador' });
       note.cancelled = true;
       return send(200, { status: 'cancelado', status_sefaz: '135', mensagem_sefaz: 'Evento registrado e vinculado a NF-e', caminho_xml_cancelamento: `/arquivos/xml/${m[2]}-canc.xml` });
     }
@@ -165,7 +169,7 @@ describe('Emissão fiscal por provedor (Focus NFe simulado): NF-e e NFC-e', () =
     await app.close();
     await focus.stop();
   });
-  beforeEach(() => { focus.mode = 'async'; focus.evilPath = false; focus.requests.length = 0; });
+  beforeEach(() => { focus.mode = 'async'; focus.evilPath = false; focus.rejectCancellation = false; focus.requests.length = 0; });
 
   describe('token do provedor', () => {
     it('guarda cifrado, nunca devolve, valida e exige permissão de gerenciar o fiscal', async () => {
@@ -394,6 +398,48 @@ describe('Emissão fiscal por provedor (Focus NFe simulado): NF-e e NFC-e', () =
   });
 
   describe('cancelamento e arquivos', () => {
+    it('cancela o cupom NFC-e autorizado ao cancelar a venda', async () => {
+      await setToken(A).expect(200);
+      const orderId = await order(A, 'NFCE');
+      const invoiceId = (await prepare(A, orderId, { paymentMethod: 'PIX' }).expect(200)).body.id;
+      expect((await transmit(A, invoiceId).expect(200)).body.status).toBe('AUTHORIZED');
+      await A.owner.post(`/api/sales/orders/${orderId}/cancel`).set(H).send({ reason: 'Pedido cancelado pelo cliente' }).expect(200);
+      expect((await doc(A, invoiceId)).status).toBe('CANCELLED');
+      expect(focus.requests.some((r) => r.method === 'DELETE' && r.path === `/v2/nfce/${invoiceId}`)).toBe(true);
+    });
+
+    it('cancela o MDF-e vinculado antes da NF-e e retoma após recusa sem repetir o manifesto', async () => {
+      await setToken(A).expect(200);
+      const orderId = await order(A, 'NFE');
+      const invoiceId = (await prepare(A, orderId).expect(200)).body.id;
+      expect((await transmit(A, invoiceId).expect(200)).body.status).toBe('AUTHORIZED');
+      const invoice = await doc(A, invoiceId);
+      const manifest = await admin.mdfeDocument.create({
+        data: { tenantId: A.tenantId, establishmentId: A.est, routeId: randomUUID(), status: 'AUTHORIZED', number: 17, payload: { unload: [{ nfeKeys: [invoice.accessKey] }] } },
+      });
+      const cancelManifest = jest.spyOn(app.get(MdfeService), 'cancel').mockImplementation(async (_ctx, id) => {
+        expect(focus.requests.some((r) => r.method === 'DELETE')).toBe(false);
+        expect(id).toBe(manifest.id);
+        await admin.mdfeDocument.update({ where: { id }, data: { status: 'CANCELLED' } });
+        return { id, status: 'CANCELLED' };
+      });
+      const cancelOrder = () => A.owner.post(`/api/sales/orders/${orderId}/cancel`).set(H).send({ reason: 'Pedido cancelado pelo cliente' });
+      try {
+        focus.rejectCancellation = true;
+        const failure = await cancelOrder().expect(409);
+        expect(failure.body.message).toContain('Já cancelados: MDF-e 17');
+        expect(await admin.salesOrder.findUnique({ where: { id: orderId }, select: { status: true, fiscalCancellationStartedAt: true } }))
+          .toEqual({ status: 'CONFIRMED', fiscalCancellationStartedAt: null });
+        expect((await doc(A, invoiceId)).status).toBe('AUTHORIZED');
+        focus.rejectCancellation = false;
+        expect((await cancelOrder().expect(200)).body.status).toBe('CANCELLED');
+        expect((await doc(A, invoiceId)).status).toBe('CANCELLED');
+        expect(cancelManifest).toHaveBeenCalledTimes(1);
+      } finally {
+        cancelManifest.mockRestore();
+      }
+    });
+
     it('cancela nota autorizada (justificativa de 15+ caracteres) e libera o pedido para nova nota; só autorizada cancela', async () => {
       const o = await order(A, 'NFE');
       const p = (await prepare(A, o).expect(200)).body;
