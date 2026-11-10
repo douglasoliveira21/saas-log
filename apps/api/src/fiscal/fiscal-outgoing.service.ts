@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, HttpException, HttpStatus, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
+import { BrandingService } from '../branding/branding.service';
 import { AuthContext } from '../common/auth';
 import { isValidCnpj, isValidCpf, onlyDigits } from '../common/cnpj';
 import { PrismaService } from '../prisma/prisma.service';
@@ -33,6 +34,7 @@ export class FiscalOutgoingService {
     @Inject(FISCAL_PROVIDER) private readonly provider: FiscalProvider,
     private readonly pctx: ProviderContextService,
     private readonly ibge: IbgeService,
+    private readonly branding: BrandingService,
   ) {}
 
   /** Busca (FORA de transação) os municípios das UFs envolvidas, para o código IBGE do XML; só quando o estabelecimento usa emissão direta. */
@@ -565,7 +567,12 @@ export class FiscalOutgoingService {
     const st = (d.doc.providerState ?? {}) as { xmlPath?: string | null; danfePath?: string | null };
     // provedor que entrega o próprio DANFE (leiaute oficial dele) continua valendo; sem isso (emissão direta), geramos aqui
     if (kind === 'danfe' && d.xml && !(st.danfePath && this.provider.download)) {
-      const html = d.doc.model === '65' ? await renderDanfce(d.xml.content) : renderDanfe(d.xml.content);
+      const branding = await this.branding.get(ctx).catch((error: unknown) => {
+        if (error instanceof NotFoundException) return null;
+        throw error;
+      });
+      const logo = branding ? `data:${branding.contentType};base64,${branding.content.toString('base64')}` : undefined;
+      const html = d.doc.model === '65' ? await renderDanfce(d.xml.content, logo) : renderDanfe(d.xml.content, logo);
       return { content: Buffer.from(html, 'utf8'), contentType: 'text/html; charset=utf-8', name: `danfe-${d.doc.accessKey ?? d.doc.id}.html` };
     }
     if (kind === 'xml' && d.xml) return { content: Buffer.from(d.xml.content, 'utf8'), contentType: 'application/xml; charset=utf-8', name: `nfe-${d.doc.accessKey ?? d.doc.id}.xml` };
