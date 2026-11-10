@@ -175,7 +175,7 @@ export class TaxRulesService {
       companyId: cfg.companyId, regime: cfg.regime, pisRate: Number(cfg.pisRate), cofinsRate: Number(cfg.cofinsRate),
       icmsByUf: Array.isArray(cfg.icmsByUf) ? cfg.icmsByUf as unknown as FederalTaxDefaults['icmsByUf'] : [],
     } satisfies FederalTaxDefaults : undefined;
-    return calculate(input, federal ? [] : await this.candidates(tx, tenantId), federal);
+    return calculate(input, await this.candidates(tx, tenantId), federal);
   }
 
   /** Cálculo com retrato opcional (reprodutível): entradas, saídas, versões de regra e versão do motor. */

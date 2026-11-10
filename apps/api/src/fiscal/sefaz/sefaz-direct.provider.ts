@@ -4,7 +4,7 @@ import {
 } from '../fiscal-provider';
 import { PAYMENT_CODE } from '../focus-nfe.provider';
 import * as M from './messages';
-import { buildNfeXml, NfeInput } from './nfe-builder';
+import { buildNfeXml, NfeInput, supportedContributionCst, validNfeCfopFormat } from './nfe-builder';
 import { pfxToPem } from './pfx';
 import { anEventUrl, NFCE_QRCODE, service, SefazModel, UfNotAnalyzedError, Uf } from './registry';
 import { signXml, verifySignature } from './signature';
@@ -38,7 +38,7 @@ export function toNfeInput(doc: OutgoingDocument, ctx: ProviderCtx): NfeInput {
       ? { ...(rdoc.length === 14 ? { cnpj: rdoc } : rdoc.length === 11 ? { cpf: rdoc } : {}), name: r.name ?? '', indIEDest: r.ieIndicator, ie: r.ie, email: r.email, street: r.street ?? undefined, number: r.number ?? undefined, district: r.district ?? undefined, cMun: r.cMun ?? undefined, city: r.city ?? undefined, uf: r.uf ?? undefined, zip: r.zip ?? undefined, phone: r.phone }
       : null,
     items: doc.items.map((i) => ({
-      line: i.line, code: i.sku, gtin: null, description: i.description, ncm: i.ncm, cfop: i.cfop, unit: i.unit, quantity: i.quantity, total: i.total,
+      line: i.line, code: i.sku, gtin: null, description: i.description, ncm: i.ncm, cfop: i.cfop.trim(), unit: i.unit, quantity: i.quantity, total: i.total,
       icms: { origin: i.origin ?? 0, regime: e.regime === 3 ? 'NORMAL' : 'SN', code: i.icmsCode ?? '', base: i.tax?.icms.base, rate: i.tax?.icms.rate, amount: i.tax?.icms.amount },
       pis: { cst: i.pisCst ?? '', base: i.tax?.pis.base, rate: i.tax?.pis.rate, amount: i.tax?.pis.amount },
       cofins: { cst: i.cofinsCst ?? '', base: i.tax?.cofins.base, rate: i.tax?.cofins.rate, amount: i.tax?.cofins.amount },
@@ -73,6 +73,13 @@ export class SefazDirectProvider implements FiscalProvider {
       if (!ctx.csc) out.push({ code: 'SEFAZ_CSC', message: 'CSC da NFC-e não configurado para este ambiente (código e identificador, obtidos no portal da SEFAZ).' });
     }
     if (!doc.payments.length && !doc.returnOf?.length) out.push({ code: 'SEFAZ_PAYMENT', message: 'Informe a forma de pagamento.' });
+    for (const item of doc.items) {
+      const label = `Item ${item.line} (${item.sku})`;
+      if (!validNfeCfopFormat(item.cfop.trim())) out.push({ code: 'SEFAZ_CFOP', message: `${label}: informe um CFOP válido na regra tributária da operação.` });
+      for (const [tax, cst] of [['PIS', item.pisCst], ['COFINS', item.cofinsCst]] as const) {
+        if (!supportedContributionCst(cst?.trim() ?? '')) out.push({ code: `SEFAZ_${tax}_CST`, message: cst?.trim() ? `${label}: CST ${cst.trim()} de ${tax} inválido ou não suportado na emissão direta.` : `${label}: informe o CST de ${tax} na regra tributária da operação.` });
+      }
+    }
     const unsupported = doc.items.flatMap((i) => Object.entries(i.taxes ?? {}).filter(([code, tax]) => !['ICMS', 'PIS', 'COFINS'].includes(code) && tax.amount !== 0).map(([code]) => `item ${i.line}: ${code}`));
     if (unsupported.length) out.push({ code: 'SEFAZ_TAX_UNMAPPED', message: `A emissão direta ainda não monta estes grupos tributários (${unsupported.join(', ')}). Use o provedor nacional; a nota não será enviada incompleta.` });
     if (out.length) return out;

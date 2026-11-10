@@ -71,6 +71,13 @@ const rule = (o: Partial<RuleCandidate> & { rate?: number; cfop?: string; extra?
 const input = { operation: 'SALE' as const, date: new Date('2026-06-01'), originUf: 'SP', destUf: 'RJ', regime: 'SIMPLES_NACIONAL', items: [{ key: 'a', ncm: '73181500', value: 200 }] };
 
 describe('motor fiscal', () => {
+  it('preserva CFOP e CST da regra aprovada mesmo com o menu Impostos configurado', () => {
+    const approved = rule({ cfop: '6102', extra: { PIS: { cst: '07', ratePct: 0 }, COFINS: { cst: '07', ratePct: 0 } } });
+    const defaults = { companyId: 'company', regime: input.regime, pisRate: 1.65, cofinsRate: 7.6, icmsByUf: [] };
+    const result = calculate(input, [approved], defaults);
+    expect(result.items[0]).toMatchObject({ cfop: '6102', taxes: { PIS: { cst: '07', amount: 0 }, COFINS: { cst: '07', amount: 0 } } });
+  });
+
   it('sem regra aprovada devolve PENDÊNCIA, nunca alíquota presumida', () => {
     const r = calculate(input, []);
     expect(r.ready).toBe(false);

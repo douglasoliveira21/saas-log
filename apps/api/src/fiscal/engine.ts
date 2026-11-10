@@ -2,7 +2,7 @@
 // O sistema NÃO traz alíquotas, CSTs ou CFOPs pré-cadastrados: sem regra aprovada o resultado é uma PENDÊNCIA, nunca um palpite.
 // Puro e determinístico: mesmas entradas + mesmas versões de regra = mesma saída (reprodutível).
 
-export const ENGINE_VERSION = '1.0.0';
+export const ENGINE_VERSION = '1.1.0';
 
 export type Operation = 'PURCHASE' | 'SALE' | 'RETURN_SALE' | 'RETURN_PURCHASE' | 'TRANSFER' | 'OTHER';
 
@@ -110,22 +110,20 @@ const specificity = (r: RuleCandidate) =>
   [r.originUf, r.destUf, r.regime, r.recipientKind].filter(Boolean).length + (r.productOrigin !== null ? 1 : 0) + (r.ncmPrefix ? 1 + r.ncmPrefix.length / 100 : 0);
 
 export function calculate(input: EngineInput, rules: RuleCandidate[], federal?: FederalTaxDefaults): EngineOutput {
-  // A configuração da tela Impostos é a fonte principal quando informada.
-  // Regras tributárias continuam disponíveis apenas como fallback legado.
+  let defaults: RuleCandidate | undefined;
   if (federal) {
     const icms = federal.icmsByUf.find((x) => x.uf.toUpperCase() === (input.destUf ?? '').toUpperCase());
     const taxes: Record<string, TaxParam> = {
       PIS: { ratePct: federal.pisRate }, COFINS: { ratePct: federal.cofinsRate },
       ...(icms ? { ICMS: { ratePct: icms.ratePct ?? 0, ...(icms.cst.length === 3 ? { csosn: icms.cst } : { cst: icms.cst }) } } : {}),
     };
-    const fallback: RuleCandidate = {
+    defaults = {
       ruleId: `federal-tax-config:${federal.companyId}`, name: 'Configuração do menu Impostos', operation: input.operation,
       // O regime já foi validado na tela Impostos; não bloqueie por divergência
       // de cadastro antigo entre empresa e estabelecimento.
       originUf: null, destUf: input.destUf, ncmPrefix: null, regime: null, productOrigin: null, recipientKind: null, priority: 999,
       version: { id: `federal-tax-config:${federal.companyId}`, version: 1, validFrom: new Date(0), validTo: null, config: { taxes }, sourceReference: 'Fiscal > Impostos' },
     };
-    rules = [fallback];
   }
   const pendencies: Pendency[] = [];
   const used = new Map<string, EngineOutput['rulesUsed'][number]>();
@@ -139,6 +137,7 @@ export function calculate(input: EngineInput, rules: RuleCandidate[], federal?: 
     if (!item.ncm) { pendencies.push({ code: 'MISSING_DATA', itemKey: item.key, message: 'Item sem NCM: cadastre a classificação fiscal.' }); results.push(empty); continue; }
 
     const cands = rules.filter((r) => matches(r, input, item)).sort((a, b) => b.priority - a.priority || specificity(b) - specificity(a));
+    if (!cands.length && defaults) cands.push(defaults);
     if (!cands.length) {
       pendencies.push({ code: 'NO_RULE', itemKey: item.key, message: `Nenhuma regra aprovada e vigente para ${input.operation} ${input.originUf ?? '?'}→${input.destUf ?? '?'} NCM ${item.ncm}. Cadastre e aprove a regra fiscal.` });
       results.push(empty);
@@ -154,7 +153,8 @@ export function calculate(input: EngineInput, rules: RuleCandidate[], federal?: 
     const cfg = rule.version.config;
     const res: ItemResult = { key: item.key, ruleVersionId: rule.version.id, cfop: cfg.cfop ?? null, taxes: {}, totalTax: 0 };
     let blocked = false;
-    for (const [code, p] of Object.entries(cfg.taxes ?? {})) {
+    const taxes = { ...defaults?.version.config.taxes, ...cfg.taxes };
+    for (const [code, p] of Object.entries(taxes)) {
       if ((p.kind ?? 'PERCENT') !== 'PERCENT') {
         pendencies.push({ code: 'UNSUPPORTED_TAX', itemKey: item.key, message: `${code} (${p.kind}) exige base ou margem específica e ainda não é calculado pelo motor.` });
         blocked = true;

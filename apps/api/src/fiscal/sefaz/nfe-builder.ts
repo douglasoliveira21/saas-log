@@ -92,12 +92,18 @@ function icmsXml(i: NfeItem['icms']): string {
   throw new Error(`CST ${i.code} de ICMS ainda não suportado pelo conector direto (suportados: 00, 40, 41, 50).`);
 }
 
+const OTHER_CONTRIBUTION_CSTS = ['49', '50', '51', '52', '53', '54', '55', '56', '60', '61', '62', '63', '64', '65', '66', '67', '70', '71', '72', '73', '74', '75', '98', '99'];
+export const supportedContributionCst = (cst: string) => /^(0[124-9])$/.test(cst) || OTHER_CONTRIBUTION_CSTS.includes(cst);
+export const validNfeCfopFormat = (cfop: string) => /^[123567]\d{3}$/.test(cfop);
+
 function pisCofins(kind: 'PIS' | 'COFINS', t: NfeItem['pis']): string {
+  t = { ...t, cst: t.cst.trim() };
   const r = kind === 'PIS' ? { aliq: 'PISAliq', nt: 'PISNT', outr: 'PISOutr', p: 'pPIS', v: 'vPIS' } : { aliq: 'COFINSAliq', nt: 'COFINSNT', outr: 'COFINSOutr', p: 'pCOFINS', v: 'vCOFINS' };
   const vals = `<vBC>${dec(t.base ?? 0)}</vBC><${r.p}>${dec(t.rate ?? 0, 4)}</${r.p}><${r.v}>${dec(t.amount ?? 0)}</${r.v}>`;
   if (['01', '02'].includes(t.cst)) return `<${kind}><${r.aliq}><CST>${t.cst}</CST>${vals}</${r.aliq}></${kind}>`;
   if (['04', '05', '06', '07', '08', '09'].includes(t.cst)) return `<${kind}><${r.nt}><CST>${t.cst}</CST></${r.nt}></${kind}>`;
   if (t.cst === '03') throw new Error(`CST 03 de ${kind} (por quantidade) não é suportado pelo conector direto.`);
+  if (!supportedContributionCst(t.cst)) throw new Error(`CST de ${kind} ausente ou inválido.`);
   return `<${kind}><${r.outr}><CST>${t.cst}</CST>${vals}</${r.outr}></${kind}>`;
 }
 
@@ -119,6 +125,7 @@ export function buildNfeXml(n: NfeInput): string {
   const frete = allocateFreight(n.items.map((i) => i.total), n.freight);
 
   const items = n.items.map((i, idx) => {
+    if (!validNfeCfopFormat(i.cfop)) throw new Error(`Item ${i.line}: CFOP ausente ou inválido.`);
     const homologFirst = n.environment === 'HOMOLOGACAO' && is65 && idx === 0; // [A VALIDAR] regra do primeiro item em homologação da NFC-e
     const gtin = i.gtin && /^\d{8}$|^\d{12,14}$/.test(i.gtin) ? i.gtin : 'SEM GTIN';
     const vUn = i.total / i.quantity;
