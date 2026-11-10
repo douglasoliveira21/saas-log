@@ -11,6 +11,7 @@ const key = process.env.ALKORD_APP_KEY;
 const secret = process.env.ALKORD_APP_SECRET;
 const tenantName = process.env.MIGRATION_TENANT ?? 'GEBER DISTRIBUIDORA';
 const warehouseCode = process.env.MIGRATION_WAREHOUSE ?? 'CD01';
+const addressesOnly = process.argv.includes('--customer-addresses-only');
 const apiBase = 'https://api.alkord.com.br';
 if (!key || !secret) throw new Error('Defina ALKORD_APP_KEY e ALKORD_APP_SECRET apenas no ambiente de execução.');
 
@@ -60,10 +61,25 @@ function primaryAddress(row: AnyRow) {
     ?? addresses[0];
 }
 
-function customerData(row: AnyRow) {
+function customerAddress(row: AnyRow) {
   const address = primaryAddress(row);
   const city = address?.CIDADE;
   const state = address?.ESTADO;
+  const zipCode = digits(address?.CEP);
+  const uf = text(state?.SIGLA ?? address?.UF)?.toUpperCase();
+  const ibgeCode = digits(city?.CODIGO_IBGE ?? city?.IBGE ?? address?.CODIGO_IBGE);
+  return {
+    zipCode: zipCode?.length === 8 ? zipCode : undefined,
+    street: text(address?.ENDERECO ?? address?.LOGRADOURO),
+    number: text(address?.NUMERO),
+    district: text(address?.BAIRRO),
+    city: text(city?.NOME ?? (typeof city === 'string' ? city : undefined)),
+    state: uf && /^[A-Z]{2}$/.test(uf) ? uf : undefined,
+    ibgeCode: ibgeCode?.length === 7 ? ibgeCode : undefined,
+  };
+}
+
+function customerData(row: AnyRow) {
   const email = Array.isArray(row.EMAILS)
     ? row.EMAILS.find((item: AnyRow) => item?.PRINCIPAL === 'S' && item?.EXCLUIDO !== 'S') ?? row.EMAILS.find((item: AnyRow) => item?.EXCLUIDO !== 'S')
     : undefined;
@@ -77,15 +93,7 @@ function customerData(row: AnyRow) {
     email: text(email?.EMAIL) ?? null,
     phone: text(phone?.TELEFONE ?? phone?.NUMERO) ?? null,
   };
-  const addressFields: AnyRow = {
-    zipCode: digits(address?.CEP),
-    street: text(address?.ENDERECO ?? address?.LOGRADOURO),
-    number: text(address?.NUMERO),
-    district: text(address?.BAIRRO),
-    city: text(city?.NOME ?? address?.CIDADE),
-    state: text(state?.SIGLA ?? address?.UF)?.toUpperCase(),
-    ibgeCode: text(city?.CODIGO_IBGE ?? city?.IBGE ?? address?.CODIGO_IBGE),
-  };
+  const addressFields = customerAddress(row);
   for (const [field, value] of Object.entries(addressFields)) {
     if (value !== undefined) data[field] = value;
   }
@@ -96,15 +104,47 @@ async function main() {
   const direct = new PrismaClient({ datasources: { db: { url: process.env.DIRECT_URL ?? process.env.DATABASE_URL } } });
   const runtime = new PrismaService();
   await runtime.$connect();
-  const tenant = await direct.tenant.findFirst({ where: { name: { contains: tenantName, mode: 'insensitive' } }, select: { id: true, name: true } });
+  const tenant = await direct.tenant.findFirst({ where: { name: { ...(addressesOnly ? { equals: tenantName } : { contains: tenantName }), mode: 'insensitive' } }, select: { id: true, name: true } });
   if (!tenant) throw new Error(`Tenant não encontrado: ${tenantName}`);
   const owner = await direct.membership.findFirst({ where: { tenantId: tenant.id, role: { key: 'owner' } }, select: { userId: true } });
   if (!owner) throw new Error('O tenant não possui usuário proprietário.');
+  const ctx = { tenantId: tenant.id, userId: owner.userId };
+  if (addressesOnly) {
+    await direct.$disconnect();
+    let updated = 0, unlinked = 0;
+    try {
+      const customers = await all('clientes');
+      for (const row of customers) {
+        const sourceId = Number(row.CODIGO);
+        if (!sourceId) continue;
+        const result = await runtime.withContext(ctx, async (tx) => {
+          const link = await tx.legacyImportRecord.findUnique({ where: { tenantId_kind_externalId: { tenantId: tenant.id, kind: 'ALKORD_CUSTOMER', externalId: String(sourceId) } } });
+          const id = (link?.payload as AnyRow | null)?.targetId;
+          if (typeof id !== 'string') return 'unlinked';
+          let changed = false;
+          for (const [field, value] of Object.entries(customerAddress(row))) {
+            if (!value) continue;
+            const result = await tx.customer.updateMany({
+              where: { id, tenantId: tenant.id, OR: [{ [field]: null }, { [field]: '' }] },
+              data: { [field]: value },
+            });
+            changed ||= result.count > 0;
+          }
+          return changed ? 'updated' : 'unchanged';
+        });
+        if (result === 'updated') updated++;
+        if (result === 'unlinked') unlinked++;
+      }
+      console.log(JSON.stringify({ tenant: tenant.name, sourceCustomers: customers.length, updated, unlinked }, null, 2));
+    } finally {
+      await runtime.$disconnect();
+    }
+    return;
+  }
   const warehouse = await direct.warehouse.findFirst({ where: { tenantId: tenant.id, code: warehouseCode }, select: { id: true, code: true } });
   if (!warehouse) throw new Error(`Depósito não encontrado: ${warehouseCode}`);
   await direct.$disconnect();
 
-  const ctx = { tenantId: tenant.id, userId: owner.userId };
   const [products, customers, sales, invoices] = await Promise.all([all('produtos'), all('clientes'), all('atendimentos'), all('notas_fiscais_emitidas')]);
   const productMap = new Map<number, string>();
   const customerMap = new Map<number, string>();
