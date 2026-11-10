@@ -1,12 +1,13 @@
 'use client';
 
-import { Search, Plus, Pencil, ImageOff } from 'lucide-react';
+import { Search, Plus, Pencil, ImageOff, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useUi, PageHeader, Alert, Skeleton, EmptyState, Pager, SortTh, useSort } from '@/components/ui';
 import { formatNcm } from '@/lib/format';
 import { useSession } from '@/lib/session';
+import { catalogHtml } from './catalog-print';
 
 interface Product { id: string; sku: string; name: string; title: string | null; _count: { images: number }; images: { id: string }[]; barcode: string | null; brand: string | null; saleUnit: string; costPrice: string | null; wholesalePrice?: string | null; suggestedPrice: string | null; minStock: number; ncm: string | null; active: boolean; fiscalPending: boolean; category: { name: string } | null }
 interface Category { id: string; name: string }
@@ -17,7 +18,7 @@ const TEMPLATE = 'sku;nome;codigo_barras;marca;categoria;unidade;custo;preco_ven
 const PAGE_SIZE = 50;
 
 export default function ProdutosPage() {
-  const { can } = useSession();
+  const { can, me } = useSession();
   const ui = useUi();
   const manage = can('products.manage');
   const [items, setItems] = useState<Product[] | null>(null);
@@ -33,6 +34,7 @@ export default function ProdutosPage() {
   const [skipInvalid, setSkipInvalid] = useState(false);
   const [report, setReport] = useState<ImportReport | null>(null);
   const [busy, setBusy] = useState(false);
+  const [catalogBusy, setCatalogBusy] = useState(false);
 
   const load = useCallback(() => {
     const qs = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String((page - 1) * PAGE_SIZE) });
@@ -48,6 +50,34 @@ export default function ProdutosPage() {
 
   async function toggle(p: Product) {
     try { await api(`/products/${p.id}`, 'PATCH', { active: !p.active }); load(); } catch (err) { setError((err as Error).message); }
+  }
+
+  async function generateCatalog() {
+    const preview = window.open('', '_blank');
+    if (!preview) { setError('Permita pop-ups para abrir o catálogo.'); return; }
+    preview.opener = null;
+    preview.document.body.textContent = 'Preparando o catálogo de produtos…';
+    setCatalogBusy(true);
+    setError('');
+    try {
+      const limit = 200;
+      const products = new Map<string, Product>();
+      for (let offset = 0; ; offset += limit) {
+        const result = await api<{ total: number; items: Product[] }>(`/products?limit=${limit}&offset=${offset}`);
+        for (const product of result.items) if (product.active) products.set(product.id, product);
+        if (!result.items.length || offset + result.items.length >= result.total) break;
+      }
+      if (!products.size) throw new Error('Não há produtos ativos para gerar o catálogo.');
+      if (preview.closed) return;
+      preview.document.open();
+      preview.document.write(catalogHtml([...products.values()], me.tenant?.name ?? 'DistribuiHub', window.location.origin, me.tenant?.logoVersion));
+      preview.document.close();
+    } catch (err) {
+      preview.close();
+      setError((err as Error).message);
+    } finally {
+      setCatalogBusy(false);
+    }
   }
 
   async function runImport(dryRun: boolean) {
@@ -74,6 +104,7 @@ export default function ProdutosPage() {
   return (
     <>
       <PageHeader title="Produtos e catálogo" description={<>Cadastro mestre por SKU. Dados fiscais nunca são preenchidos automaticamente: produto sem NCM aparece como pendente.</>} actions={<>
+          <button type="button" className="btn" disabled={catalogBusy} onClick={generateCatalog}><FileText aria-hidden />{catalogBusy ? 'Preparando catálogo…' : 'Gerar catálogo em PDF'}</button>
           {manage && <div className="row"><button className="btn" onClick={() => setPanel('import')}>Importar planilha</button><Link className="btn primary" href="/produtos/novo"><Plus aria-hidden />Produto</Link></div>}
         </>} />
       {error && <Alert kind="error">{error}</Alert>}
