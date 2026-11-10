@@ -1,3 +1,5 @@
+import { startServiceLoading } from './service-loading';
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -35,6 +37,29 @@ const noRefreshPaths = new Set([
 ]);
 
 export async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+  // Consultas e o envio periódico de GPS não devem interromper a navegação.
+  const stopLoading = path === '/delivery/my/position' || ['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase())
+    ? undefined
+    : startRequestLoading(path);
+  try {
+    return await request<T>(path, method, body);
+  } finally {
+    stopLoading?.();
+  }
+}
+
+function startRequestLoading(path: string) {
+  const document = path.startsWith('/fiscal/mdfe/') ? 'MDF-e' : 'nota fiscal';
+  const action = path.match(/^\/fiscal\/(?:outgoing|mdfe)\/(?:[^/]+\/)?(prepare|prepare-return|transmit)$/)?.[1];
+  switch (action) {
+    case 'prepare': return startServiceLoading(`Preparando ${document}…`, true);
+    case 'prepare-return': return startServiceLoading('Preparando nota fiscal de devolução…', true);
+    case 'transmit': return startServiceLoading(`Transmitindo ${document} à SEFAZ…`, true);
+    default: return startServiceLoading();
+  }
+}
+
+async function request<T>(path: string, method: string, body?: unknown): Promise<T> {
   let res = await raw(path, method, body);
   // Access token expirado: tenta renovar uma vez com o refresh token (cookie httpOnly).
   if (res.status === 401 && !noRefreshPaths.has(path)) {

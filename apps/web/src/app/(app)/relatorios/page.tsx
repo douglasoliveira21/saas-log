@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { startServiceLoading } from '@/lib/service-loading';
 import { PageHeader, Alert } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
@@ -35,14 +36,21 @@ export default function RelatoriosPage() {
 
   async function download(path: string, method: 'GET' | 'POST') {
     setError(''); setOk('');
-    const res = await fetch(`/api${path}`, { method, credentials: 'same-origin', headers: { 'x-dh-csrf': '1' } });
-    if (res.status === 202) { const j = await res.json(); setOk(j.message); loadExports(); return; }
-    if (!res.ok) { setError((await res.json().catch(() => ({ message: 'Falha na exportação.' }))).message); return; }
-    const blob = await res.blob();
-    const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'relatorio';
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href);
-    loadExports();
+    const stopLoading = startServiceLoading(method === 'POST' ? 'Gerando relatório…' : 'Baixando relatório…');
+    try {
+      const res = await fetch(`/api${path}`, { method, credentials: 'same-origin', headers: { 'x-dh-csrf': '1' } });
+      if (res.status === 202) { const j = await res.json(); setOk(j.message); loadExports(); return; }
+      if (!res.ok) { setError((await res.json().catch(() => ({ message: 'Falha na exportação.' }))).message); return; }
+      const blob = await res.blob();
+      const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'relatorio';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href);
+      loadExports();
+    } catch {
+      setError('Falha ao obter o arquivo do relatório.');
+    } finally {
+      stopLoading?.();
+    }
   }
 
   return (

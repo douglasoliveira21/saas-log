@@ -1,8 +1,9 @@
 'use client';
 
 import { KpiCard } from '@/components/kpi-card';
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, Info, Inbox, X, XCircle } from 'lucide-react';
-import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { getServiceLoadingMessage, subscribeToServiceLoading } from '@/lib/service-loading';
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, Info, Inbox, LoaderCircle, X, XCircle } from 'lucide-react';
+import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from 'react';
 
 /* ───────────────────────── toasts + diálogos ───────────────────────── */
 
@@ -83,7 +84,31 @@ export function UiProvider({ children }: { children: ReactNode }) {
         ))}
       </div>
       {dialog && <Modal pending={dialog} onClose={close} />}
+      <ServiceLoading />
     </Ctx.Provider>
+  );
+}
+
+function ServiceLoading() {
+  const message = useSyncExternalStore(subscribeToServiceLoading, getServiceLoadingMessage, () => null);
+  const visible = message !== null;
+  const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!visible || !dialog) return;
+    dialog.showModal();
+    return () => dialog.close();
+  }, [visible]);
+
+  return (
+    <dialog ref={ref} className="service-loading" aria-labelledby={titleId} aria-describedby={descriptionId} onCancel={(event) => event.preventDefault()}>
+      <LoaderCircle aria-hidden="true" />
+      <h2 id={titleId} aria-live="polite">{message}</h2>
+      <p id={descriptionId}>Aguarde enquanto o sistema conclui a operação.</p>
+    </dialog>
   );
 }
 
