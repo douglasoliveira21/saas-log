@@ -75,6 +75,9 @@ export class SefazDirectProvider implements FiscalProvider {
     if (!doc.payments.length && !doc.returnOf?.length) out.push({ code: 'SEFAZ_PAYMENT', message: 'Informe a forma de pagamento.' });
     for (const item of doc.items) {
       const label = `Item ${item.line} (${item.sku})`;
+      const simple = doc.emitter.regime === 1 || doc.emitter.regime === 4;
+      const icms = item.icmsCode?.trim() ?? '';
+      if (simple && !/^\d{3}$/.test(icms)) out.push({ code: 'SEFAZ_ICMS_CSOSN', message: `${label}: ${icms ? `CST de ICMS ${icms} incompatível com o regime do emitente.` : 'CSOSN de ICMS ausente.'} Confira o CSOSN em Impostos → ICMS por Estado e na regra tributária da operação.` });
       if (!validNfeCfopFormat(item.cfop.trim())) out.push({ code: 'SEFAZ_CFOP', message: `${label}: informe um CFOP válido na regra tributária da operação.` });
       for (const [tax, cst] of [['PIS', item.pisCst], ['COFINS', item.cofinsCst]] as const) {
         if (!supportedContributionCst(cst?.trim() ?? '')) out.push({ code: `SEFAZ_${tax}_CST`, message: cst?.trim() ? `${label}: CST ${cst.trim()} de ${tax} inválido ou não suportado na emissão direta.` : `${label}: informe o CST de ${tax} na regra tributária da operação.` });

@@ -71,6 +71,14 @@ const rule = (o: Partial<RuleCandidate> & { rate?: number; cfop?: string; extra?
 const input = { operation: 'SALE' as const, date: new Date('2026-06-01'), originUf: 'SP', destUf: 'RJ', regime: 'SIMPLES_NACIONAL', items: [{ key: 'a', ncm: '73181500', value: 200 }] };
 
 describe('motor fiscal', () => {
+  it('usa o CSOSN configurado para a UF quando a regra da venda contém um CST de regime normal', () => {
+    const approved = rule({ cfop: '6102', extra: { ICMS: { cst: '00', ratePct: 18 } } });
+    const defaults = { companyId: 'company', regime: input.regime, pisRate: 0, cofinsRate: 0, icmsByUf: [{ uf: 'RJ', cst: '102', ratePct: 0 }] };
+    const result = calculate(input, [approved], defaults);
+    expect(result.items[0]).toMatchObject({ cfop: '6102', taxes: { ICMS: { csosn: '102', amount: 0 } } });
+    expect(result.items[0].taxes.ICMS.cst).toBeUndefined();
+  });
+
   it('preserva CFOP e CST da regra aprovada mesmo com o menu Impostos configurado', () => {
     const approved = rule({ cfop: '6102', extra: { PIS: { cst: '07', ratePct: 0 }, COFINS: { cst: '07', ratePct: 0 } } });
     const defaults = { companyId: 'company', regime: input.regime, pisRate: 1.65, cofinsRate: 7.6, icmsByUf: [] };

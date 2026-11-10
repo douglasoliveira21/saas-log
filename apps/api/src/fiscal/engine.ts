@@ -2,7 +2,7 @@
 // O sistema NÃO traz alíquotas, CSTs ou CFOPs pré-cadastrados: sem regra aprovada o resultado é uma PENDÊNCIA, nunca um palpite.
 // Puro e determinístico: mesmas entradas + mesmas versões de regra = mesma saída (reprodutível).
 
-export const ENGINE_VERSION = '1.1.0';
+export const ENGINE_VERSION = '1.2.0';
 
 export type Operation = 'PURCHASE' | 'SALE' | 'RETURN_SALE' | 'RETURN_PURCHASE' | 'TRANSFER' | 'OTHER';
 
@@ -113,9 +113,10 @@ export function calculate(input: EngineInput, rules: RuleCandidate[], federal?: 
   let defaults: RuleCandidate | undefined;
   if (federal) {
     const icms = federal.icmsByUf.find((x) => x.uf.toUpperCase() === (input.destUf ?? '').toUpperCase());
+    const icmsCode = icms?.cst.trim();
     const taxes: Record<string, TaxParam> = {
       PIS: { ratePct: federal.pisRate }, COFINS: { ratePct: federal.cofinsRate },
-      ...(icms ? { ICMS: { ratePct: icms.ratePct ?? 0, ...(icms.cst.length === 3 ? { csosn: icms.cst } : { cst: icms.cst }) } } : {}),
+      ...(icms && icmsCode ? { ICMS: { ratePct: icms.ratePct ?? 0, ...(icmsCode.length === 3 ? { csosn: icmsCode } : { cst: icmsCode }) } } : {}),
     };
     defaults = {
       ruleId: `federal-tax-config:${federal.companyId}`, name: 'Configuração do menu Impostos', operation: input.operation,
@@ -154,6 +155,13 @@ export function calculate(input: EngineInput, rules: RuleCandidate[], federal?: 
     const res: ItemResult = { key: item.key, ruleVersionId: rule.version.id, cfop: cfg.cfop ?? null, taxes: {}, totalTax: 0 };
     let blocked = false;
     const taxes = { ...defaults?.version.config.taxes, ...cfg.taxes };
+    // O ICMS por UF é o padrão escolhido no menu Impostos. Um código de
+    // família diferente do regime do emitente não pode substituir esse padrão.
+    const defaultIcms = defaults?.version.config.taxes?.ICMS;
+    const ruleIcms = cfg.taxes?.ICMS;
+    const simple = input.regime === 'SIMPLES_NACIONAL' || input.regime === 'MEI';
+    const matchesIcmsRegime = (tax?: TaxParam) => simple ? /^\d{3}$/.test(tax?.csosn?.trim() ?? '') : /^\d{2}$/.test(tax?.cst?.trim() ?? '');
+    if (defaultIcms && matchesIcmsRegime(defaultIcms) && !matchesIcmsRegime(ruleIcms)) taxes.ICMS = defaultIcms;
     for (const [code, p] of Object.entries(taxes)) {
       if ((p.kind ?? 'PERCENT') !== 'PERCENT') {
         pendencies.push({ code: 'UNSUPPORTED_TAX', itemKey: item.key, message: `${code} (${p.kind}) exige base ou margem específica e ainda não é calculado pelo motor.` });
