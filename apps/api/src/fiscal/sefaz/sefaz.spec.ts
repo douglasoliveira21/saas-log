@@ -13,6 +13,25 @@ export const base = (over: Partial<NfeInput> = {}): NfeInput => ({
 });
 
 describe('XML da NF-e contra o XSD do pacote (validação estrutural real)', () => {
+  it('inclui IBS/CBS por item, desconta os tributos destacados da base e preserva o total da venda de 2026', async () => {
+    const input = base({ freight: 5, payments: [{ tPag: '17', vPag: 105 }] });
+    input.emitter.crt = 3;
+    input.items[0] = {
+      ...input.items[0],
+      icms: { origin: 0, regime: 'NORMAL', code: '00', base: 100, rate: 18, amount: 18 },
+      pis: { cst: '01', base: 100, rate: 1.65, amount: 1.65 },
+      cofins: { cst: '01', base: 100, rate: 7.6, amount: 7.6 },
+      rtcRates: { uf: 0.1, municipal: 0, cbs: 0.9 },
+    };
+    const xml = buildNfeXml(input);
+    expect(xml).toContain('<IBSCBS><CST>000</CST><cClassTrib>000001</cClassTrib><gIBSCBS><vBC>77.75</vBC>');
+    expect(xml).toContain('<vIBS>0.08</vIBS>');
+    expect(xml).toContain('<vCBS>0.70</vCBS>');
+    expect(xml).toContain('<vNFTot>105.00</vNFTot>');
+    const result = await validateAgainst('nfe_v4.00.xsd', xml);
+    expect(result.errors.filter((e) => !/Signature/.test(e.message))).toEqual([]);
+  });
+
   it.each([1, 2, 3, 4, 9] as const)('informa operação sem intermediador quando indPres=%s', (indPres) => {
     expect(buildNfeXml(base({ indPres }))).toContain(`<indPres>${indPres}</indPres><indIntermed>0</indIntermed><procEmi>`);
   });

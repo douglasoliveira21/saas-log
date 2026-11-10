@@ -23,6 +23,19 @@ const mtls = (ctx: ProviderCtx): Mtls => ({ keyPem: ctx.certificate!.keyPem, cer
 const PRES = { COUNTER: 1, INTERNET: 2, PHONE: 3, DELIVERY: 9, OTHER: 9 } as const;
 const needsIntermediary = (doc: OutgoingDocument) => doc.marketplace && !doc.returnOf?.length;
 const MARKETPLACE_ISSUE = 'Venda de marketplace exige CNPJ do intermediador e identificação do cadastro do vendedor na plataforma. A emissão direta ainda não envia esses dados.';
+const RTC_KEYS = ['IBS_UF', 'IBS_MUN', 'CBS'] as const;
+
+function rtcRates(doc: OutgoingDocument, item: OutgoingDocument['items'][number]) {
+  const taxes = RTC_KEYS.map((key) => item.taxes?.[key]);
+  const year = Number(new Intl.DateTimeFormat('en', { year: 'numeric', timeZone: 'America/Sao_Paulo' }).format(doc.issuedAt));
+  const required = doc.emitter.regime === 3 && year >= 2026 && !doc.returnOf?.length;
+  if (!required && !taxes.some(Boolean)) return undefined;
+  if (year !== 2026 || doc.returnOf?.length) throw new Error(`Item ${item.line}: o IBS/CBS direto está disponível para vendas de 2026.`);
+  if (!taxes.every((tax) => tax?.cst === '000' && tax.classCode === '000001' && Number.isFinite(tax.ratePct) && tax.ratePct >= 0 && tax.ratePct <= 100)) {
+    throw new Error(`Item ${item.line}: configure IBS estadual, IBS municipal e CBS com CST, classificação e alíquota na regra fiscal aprovada. O conector direto suporta a tributação integral (000 / 000001) para este fluxo.`);
+  }
+  return { uf: taxes[0]!.ratePct, municipal: taxes[1]!.ratePct, cbs: taxes[2]!.ratePct };
+}
 
 export function toNfeInput(doc: OutgoingDocument, ctx: ProviderCtx): NfeInput {
   if (needsIntermediary(doc)) throw new Error(MARKETPLACE_ISSUE);
@@ -45,6 +58,7 @@ export function toNfeInput(doc: OutgoingDocument, ctx: ProviderCtx): NfeInput {
       icms: { origin: i.origin ?? 0, regime: e.regime === 3 ? 'NORMAL' : 'SN', code: i.icmsCode ?? '', base: i.tax?.icms.base, rate: i.tax?.icms.rate, amount: i.tax?.icms.amount },
       pis: { cst: i.pisCst ?? '', base: i.tax?.pis.base, rate: i.tax?.pis.rate, amount: i.tax?.pis.amount },
       cofins: { cst: i.cofinsCst ?? '', base: i.tax?.cofins.base, rate: i.tax?.cofins.rate, amount: i.tax?.cofins.amount },
+      rtcRates: rtcRates(doc, i),
     })),
     freight: doc.totals.freight, payments: doc.returnOf?.length ? [{ tPag: '90', vPag: 0 }] : doc.payments.map((p) => ({ tPag: PAYMENT_CODE[p.method] ?? '99', vPag: p.amount })), returnOf: doc.returnOf, additionalInfo: doc.additionalInfo, procVersion: 'DistribuiHub 1.0',
     ...(qr && ctx.csc ? { qr: { url: qr.qrCodeUrl, cscId: ctx.csc.id, csc: ctx.csc.token, consultaChaveUrl: qr.consultaChaveUrl } } : {}),
@@ -78,6 +92,7 @@ export class SefazDirectProvider implements FiscalProvider {
     if (!doc.payments.length && !doc.returnOf?.length) out.push({ code: 'SEFAZ_PAYMENT', message: 'Informe a forma de pagamento.' });
     if (needsIntermediary(doc)) out.push({ code: 'SEFAZ_INTERMEDIARY', message: MARKETPLACE_ISSUE });
     for (const item of doc.items) {
+      try { rtcRates(doc, item); } catch (e) { out.push({ code: 'SEFAZ_IBSCBS', message: (e as Error).message }); }
       const label = `Item ${item.line} (${item.sku})`;
       const simple = doc.emitter.regime === 1 || doc.emitter.regime === 4;
       const icms = item.icmsCode?.trim() ?? '';
@@ -87,7 +102,8 @@ export class SefazDirectProvider implements FiscalProvider {
         if (!supportedContributionCst(cst?.trim() ?? '')) out.push({ code: `SEFAZ_${tax}_CST`, message: cst?.trim() ? `${label}: CST ${cst.trim()} de ${tax} inválido ou não suportado na emissão direta.` : `${label}: informe o CST de ${tax} na regra tributária da operação.` });
       }
     }
-    const unsupported = doc.items.flatMap((i) => Object.entries(i.taxes ?? {}).filter(([code, tax]) => !['ICMS', 'PIS', 'COFINS'].includes(code) && tax.amount !== 0).map(([code]) => `item ${i.line}: ${code}`));
+    const supported = new Set<string>(['ICMS', 'PIS', 'COFINS', ...RTC_KEYS]);
+    const unsupported = doc.items.flatMap((i) => Object.entries(i.taxes ?? {}).filter(([code, tax]) => !supported.has(code) && tax.amount !== 0).map(([code]) => `item ${i.line}: ${code}`));
     if (unsupported.length) out.push({ code: 'SEFAZ_TAX_UNMAPPED', message: `A emissão direta ainda não monta estes grupos tributários (${unsupported.join(', ')}). Use o provedor nacional; a nota não será enviada incompleta.` });
     if (out.length) return out;
     // Ensaio completo: monta, assina e valida no XSD com um número de teste (nada é enviado).

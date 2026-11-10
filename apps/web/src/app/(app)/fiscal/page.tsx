@@ -25,7 +25,9 @@ interface ConfigView {
 interface Issue { severity: string; code: string; message: string }
 interface InDoc { id: string; accessKey: string; number: number; series: number; status: string; emitterName: string; totalInvoice: string; environment: string; issues: Issue[]; supplierId: string | null }
 interface InItem { id: string; line: number; supplierCode: string | null; description: string; unit: string; quantity: string; totalValue: string; ncm: string | null; productId: string | null; matchedBy: string | null; stockQty: number | null; product: { sku: string } | null }
-interface RuleVersion { id: string; version: number; status: string; validFrom: string; validTo: string | null; sourceReference: string; config: { cfop?: string; includeFreightInBase?: boolean; taxes: Record<string, { ratePct?: number; cst?: string; csosn?: string; kind?: string }> } }
+interface RuleVersion { id: string; version: number; status: string; validFrom: string; validTo: string | null; sourceReference: string; config: { cfop?: string; includeFreightInBase?: boolean; taxes: Record<string, { ratePct?: number; cst?: string; csosn?: string; classCode?: string; kind?: string; baseReductionPct?: number }> } }
+const RULE_TAXES = ['ICMS', 'IPI', 'PIS', 'COFINS', 'IBS_UF', 'IBS_MUN', 'CBS'];
+const rtcTax = (code: string) => code.startsWith('IBS_') || code === 'CBS';
 interface Rule { id: string; name: string; operation: string; originUf: string | null; destUf: string | null; ncmPrefix: string | null; regime: string | null; active: boolean; versions: RuleVersion[] }
 interface OutDoc { id: string; purpose?: string; model?: string; splitIndex?: number | null; splitTotal?: number | null; status: string; number: number | null; series: number | null; accessKey: string | null; environment: string; totalInvoice: string; issues: Issue[]; authProtocol: string | null; salesOrder: { number: number; customer: { name: string } } | null }
 interface Product { id: string; sku: string; name: string }
@@ -276,10 +278,14 @@ function RulesTab({ act, can }: TabProps) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const n = (k: string) => (String(f.get(k) ?? '').trim() === '' ? undefined : Number(String(f.get(k)).replace(',', '.')));
-    const taxes: Record<string, object> = {};
-    for (const code of ['ICMS', 'IPI', 'PIS', 'COFINS']) {
+    const taxes: Record<string, object> = { ...editing?.config.taxes };
+    for (const code of RULE_TAXES) {
       const rate = n(`${code}_rate`);
-      if (rate !== undefined) taxes[code] = { ratePct: rate, ...(f.get(`${code}_cst`) ? { [code === 'ICMS' && String(f.get(`${code}_cst`)).length === 3 ? 'csosn' : 'cst']: String(f.get(`${code}_cst`)) } : {}), ...(n(`${code}_red`) !== undefined ? { baseReductionPct: n(`${code}_red`) } : {}) };
+      const cst = String(f.get(`${code}_cst`) ?? '').trim();
+      const classCode = String(f.get(`${code}_class`) ?? '').trim();
+      const reduction = n(`${code}_red`);
+      if (rate === undefined && !cst && !classCode && reduction === undefined) { delete taxes[code]; continue; }
+      taxes[code] = { ratePct: rate, ...(cst ? { [code === 'ICMS' && cst.length === 3 ? 'csosn' : 'cst']: cst } : {}), ...(classCode ? { classCode } : {}), ...(reduction !== undefined ? { baseReductionPct: reduction } : {}) };
     }
     const form = e.currentTarget;
     await act(async () => {
@@ -324,12 +330,14 @@ function RulesTab({ act, can }: TabProps) {
             <div><label htmlFor="cfop">CFOP</label><input id="cfop" name="cfop" maxLength={4} inputMode="numeric" defaultValue={editing?.config.cfop ?? ''} /></div>
           </div>
           <h2 style={{ marginTop: 12 }}>Tributos</h2>
-          {['ICMS', 'IPI', 'PIS', 'COFINS'].map((c) => (
+          {RULE_TAXES.map((c) => (
             <div className="row" key={c} style={{ marginBottom: 6 }}>
               <strong style={{ width: 70 }}>{c}</strong>
               <input name={`${c}_cst`} placeholder={c === 'ICMS' ? 'CST (2) ou CSOSN (3)' : 'CST'} defaultValue={editing?.config.taxes[c]?.cst ?? editing?.config.taxes[c]?.csosn ?? ''} style={{ width: 170 }} aria-label={`${c} CST`} />
               <input name={`${c}_rate`} placeholder="Alíquota %" inputMode="decimal" defaultValue={editing?.config.taxes[c]?.ratePct ?? ''} style={{ width: 120 }} aria-label={`${c} alíquota`} />
-              <input name={`${c}_red`} placeholder="Redução de base %" inputMode="decimal" style={{ width: 150 }} aria-label={`${c} redução de base`} />
+              {rtcTax(c)
+                ? <input name={`${c}_class`} placeholder="Classificação (6 dígitos)" inputMode="numeric" maxLength={6} defaultValue={editing?.config.taxes[c]?.classCode ?? ''} aria-label={`${c} classificação`} />
+                : <input name={`${c}_red`} placeholder="Redução de base %" inputMode="decimal" defaultValue={editing?.config.taxes[c]?.baseReductionPct ?? ''} style={{ width: 150 }} aria-label={`${c} redução de base`} />}
             </div>
           ))}
           <label className="row" style={{ fontWeight: 400 }}><input type="checkbox" name="frete" defaultChecked={editing?.config.includeFreightInBase} style={{ width: 'auto' }} /> Incluir frete na base</label>

@@ -25,6 +25,7 @@ export interface NfeItem {
   icms: { origin: number; regime: 'SN' | 'NORMAL'; code: string; base?: number; rate?: number; amount?: number };
   pis: { cst: string; base?: number; rate?: number; amount?: number };
   cofins: { cst: string; base?: number; rate?: number; amount?: number };
+  rtcRates?: { uf: number; municipal: number; cbs: number };
 }
 
 export interface NfeInput {
@@ -96,6 +97,29 @@ const OTHER_CONTRIBUTION_CSTS = ['49', '50', '51', '52', '53', '54', '55', '56',
 export const supportedContributionCst = (cst: string) => /^(0[124-9])$/.test(cst) || OTHER_CONTRIBUTION_CSTS.includes(cst);
 export const validNfeCfopFormat = (cfop: string) => /^[123567]\d{3}$/.test(cfop);
 
+function rtcValues(item: NfeItem, freight: number) {
+  const rates = item.rtcRates;
+  if (!rates) return null;
+  const money = (value: number) => Math.round(value * 100);
+  const contribution = (tax: NfeItem['pis']) => /^0[4-9]$/.test(tax.cst.trim()) ? 0 : money(tax.amount ?? 0);
+  const base = Math.max(0, money(item.total) + money(freight) - contribution(item.pis) - contribution(item.cofins) - (item.icms.regime === 'NORMAL' && item.icms.code.trim() === '00' ? money(item.icms.amount ?? 0) : 0));
+  const amount = (rate: number) => Math.round(base * rate / 100) / 100;
+  return { base: base / 100, uf: amount(rates.uf), municipal: amount(rates.municipal), cbs: amount(rates.cbs) };
+}
+
+function rtcItemXml(rates: NonNullable<NfeItem['rtcRates']>, values: NonNullable<ReturnType<typeof rtcValues>>) {
+  return `<IBSCBS><CST>000</CST><cClassTrib>000001</cClassTrib><gIBSCBS><vBC>${dec(values.base)}</vBC><gIBSUF><pIBSUF>${dec(rates.uf, 4)}</pIBSUF><vIBSUF>${dec(values.uf)}</vIBSUF></gIBSUF><gIBSMun><pIBSMun>${dec(rates.municipal, 4)}</pIBSMun><vIBSMun>${dec(values.municipal)}</vIBSMun></gIBSMun><vIBS>${dec(values.uf + values.municipal)}</vIBS><gCBS><pCBS>${dec(rates.cbs, 4)}</pCBS><vCBS>${dec(values.cbs)}</vCBS></gCBS></gIBSCBS></IBSCBS>`;
+}
+
+function rtcTotalXml(items: ReturnType<typeof rtcValues>[], invoice: number) {
+  if (!items.some(Boolean)) return '';
+  const sum = (key: keyof NonNullable<ReturnType<typeof rtcValues>>) => items.reduce((total, item) => total + Math.round((item?.[key] ?? 0) * 100), 0) / 100;
+  const uf = sum('uf'), municipal = sum('municipal');
+  const zeros = '<vDif>0.00</vDif><vDevTrib>0.00</vDevTrib>';
+  const credits = '<vCredPres>0.00</vCredPres><vCredPresCondSus>0.00</vCredPresCondSus>';
+  return `<IBSCBSTot><vBCIBSCBS>${dec(sum('base'))}</vBCIBSCBS><gIBS><gIBSUF>${zeros}<vIBSUF>${dec(uf)}</vIBSUF></gIBSUF><gIBSMun>${zeros}<vIBSMun>${dec(municipal)}</vIBSMun></gIBSMun><vIBS>${dec(uf + municipal)}</vIBS>${credits}</gIBS><gCBS>${zeros}<vCBS>${dec(sum('cbs'))}</vCBS>${credits}</gCBS></IBSCBSTot><vNFTot>${dec(invoice)}</vNFTot>`;
+}
+
 function pisCofins(kind: 'PIS' | 'COFINS', t: NfeItem['pis']): string {
   t = { ...t, cst: t.cst.trim() };
   const r = kind === 'PIS' ? { aliq: 'PISAliq', nt: 'PISNT', outr: 'PISOutr', p: 'pPIS', v: 'vPIS' } : { aliq: 'COFINSAliq', nt: 'COFINSNT', outr: 'COFINSOutr', p: 'pCOFINS', v: 'vCOFINS' };
@@ -123,13 +147,15 @@ export function buildNfeXml(n: NfeInput): string {
   const tpAmb = n.environment === 'PRODUCAO' ? 1 : 2;
   const is65 = n.model === '65';
   const frete = allocateFreight(n.items.map((i) => i.total), n.freight);
+  const rtc = n.items.map((i, idx) => rtcValues(i, frete[idx]));
 
   const items = n.items.map((i, idx) => {
     if (!validNfeCfopFormat(i.cfop)) throw new Error(`Item ${i.line}: CFOP ausente ou inválido.`);
     const homologFirst = n.environment === 'HOMOLOGACAO' && is65 && idx === 0; // [A VALIDAR] regra do primeiro item em homologação da NFC-e
     const gtin = i.gtin && /^\d{8}$|^\d{12,14}$/.test(i.gtin) ? i.gtin : 'SEM GTIN';
     const vUn = i.total / i.quantity;
-    return `<det nItem="${i.line}"><prod>${tag('cProd', txt(i.code, 60))}${tag('cEAN', gtin)}${tag('xProd', homologFirst ? HOMOLOG_PRODUCT : txt(i.description, 120))}${tag('NCM', digits(i.ncm))}${i.cest ? tag('CEST', digits(i.cest)) : ''}${tag('CFOP', i.cfop)}${tag('uCom', txt(i.unit, 6))}${tag('qCom', dec(i.quantity, 4))}${tag('vUnCom', vUn.toFixed(10).replace(/0+$/, '').replace(/\.$/, '.0').replace(/^(\d+)\.(\d)$/, '$1.$2'))}${tag('vProd', dec(i.total))}${tag('cEANTrib', gtin)}${tag('uTrib', txt(i.unit, 6))}${tag('qTrib', dec(i.quantity, 4))}${tag('vUnTrib', vUn.toFixed(10).replace(/0+$/, '').replace(/\.$/, '.0'))}${frete[idx] > 0 ? tag('vFrete', dec(frete[idx])) : ''}<indTot>1</indTot></prod><imposto>${icmsXml(i.icms)}${pisCofins('PIS', i.pis)}${pisCofins('COFINS', i.cofins)}</imposto></det>`;
+    const itemRtc = rtc[idx];
+    return `<det nItem="${i.line}"><prod>${tag('cProd', txt(i.code, 60))}${tag('cEAN', gtin)}${tag('xProd', homologFirst ? HOMOLOG_PRODUCT : txt(i.description, 120))}${tag('NCM', digits(i.ncm))}${i.cest ? tag('CEST', digits(i.cest)) : ''}${tag('CFOP', i.cfop)}${tag('uCom', txt(i.unit, 6))}${tag('qCom', dec(i.quantity, 4))}${tag('vUnCom', vUn.toFixed(10).replace(/0+$/, '').replace(/\.$/, '.0').replace(/^(\d+)\.(\d)$/, '$1.$2'))}${tag('vProd', dec(i.total))}${tag('cEANTrib', gtin)}${tag('uTrib', txt(i.unit, 6))}${tag('qTrib', dec(i.quantity, 4))}${tag('vUnTrib', vUn.toFixed(10).replace(/0+$/, '').replace(/\.$/, '.0'))}${frete[idx] > 0 ? tag('vFrete', dec(frete[idx])) : ''}<indTot>1</indTot></prod><imposto>${icmsXml(i.icms)}${pisCofins('PIS', i.pis)}${pisCofins('COFINS', i.cofins)}${itemRtc && i.rtcRates ? rtcItemXml(i.rtcRates, itemRtc) : ''}</imposto>${itemRtc ? tag('vItem', dec(i.total + frete[idx])) : ''}</det>`;
   });
 
   const sum = (f: (i: NfeItem) => number) => n.items.reduce((s, i) => s + Math.round(f(i) * 100), 0) / 100;
@@ -154,7 +180,7 @@ export function buildNfeXml(n: NfeInput): string {
 
   const pag = `<pag>${n.payments.map((p) => `<detPag>${tag('tPag', p.tPag)}${p.tPag === '99' ? '<xPag>Outros</xPag>' : ''}${tag('vPag', dec(p.vPag))}${['03', '04'].includes(p.tPag) ? '<card><tpIntegra>2</tpIntegra></card>' : ''}</detPag>`).join('')}</pag>`;
 
-  const total = `<total><ICMSTot><vBC>${dec(vBC)}</vBC><vICMS>${dec(vICMS)}</vICMS><vICMSDeson>0.00</vICMSDeson><vFCP>0.00</vFCP><vBCST>0.00</vBCST><vST>0.00</vST><vFCPST>0.00</vFCPST><vFCPSTRet>0.00</vFCPSTRet><vProd>${dec(vProd)}</vProd><vFrete>${dec(vFrete)}</vFrete><vSeg>0.00</vSeg><vDesc>0.00</vDesc><vII>0.00</vII><vIPI>0.00</vIPI><vIPIDevol>0.00</vIPIDevol><vPIS>${dec(vPIS)}</vPIS><vCOFINS>${dec(vCOFINS)}</vCOFINS><vOutro>0.00</vOutro><vNF>${dec(vNF)}</vNF></ICMSTot></total>`;
+  const total = `<total><ICMSTot><vBC>${dec(vBC)}</vBC><vICMS>${dec(vICMS)}</vICMS><vICMSDeson>0.00</vICMSDeson><vFCP>0.00</vFCP><vBCST>0.00</vBCST><vST>0.00</vST><vFCPST>0.00</vFCPST><vFCPSTRet>0.00</vFCPSTRet><vProd>${dec(vProd)}</vProd><vFrete>${dec(vFrete)}</vFrete><vSeg>0.00</vSeg><vDesc>0.00</vDesc><vII>0.00</vII><vIPI>0.00</vIPI><vIPIDevol>0.00</vIPIDevol><vPIS>${dec(vPIS)}</vPIS><vCOFINS>${dec(vCOFINS)}</vCOFINS><vOutro>0.00</vOutro><vNF>${dec(vNF)}</vNF></ICMSTot>${rtcTotalXml(rtc, vNF)}</total>`;
 
   const paid = n.payments.reduce((s, p) => s + Math.round(p.vPag * 100), 0);
   if (paid < Math.round(vNF * 100) && !n.returnOf) throw new Error(`O total pago (${dec(paid / 100)}) é menor que o valor da nota (${dec(vNF)}).`);
