@@ -21,8 +21,11 @@ import { validateAgainst } from './xsd';
 const sent = (e: unknown) => (e as { sent?: boolean }).sent === true;
 const mtls = (ctx: ProviderCtx): Mtls => ({ keyPem: ctx.certificate!.keyPem, certPem: ctx.certificate!.certPem });
 const PRES = { COUNTER: 1, INTERNET: 2, PHONE: 3, DELIVERY: 9, OTHER: 9 } as const;
+const needsIntermediary = (doc: OutgoingDocument) => doc.marketplace && !doc.returnOf?.length;
+const MARKETPLACE_ISSUE = 'Venda de marketplace exige CNPJ do intermediador e identificação do cadastro do vendedor na plataforma. A emissão direta ainda não envia esses dados.';
 
 export function toNfeInput(doc: OutgoingDocument, ctx: ProviderCtx): NfeInput {
+  if (needsIntermediary(doc)) throw new Error(MARKETPLACE_ISSUE);
   if (!doc.accessKey) throw new Error('Documento sem chave de acesso reservada.');
   const e = doc.emitter;
   if (!e.cMun) throw new Error('Código IBGE do município do emitente não encontrado.');
@@ -73,6 +76,7 @@ export class SefazDirectProvider implements FiscalProvider {
       if (!ctx.csc) out.push({ code: 'SEFAZ_CSC', message: 'CSC da NFC-e não configurado para este ambiente (código e identificador, obtidos no portal da SEFAZ).' });
     }
     if (!doc.payments.length && !doc.returnOf?.length) out.push({ code: 'SEFAZ_PAYMENT', message: 'Informe a forma de pagamento.' });
+    if (needsIntermediary(doc)) out.push({ code: 'SEFAZ_INTERMEDIARY', message: MARKETPLACE_ISSUE });
     for (const item of doc.items) {
       const label = `Item ${item.line} (${item.sku})`;
       const simple = doc.emitter.regime === 1 || doc.emitter.regime === 4;

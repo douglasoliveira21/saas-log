@@ -360,6 +360,7 @@ export class FiscalOutgoingService {
     return {
       ref: doc.id, number: doc.number ?? undefined, series: doc.series ?? undefined, accessKey: doc.accessKey ?? undefined, model, environment, issuedAt: doc.issuedAt ?? new Date(),
       presence: model === '65' ? (channel === 'STORE' ? 'COUNTER' : 'DELIVERY') : channel === 'STORE' ? 'COUNTER' : channel === 'WEB' ? 'INTERNET' : channel === 'PHONE' ? 'PHONE' : 'OTHER',
+      marketplace: channel === 'MARKETPLACE',
       destination: est.state && cust.state && est.state !== cust.state.toUpperCase() ? 2 : 1,
       finalConsumer: cust.kind === 'PF' || model === '65',
       emitter: { cnpj: onlyDigits(est.cnpj ?? ''), name: est.company.legalName, tradeName: est.company.tradeName, street: est.street ?? '', number: est.number ?? 'SN', district: est.district ?? '', city: est.city ?? '', cMun: est.ibgeCode ?? this.ibge.lookup(est.city, est.state), uf: est.state ?? '', zip: onlyDigits(est.zipCode ?? ''), ie: est.stateRegistration ?? '', regime: regime as 1 | 3 | 4, cnae: est.cnae ? onlyDigits(est.cnae) : null },

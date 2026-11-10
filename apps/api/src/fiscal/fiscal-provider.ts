@@ -56,6 +56,7 @@ export interface OutgoingDocument {
   environment: FiscalEnvironment;
   issuedAt: Date;
   presence: 'COUNTER' | 'DELIVERY' | 'INTERNET' | 'PHONE' | 'OTHER';
+  marketplace?: boolean;
   destination: 1 | 2 | 3; // 1 interna · 2 interestadual · 3 exterior
   finalConsumer: boolean;
   emitter: { cnpj: string; name: string; tradeName: string | null; street: string; number: string; district: string; city: string; cMun: string | null; uf: string; zip: string; ie: string; regime: 1 | 3 | 4; cnae: string | null };

@@ -13,6 +13,15 @@ export const base = (over: Partial<NfeInput> = {}): NfeInput => ({
 });
 
 describe('XML da NF-e contra o XSD do pacote (validação estrutural real)', () => {
+  it.each([1, 2, 3, 4, 9] as const)('informa operação sem intermediador quando indPres=%s', (indPres) => {
+    expect(buildNfeXml(base({ indPres }))).toContain(`<indPres>${indPres}</indPres><indIntermed>0</indIntermed><procEmi>`);
+  });
+
+  it('omite o indicador quando a presença não exige ou na devolução', () => {
+    expect(buildNfeXml(base({ indPres: 0 }))).not.toContain('<indIntermed>');
+    expect(buildNfeXml(base({ returnOf: [chave()] }))).not.toContain('<indIntermed>');
+  });
+
   it('Simples Nacional (CSOSN 102, PIS/COFINS 49) é válido', async () => {
     const xml = buildNfeXml(base());
     const r = await validateAgainst('nfe_v4.00.xsd', xml.replace('</infNFe></NFe>', '</infNFe></NFe>'));
