@@ -639,21 +639,21 @@ th[aria-sort] .sort { opacity: 1; color: var(--brand); }
 .auth-side::before { content: ''; position: absolute; width: 520px; height: 520px; right: -180px; bottom: -200px; border-radius: 50%; background: radial-gradient(closest-side, rgba(122,184,255,.35), transparent); }
 .auth-side-in { position: relative; z-index: 1; min-height: 100vh; padding: 48px; display: flex; flex-direction: column; justify-content: space-between; }
 .auth-side-in small { opacity: .72; font-size: .76rem; line-height: 1.5; }
-.auth-side-login { background: #17318d url('/brand/login-warehouse.png') no-repeat left bottom / cover; }
-.auth-side-login::before { display: none; }
+.auth-side-login { background: #17318d; isolation: isolate; }
+.auth-side-login::before { display: block; inset: 0; width: auto; height: auto; border-radius: 0; background: url('/brand/login-warehouse.png') no-repeat left bottom / min(90%, 640px) auto; opacity: .35; pointer-events: none; -webkit-mask-image: radial-gradient(ellipse at left bottom, #000 25%, transparent 75%); mask-image: radial-gradient(ellipse at left bottom, #000 25%, transparent 75%); }
 .auth-side-login .auth-side-in { justify-content: flex-start; gap: 32px; }
-.auth-side-login .auth-side-in > div { margin-bottom: 240px; }
+.auth-side-login .auth-side-in > div { margin-bottom: 160px; }
 .auth-side-login .auth-side-in > small { margin-top: auto; }
 .auth-main { display: grid; place-items: center; padding: 24px; background: var(--bg); }
 .auth-main { position: relative; overflow: hidden; }
 .auth-main::before, .auth-main::after { content: ''; position: absolute; border-radius: 999px; pointer-events: none; filter: blur(2px); opacity: .55; }
 .auth-main::before { width: 280px; height: 280px; right: -120px; top: -110px; background: radial-gradient(circle, color-mix(in srgb, var(--brand) 16%, transparent), transparent 68%); }
 .auth-main::after { width: 220px; height: 220px; left: -120px; bottom: -120px; background: radial-gradient(circle, color-mix(in srgb, var(--brand) 10%, transparent), transparent 68%); }
-.auth-main-login { background: #f1f3f6 url('/brand/login-logistics.png') no-repeat right bottom / cover; }
-.auth-main-login::before { inset: 0; width: auto; height: auto; border-radius: 0; filter: none; opacity: 1; background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 15%, transparent), color-mix(in srgb, var(--bg) 35%, transparent)); }
+.auth-main-login { background: var(--bg); isolation: isolate; }
+.auth-main-login::before { inset: 0; width: auto; height: auto; border-radius: 0; filter: none; opacity: .4; background: url('/brand/login-logistics.png') no-repeat right bottom / min(90%, 640px) auto; -webkit-mask-image: radial-gradient(ellipse at right bottom, #000 25%, transparent 75%); mask-image: radial-gradient(ellipse at right bottom, #000 25%, transparent 75%); }
 .auth-main-login::after { display: none; }
-:root[data-theme='dark'] .auth-main-login::before { background: rgba(11, 15, 23, .76); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .auth-main-login::before { background: rgba(11, 15, 23, .76); } }
+:root[data-theme='dark'] .auth-main-login::before { opacity: .12; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .auth-main-login::before { opacity: .12; } }
 .auth-col { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 18px; }
 .auth-col { position: relative; z-index: 1; }
 .auth-top-logo { display: none; height: 34px; width: auto; align-self: center; }
