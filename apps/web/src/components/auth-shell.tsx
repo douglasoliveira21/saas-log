@@ -39,7 +39,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
           <img className="sys-logo full auth-top-logo" src="/brand/logo.png" alt={BRAND.name} />
           {children}
           <footer className="auth-foot">
-            <nav aria-label="Informações legais"><Link href="/termos">Termos de uso</Link><span aria-hidden>·</span><Link href="/privacidade">Política de privacidade</Link></nav>
+            <nav aria-label="Informações e suporte"><Link href="/termos">Termos de uso</Link><span aria-hidden>·</span><Link href="/privacidade">Política de privacidade</Link><span aria-hidden>·</span><Link href="/ajuda">Central de ajuda</Link></nav>
             <span>Suporte: <a href={`mailto:${VGON.email}`}>{VGON.email}</a></span>
           </footer>
         </motion.div>

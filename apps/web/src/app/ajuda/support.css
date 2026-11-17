@@ -1,0 +1,50 @@
+.support-page { min-height: 100vh; background: var(--bg); color: var(--text); }
+.support-header, .support-main, .support-footer { width: min(1120px, calc(100% - 40px)); margin-inline: auto; }
+.support-header { min-height: 88px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 18px; }
+.support-main { padding-block: 16px 56px; }
+.support-hero { display: grid; grid-template-columns: 1.25fr 1fr; gap: 36px; padding: clamp(24px, 4vw, 48px); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); }
+.support-eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: .85rem; font-weight: 600; color: var(--brand); }
+.support-hero h1 { margin: 16px 0; font-size: clamp(1.8rem, 4vw, 2.8rem); line-height: 1.15; letter-spacing: -.035em; }
+.support-hero p { color: var(--text-2); line-height: 1.65; }
+.support-hero .btn { margin-top: 12px; }
+.support-contact { font-size: .9rem; overflow-wrap: anywhere; }
+.support-contact a { display: block; font-weight: 600; }
+.support-request { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; align-self: center; }
+.support-request h2 { margin: 0 0 16px; font-size: 1.05rem; }
+.support-request ul { padding-left: 20px; margin: 0; color: var(--text-2); line-height: 1.6; }
+.support-request li + li { margin-top: 10px; }
+.support-request p { margin-bottom: 0; font-size: .85rem; }
+.support-section-title { margin: 36px 0 18px; font-size: 1.35rem; }
+.support-topics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.support-topic { padding: 22px; display: flex; flex-direction: column; text-decoration: none; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.support-topic:hover { border-color: var(--brand); }
+.support-topic > svg { color: var(--brand); }
+.support-topic h3 { font-size: 1rem; margin: 16px 0 8px; }
+.support-topic p { color: var(--text-2); line-height: 1.6; margin: 0 0 20px; font-size: .9rem; }
+.support-topic span { display: flex; align-items: center; gap: 6px; color: var(--brand); font-size: .85rem; font-weight: 600; margin-top: auto; }
+.support-faq { margin-top: 36px; padding: clamp(20px, 3vw, 32px); border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-lg); }
+.support-faq h2 { font-size: 1.35rem; margin: 0 0 16px; }
+.support-faq details { padding: 18px 0; scroll-margin-top: 20px; }
+.support-faq details + details { border-top: 1px solid var(--border); }
+.support-faq summary { cursor: pointer; font-weight: 600; line-height: 1.5; }
+.support-faq p { margin: 12px 0 0; color: var(--text-2); line-height: 1.7; }
+.support-bottom { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-top: 28px; padding: 28px; border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius-lg); }
+.support-bottom h2 { font-size: 1.2rem; margin: 0 0 8px; }
+.support-bottom p { max-width: 580px; margin: 0; color: var(--text-2); line-height: 1.6; }
+.support-bottom .btn { flex-shrink: 0; }
+.support-footer { border-top: 1px solid var(--border); padding-block: 28px; display: flex; justify-content: space-between; gap: 24px; font-size: .85rem; color: var(--text-2); }
+.support-footer > div { display: grid; gap: 6px; }
+.support-footer nav { display: flex; gap: 20px; align-items: start; flex-wrap: wrap; }
+.support-page a:focus-visible, .support-page summary:focus-visible { outline: 3px solid var(--brand); outline-offset: 4px; }
+@media (max-width: 900px) {
+  .support-topics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .support-hero { grid-template-columns: 1fr; gap: 24px; }
+}
+@media (max-width: 540px) {
+  .support-header, .support-main, .support-footer { width: calc(100% - 28px); }
+  .support-header .sys-logo { max-width: 130px; }
+  .support-header .btn { font-size: .8rem; }
+  .support-topics { grid-template-columns: 1fr; }
+  .support-bottom, .support-footer { flex-direction: column; align-items: stretch; }
+  .support-footer nav { gap: 16px; }
+}
