@@ -3,8 +3,8 @@ import {
 } from './connector';
 
 /**
- * Conector Amazon (Selling Partner API, SP-API) — escopo desta etapa: AUTORIZAÇÃO PRÓPRIA (o vendedor cria um aplicativo privado no
- * Seller Central e informa as credenciais; não há tela de autorização/redirecionamento), validação, renovação do token e LEITURA de pedidos.
+ * Conector Amazon (Selling Partner API, SP-API) com autorização OAuth do aplicativo público do ERP,
+ * validação, renovação do token e leitura de pedidos. Credenciais privadas antigas continuam válidas.
  * Catálogo, publicação, preço, estoque, envios e notificações continuam PLANNED.
  *
  * ORIGEM DAS REGRAS (ver docs/MARKETPLACE-INTEGRATIONS.md → Amazon):
@@ -17,6 +17,10 @@ import {
  * Endereços e o marketplace podem ser sobrescritos por variáveis de ambiente (testes com servidor simulado).
  */
 export const AMAZON = {
+  applicationId: () => process.env.AMAZON_APPLICATION_ID?.trim() ?? '',
+  clientId: () => process.env.AMAZON_LWA_CLIENT_ID?.trim() ?? '',
+  clientSecret: () => process.env.AMAZON_LWA_CLIENT_SECRET?.trim() ?? '',
+  draft: () => process.env.AMAZON_OAUTH_DRAFT === 'true',
   lwaUrl: () => process.env.AMAZON_LWA_URL ?? 'https://api.amazon.com/auth/o2/token',
   apiBase: () => process.env.AMAZON_SPAPI_BASE ?? 'https://sellingpartnerapi-na.amazon.com',
   marketplaceId: () => process.env.AMAZON_MARKETPLACE_ID ?? 'A2Q3Y263D00KWC', // Brasil
@@ -127,16 +131,10 @@ export function normalizeItems(list: unknown): ExternalOrderItem[] {
 
 export class AmazonConnector extends BaseConnector {
   readonly info: ConnectorInfo = {
-    provider: 'AMAZON', displayName: 'Amazon', category: 'MARKETPLACE', region: 'BR', authType: 'API_KEY',
+    provider: 'AMAZON', displayName: 'Amazon', category: 'MARKETPLACE', region: 'BR', authType: 'OAUTH2',
     docsUrl: 'https://developer-docs.amazon.com/sp-api/',
-    notes: 'Autorização própria: no Seller Central (Aplicativos e serviços → Desenvolver aplicativos) crie um aplicativo privado e autorize-o para a sua conta; informe aqui o ID e o segredo do aplicativo (Login with Amazon), o token de atualização e o ID do vendedor. Hoje: leitura de pedidos (somente os enviados por você; pedidos FBA ficam de fora). Não foi testado contra a conta real.',
+    notes: 'Conecte sua conta de vendedor fazendo login na Amazon e autorizando o acesso. O ERP testa e ativa a conexão ao retornar. Importa pedidos enviados pelo vendedor. Requer aplicativo público do ERP configurado e aprovado na Amazon. Validação com loja real pendente.',
     imageHosts: [],
-    credentialFields: [
-      { name: 'lwaClientId', label: 'ID do aplicativo (Client ID)', hint: 'Começa com amzn1.application-oa2-client.' },
-      { name: 'lwaClientSecret', label: 'Segredo do aplicativo (Client Secret)', secret: true },
-      { name: 'refreshToken', label: 'Token de atualização (Refresh Token)', secret: true, hint: 'Começa com Atzr|. Gerado ao autorizar o aplicativo na sua conta.' },
-      { name: 'sellerId', label: 'ID do vendedor (Merchant Token)', hint: 'Seller Central → Configurações → Informações da conta → ID do comerciante.' },
-    ],
   };
 
   getCapabilities(): CapabilityMatrix {
@@ -156,8 +154,32 @@ export class AmazonConnector extends BaseConnector {
     return okResult({ credentials: { lwaClientId, lwaClientSecret, refreshToken, accessToken: t.data.accessToken, sellerId }, expiresAt: t.data.expiresAt, externalAccountId: sellerId });
   }
 
-  authorizeConnection(): Promise<OpResult<{ authorizationUrl: string }>> {
-    return Promise.resolve(fail('UNSUPPORTED', 'A Amazon usa autorização própria: informe as credenciais do seu aplicativo privado (não há tela de autorização).'));
+  async authorizeConnection(_ctx: ConnectionContext, p: { redirectUri: string; state: string }): Promise<OpResult<{ authorizationUrl: string }>> {
+    if (!AMAZON.applicationId() || !AMAZON.clientId() || !AMAZON.clientSecret()) {
+      return fail('NOT_CONFIGURED', 'A conexão por login da Amazon ainda precisa ser configurada pelo administrador do ERP.');
+    }
+    const url = new URL('https://sellercentral.amazon.com.br/apps/authorize/consent');
+    url.search = new URLSearchParams({ application_id: AMAZON.applicationId(), state: p.state, redirect_uri: p.redirectUri }).toString();
+    if (AMAZON.draft()) url.searchParams.set('version', 'beta');
+    return okResult({ authorizationUrl: url.toString() });
+  }
+
+  async completeAuthorization(_ctx: ConnectionContext, p: { code: string; redirectUri: string; sellerId?: string }): Promise<OpResult<Credentials>> {
+    if (!AMAZON.clientId() || !AMAZON.clientSecret()) return fail('NOT_CONFIGURED', 'Configure o aplicativo Amazon no servidor do ERP.');
+    if (!p.sellerId || !/^[A-Z0-9]{8,20}$/.test(p.sellerId)) return fail('VALIDATION', 'Retorno da Amazon sem um ID de vendedor válido.');
+    const r = await request('POST', AMAZON.lwaUrl(), {
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'authorization_code', code: p.code, redirect_uri: p.redirectUri, client_id: AMAZON.clientId(), client_secret: AMAZON.clientSecret() }).toString(),
+    });
+    if (!r.ok) return r;
+    const accessToken = str(r.data.access_token);
+    const refreshToken = str(r.data.refresh_token);
+    const ttl = Number(r.data.expires_in);
+    if (!accessToken || !refreshToken || !Number.isFinite(ttl) || ttl <= 0) return fail('UNAVAILABLE', 'A Amazon não retornou todos os dados necessários para conectar a loja. Tente autorizar novamente.');
+    return okResult({
+      credentials: { authMode: 'PUBLIC_OAUTH', lwaClientId: AMAZON.clientId(), accessToken, refreshToken, sellerId: p.sellerId },
+      expiresAt: new Date(Date.now() + ttl * 1000), externalAccountId: p.sellerId,
+    });
   }
 
   async validateConnection(ctx: ConnectionContext): Promise<OpResult<{ externalAccountId?: string }>> {
@@ -173,8 +195,14 @@ export class AmazonConnector extends BaseConnector {
 
   async refreshAuthorization(ctx: ConnectionContext): Promise<OpResult<Credentials>> {
     const c = ctx.credentials ?? {};
-    if (typeof c.lwaClientId !== 'string' || typeof c.lwaClientSecret !== 'string' || typeof c.refreshToken !== 'string') return fail('AUTH', 'Credenciais incompletas: informe-as novamente.');
-    const t = await exchange(c.lwaClientId, c.lwaClientSecret, c.refreshToken);
+    const clientId = c.authMode === 'PUBLIC_OAUTH' ? AMAZON.clientId() : field(c, 'lwaClientId');
+    const clientSecret = c.authMode === 'PUBLIC_OAUTH' ? AMAZON.clientSecret() : field(c, 'lwaClientSecret');
+    if (!clientId || !clientSecret) return c.authMode === 'PUBLIC_OAUTH'
+      ? fail('NOT_CONFIGURED', 'Credenciais do aplicativo Amazon indisponíveis. Contate o administrador do ERP.')
+      : fail('AUTH', 'Credenciais incompletas: informe-as novamente.');
+    if (c.authMode === 'PUBLIC_OAUTH' && c.lwaClientId !== clientId) return fail('AUTH', 'O aplicativo Amazon foi alterado. Reconecte a loja.');
+    if (typeof c.refreshToken !== 'string') return fail('AUTH', 'A autorização Amazon precisa ser renovada. Reconecte a loja.');
+    const t = await exchange(clientId, clientSecret, c.refreshToken);
     if (!t.ok) return t;
     return okResult({ credentials: { ...c, accessToken: t.data.accessToken }, expiresAt: t.data.expiresAt });
   }

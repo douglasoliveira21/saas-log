@@ -7,12 +7,17 @@ import { AuditService } from '../audit/audit.service';
 import { AuthContext } from '../common/auth';
 import { getConfig } from '../config/app.config';
 import { PrismaService } from '../prisma/prisma.service';
-import { ConnectionContext, Connector, ErrorCode, fail, OpResult } from './connector';
+import { ConnectionContext, Connector, ErrorCode, fail, okResult, OpResult } from './connector';
 import { CryptoService, redactSecrets } from './crypto.service';
 import { JobQueue } from './job-queue';
 import { ConnectorRegistry } from './providers';
+import { AMAZON } from './amazon.connector';
 
 type Tx = Prisma.TransactionClient;
+interface OAuthState {
+  purpose: string; tid: string; cid: string; uid: string; nonce: string;
+  exp?: number; amazonSellerId?: string;
+}
 
 export interface ConnectionConfig {
   orderImport?: boolean;
@@ -196,7 +201,7 @@ export class ConnectionsService {
 
   async authorize(ctx: AuthContext, id: string) {
     const conn = await this.get(ctx, id);
-    if (['ACTIVE', 'PAUSED'].includes(conn.status)) throw new ConflictException('Pause a conexão antes de reautorizar.');
+    if (conn.status === 'ACTIVE') throw new ConflictException('Pause a conexão antes de reautorizar.');
     const connector = this.connector(conn.provider);
     const nonce = randomBytes(16).toString('hex');
     const redirectUri = `${getConfig().webOrigin}/api/integrations/callback`;
@@ -208,7 +213,42 @@ export class ConnectionsService {
       await tx.marketplaceConnection.update({ where: { id }, data: { status: 'AWAITING_AUTHORIZATION', oauthNonce: nonce } });
       await this.audit.record(tx, ctx, { action: 'integration.authorization_started', entity: 'marketplace_connection', entityId: id });
     });
-    return { authorizationUrl: r.data.authorizationUrl };
+    return { authorizationUrl: r.data.authorizationUrl, amazonBrowserState: conn.provider === 'AMAZON' ? state : undefined };
+  }
+
+  private async oauthState(state: string): Promise<OAuthState> {
+    try {
+      const p = await this.jwt.verifyAsync<OAuthState>(state);
+      if (p.purpose !== 'oauth' || !p.tid || !p.cid || !p.uid || !p.nonce) throw new Error();
+      return p;
+    } catch {
+      throw new BadRequestException('Autorização expirada ou inválida. Inicie a conexão novamente.');
+    }
+  }
+
+  /** Retorno intermediário do Seller Central, vinculado ao navegador que iniciou a conexão. */
+  async amazonLogin(browserState: string, params: { callbackUri: string; amazonState: string; sellerId: string }) {
+    const p = await this.oauthState(browserState);
+    if (!/^[A-Z0-9]{8,20}$/.test(params.sellerId) || !params.amazonState || params.amazonState.length > 4096) throw new BadRequestException('Retorno de autorização Amazon inválido.');
+    let url: URL;
+    try { url = new URL(params.callbackUri); } catch { throw new BadRequestException('Endereço de retorno Amazon inválido.'); }
+    const origins = ['https://sellercentral.amazon.com.br', 'https://sellercentral.amazon.com', 'https://amazon.com', 'https://www.amazon.com'];
+    if (!AMAZON.applicationId() || !origins.includes(url.origin) || url.username || url.password || url.hash
+      || url.pathname !== `/apps/authorize/confirm/${AMAZON.applicationId()}`) {
+      throw new BadRequestException('Endereço de retorno Amazon não permitido.');
+    }
+    const conn = await this.prisma.withContext({ tenantId: p.tid }, (tx) => tx.marketplaceConnection.findFirst({ where: {
+      id: p.cid, tenantId: p.tid, provider: 'AMAZON', status: 'AWAITING_AUTHORIZATION', oauthNonce: p.nonce,
+    } }));
+    if (!conn) throw new BadRequestException('Autorização Amazon já utilizada ou interrompida. Inicie novamente.');
+    // Mantém o prazo original e vincula o vendedor confirmado ao retorno final.
+    const state = await this.jwt.signAsync({ ...p, amazonSellerId: params.sellerId });
+    url.searchParams.set('state', state);
+    url.searchParams.set('amazon_state', params.amazonState);
+    url.searchParams.set('redirect_uri', `${getConfig().webOrigin}/api/integrations/callback`);
+    if (AMAZON.draft()) url.searchParams.set('version', 'beta');
+    else url.searchParams.delete('version');
+    return { authorizationUrl: url.toString() };
   }
 
   /**
@@ -240,45 +280,63 @@ export class ConnectionsService {
   }
 
   /** Retorno do provedor (rota pública protegida por `state` assinado, expirável e de uso único). */
-  async callback(code: string, state: string): Promise<{ connectionId: string }> {
-    let p: { purpose: string; tid: string; cid: string; uid: string; nonce: string };
-    try {
-      p = await this.jwt.verifyAsync(state);
-    } catch {
-      throw new BadRequestException('Autorização expirada ou inválida. Inicie a conexão novamente.');
-    }
-    if (p.purpose !== 'oauth') throw new BadRequestException('Autorização inválida.');
+  async callback(code: string, state: string, shopId?: string, sellerId?: string, amazonBrowserState?: string): Promise<{ connectionId: string; activate?: boolean }> {
+    const p = await this.oauthState(state);
     const ctx = { tenantId: p.tid, userId: p.uid };
     const conn = await this.prisma.withContext(ctx, (tx) => tx.marketplaceConnection.findFirst({ where: { id: p.cid, tenantId: p.tid } }));
     if (!conn || conn.status !== 'AWAITING_AUTHORIZATION' || conn.oauthNonce !== p.nonce) throw new BadRequestException('Autorização já utilizada ou inválida. Inicie a conexão novamente.');
+    if (conn.provider === 'AMAZON') {
+      const browser = await this.oauthState(amazonBrowserState ?? '');
+      if (browser.cid !== p.cid || browser.tid !== p.tid || browser.uid !== p.uid || browser.nonce !== p.nonce
+        || (p.amazonSellerId && p.amazonSellerId !== sellerId)) {
+        throw new BadRequestException('A autorização Amazon não corresponde à conexão iniciada neste navegador.');
+      }
+    } else if (sellerId !== undefined) {
+      throw new BadRequestException('Retorno Amazon incompatível com o canal selecionado.');
+    }
     const connector = this.connector(conn.provider);
     const redirectUri = `${getConfig().webOrigin}/api/integrations/callback`;
     const started = Date.now();
-    const r = await connector.completeAuthorization(this.context(p.tid, conn, null), { code, redirectUri, state });
+    const nonceClaimed = ['SHOPEE', 'AMAZON'].includes(conn.provider);
+    if (nonceClaimed) {
+      const claim = await this.prisma.withContext(ctx, (tx) => tx.marketplaceConnection.updateMany({
+        where: { id: conn.id, tenantId: p.tid, status: 'AWAITING_AUTHORIZATION', oauthNonce: p.nonce },
+        data: { oauthNonce: null },
+      }));
+      if (!claim.count) throw new BadRequestException('Autorização já utilizada. Inicie a conexão novamente.');
+    }
+    const r = await connector.completeAuthorization(this.context(p.tid, conn, null), { code, redirectUri, state, shopId, sellerId });
     await this.writeLog(p.tid, conn.id, 'completeAuthorization', r, Date.now() - started);
     if (!r.ok) {
-      await this.prisma.withContext(ctx, (tx) => tx.marketplaceConnection.update({ where: { id: conn.id }, data: { status: settledStatus(conn), oauthNonce: null, lastError: redactSecrets(r.message) } }));
+      await this.prisma.withContext(ctx, (tx) => tx.marketplaceConnection.updateMany({
+        where: { id: conn.id, tenantId: p.tid, status: 'AWAITING_AUTHORIZATION', oauthNonce: nonceClaimed ? null : p.nonce },
+        data: { status: settledStatus(conn), oauthNonce: null, lastError: redactSecrets(r.message) },
+      }));
       throwFor(r);
     }
     try {
     await this.prisma.withContext(ctx, async (tx) => {
-      await tx.marketplaceConnection.update({
-        where: { id: conn.id },
+      const updated = await tx.marketplaceConnection.updateMany({
+        where: { id: conn.id, tenantId: p.tid, status: 'AWAITING_AUTHORIZATION', oauthNonce: nonceClaimed ? null : p.nonce },
         data: {
           credentialsEnc: this.crypto.encrypt(p.tid, `cred:${conn.id}`, r.data.credentials), tokenExpiresAt: r.data.expiresAt ?? null,
           externalAccountId: r.data.externalAccountId ?? conn.externalAccountId, oauthNonce: null, testedAt: null, lastError: null, status: 'TEST_PENDING',
         },
       });
+      if (!updated.count) throw new BadRequestException('A conexão foi alterada durante a autorização. Inicie novamente.');
       await this.audit.record(tx, ctx, { action: 'integration.authorized', entity: 'marketplace_connection', entityId: conn.id, metadata: { provider: conn.provider } });
     });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-        await this.prisma.withContext(ctx, (tx) => tx.marketplaceConnection.update({ where: { id: conn.id }, data: { status: settledStatus(conn), oauthNonce: null } }));
+        await this.prisma.withContext(ctx, (tx) => tx.marketplaceConnection.updateMany({
+          where: { id: conn.id, tenantId: p.tid, status: 'AWAITING_AUTHORIZATION', oauthNonce: nonceClaimed ? null : p.nonce },
+          data: { status: settledStatus(conn), oauthNonce: null },
+        }));
         throw new ConflictException('Esta conta do canal já está conectada em outra conexão desta empresa. Desconecte a outra conexão antes.');
       }
       throw e;
     }
-    return { connectionId: conn.id };
+    return { connectionId: conn.id, activate: conn.provider === 'AMAZON' };
   }
 
   async test(ctx: AuthContext, id: string) {
@@ -373,6 +431,34 @@ export class ConnectionsService {
   }
 
   async refreshCredentials(tenantId: string, id: string): Promise<OpResult<null>> {
+    const conn = await this.prisma.withContext({ tenantId }, (tx) => tx.marketplaceConnection.findFirst({ where: { id, tenantId } }));
+    if (conn?.provider !== 'SHOPEE') return this.refreshAndStore(tenantId, id);
+    if (!conn.credentialsEnc || ['DISCONNECTED', 'NOT_CONNECTED', 'AWAITING_AUTHORIZATION'].includes(conn.status)) return fail('AUTH', 'Autorize a loja Shopee antes de renovar o acesso.');
+    const startedAt = new Date();
+    const claim = await this.prisma.withContext({ tenantId }, (tx) => tx.marketplaceConnection.updateMany({
+      where: {
+        id, tenantId, credentialsEnc: conn.credentialsEnc, status: conn.status,
+        OR: [{ tokenRefreshStartedAt: null }, { tokenRefreshStartedAt: { lt: new Date(startedAt.getTime() - 120_000) } }],
+      },
+      data: { tokenRefreshStartedAt: startedAt },
+    }));
+    if (!claim.count) return fail('UNAVAILABLE', 'A renovação do acesso Shopee já está em andamento.', 10_000);
+    try {
+      const r = await this.call(tenantId, id, 'refreshAuthorization', (c, cc) => c.refreshAuthorization(cc));
+      if (!r.ok) return r;
+      const stored = await this.prisma.withContext({ tenantId }, (tx) => tx.marketplaceConnection.updateMany({
+        where: { id, tenantId, credentialsEnc: conn.credentialsEnc, tokenRefreshStartedAt: startedAt, status: { notIn: ['DISCONNECTED', 'AWAITING_AUTHORIZATION'] } },
+        data: { credentialsEnc: this.crypto.encrypt(tenantId, `cred:${id}`, r.data.credentials), tokenExpiresAt: r.data.expiresAt ?? null },
+      }));
+      return stored.count ? okResult(null) : fail('AUTH', 'A conexão Shopee foi alterada durante a renovação. Teste ou autorize a loja novamente.');
+    } finally {
+      await this.prisma.withContext({ tenantId }, (tx) => tx.marketplaceConnection.updateMany({
+        where: { id, tenantId, tokenRefreshStartedAt: startedAt }, data: { tokenRefreshStartedAt: null },
+      }));
+    }
+  }
+
+  private async refreshAndStore(tenantId: string, id: string): Promise<OpResult<null>> {
     const r = await this.call(tenantId, id, 'refreshAuthorization', (c, cc) => c.refreshAuthorization(cc));
     if (!r.ok) return r;
     await this.prisma.withContext({ tenantId }, (tx) =>

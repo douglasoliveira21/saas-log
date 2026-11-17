@@ -157,11 +157,11 @@ export class JobWorker implements OnApplicationBootstrap, OnModuleDestroy {
     const last = await this.connections.lastSync(tenantId, connectionId!);
     const days = Math.max(1, Number((await this.connections.configOf(tenantId, connectionId!)).initialImportDays ?? 7));
     // Janela com sobreposição de 10 min: a importação é idempotente, então reler pedidos recentes é seguro.
-    const since = last ? new Date(last.getTime() - 10 * 60_000) : new Date(Date.now() - days * 86_400_000);
+    const since = typeof job.payload.since === 'string' ? new Date(job.payload.since) : last ? new Date(last.getTime() - 10 * 60_000) : new Date(Date.now() - days * 86_400_000);
+    const syncStartedAt = typeof job.payload.syncStartedAt === 'string' ? new Date(job.payload.syncStartedAt) : new Date();
     const total: ImportSummary & { fetched: number } = { fetched: 0, imported: 0, cancelled: 0, awaitingPayment: 0, needsAttention: 0, unchanged: 0 };
-    let cursor: string | undefined;
+    let cursor = typeof job.payload.cursor === 'string' ? job.payload.cursor : undefined;
     let pages = 0;
-    let watermark = 0;
     do {
       const r = await this.connections.call(tenantId, connectionId!, 'fetchOrders', (c, ctx) => c.fetchOrders(ctx, { since, cursor }));
       if (!r.ok) {
@@ -171,12 +171,19 @@ export class JobWorker implements OnApplicationBootstrap, OnModuleDestroy {
       const s = await this.importer.importOrders(tenantId, connectionId!, r.data.orders);
       for (const k of Object.keys(s) as (keyof ImportSummary)[]) total[k] += s[k];
       total.fetched += r.data.orders.length;
-      for (const o of r.data.orders) if (o.createdAt) watermark = Math.max(watermark, new Date(o.createdAt).getTime());
       cursor = r.data.nextCursor;
       pages++;
     } while (cursor && pages < 10);
-    // Se houve mais páginas do que o limite por execução, avança só até o último pedido lido (a próxima execução continua dali).
-    await this.connections.touchSync(tenantId, connectionId!, cursor && watermark ? new Date(watermark) : undefined);
+    // Continua a mesma consulta até o fim. Datas de criação não servem como marco para buscas por atualização.
+    if (cursor) {
+      await this.prisma.withContext({ tenantId }, (tx) => this.queue.enqueue(tx, tenantId, {
+        type: 'connection.reconcile', connectionId: connectionId!,
+        idempotencyKey: `reconcile:${job.id}:continuation`,
+        payload: { since: since.toISOString(), syncStartedAt: syncStartedAt.toISOString(), cursor },
+      }));
+    } else {
+      await this.connections.touchSync(tenantId, connectionId!, syncStartedAt);
+    }
     return { ok: true, result: { ...total, truncated: !!cursor } };
   }
 

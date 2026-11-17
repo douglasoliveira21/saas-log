@@ -1,6 +1,6 @@
 # Central de integrações (Fases 4 e 5)
 
-**Estado:** infraestrutura concluída e testada (Fase 4). **Mercado Livre (Fase 5):** autorização OAuth, validação, renovação de token, importação de pedidos (reconciliação + notificações) e vínculo com produtos estão **implementados e testados contra um servidor SIMULADO — nunca contra a API real**. Por isso a matriz marca esses itens como `IMPLEMENTED_UNVERIFIED`, não `SUPPORTED`. Publicação, preço, estoque, catálogo e envios do Mercado Livre continuam `PLANNED`/`NOT_IMPLEMENTED`. Amazon e Shopee seguem como esqueleto (501).
+**Estado:** infraestrutura concluída e testada (Fase 4). **Mercado Livre (Fase 5):** autorização OAuth, validação, renovação de token, importação de pedidos (reconciliação + notificações) e vínculo com produtos estão **implementados e testados contra um servidor SIMULADO — nunca contra a API real**. Por isso a matriz marca esses itens como `IMPLEMENTED_UNVERIFIED`, não `SUPPORTED`. Shopee tem autorização, renovação, pedidos, catálogo, preço e estoque implementados. A configuração e os limites da Shopee estão em [SHOPEE.md](SHOPEE.md).
 
 ## O que existe
 | Peça | Onde | Observações |
@@ -73,21 +73,21 @@ Conectar → Testar conexão → conferir `externalAccountId`; aguardar a primei
 | Preço aprovado | `PUT …/listings/:produto/price` exige `pricing.manage`, motivo, respeita o **preço mínimo do produto** e a **margem mínima do canal**, pede confirmação explícita para variação > 20% e grava histórico imutável (`price_history`) + auditoria |
 | Estoque publicável | `max(0, disponível − estoque de segurança)`, limitado pelo teto de publicação; disponível = físico − reservado − bloqueado do depósito da conexão. Exemplo: 100 físico, 8 reservado, 2 bloqueado, 5 segurança → **85** |
 | Sincronização (`channel.sync`) | manual ou agendada por conexão (se envio de estoque/preço estiver ligado); envia **só o que mudou** desde o último envio (idempotente); **revalida o preço no envio** (custo/tarifa podem ter mudado); falha temporária reagenda mantendo o progresso; recusa do canal marca só aquele anúncio |
-| Honestidade do envio | se o conector não implementa a operação (hoje: **Mercado Livre, Amazon e Shopee**), o anúncio fica **BLOQUEADO** com o motivo — nunca "sincronizado"; o job termina sem repetição infinita |
+| Honestidade do envio | se o conector não implementa a operação, o anúncio fica **BLOQUEADO** com o motivo; o job termina sem repetição infinita |
 | Categorias (`channel_category_mappings`) | categoria do ERP → ID da categoria no canal, informado pelo usuário (a consulta automática de categorias e atributos obrigatórios depende dos conectores reais) |
 
 Limitações: o envio de preço/estoque só foi exercitado com o conector **Sandbox**; atualização imediata a cada movimento de estoque (hoje é periódica/manual), estoque dedicado/prioridade entre canais, reserva exclusiva por canal, arredondamento de preço, agendamento de alterações e reversão automática de preço ainda não existem.
 
 ## Matriz de funcionalidades (resumo)
-Amazon e Shopee: todas as linhas **PLANNED**. Mercado Livre: autorização, pedidos e notificações **IMPLEMENTED_UNVERIFIED**; catálogo, publicação, preço, estoque e envios **PLANNED**. Antes de marcar qualquer item como `SUPPORTED` é obrigatório: ler a documentação oficial vigente, registrar data/versão, permissões, limites e operações implementadas, e testar em sandbox/credenciais reais.
+Shopee tem autorização, pedidos, catálogo, preço e estoque **IMPLEMENTED_UNVERIFIED**. Publicação, envios e notificações da Shopee seguem **PLANNED**. Consulte a matriz retornada por `GET /api/integrations/providers` para as capacidades atuais dos demais conectores. Antes de marcar qualquer item como `SUPPORTED` é obrigatório validar a implementação com conta real.
 
 | Canal | Documentação oficial de partida | Dependências externas |
 |---|---|---|
 | Mercado Livre | https://developers.mercadolivre.com.br/pt_br/api-docs-pt-br | aplicativo registrado (client id/secret), autorização OAuth do vendedor |
 | Amazon (SP-API) | https://developer-docs.amazon.com/sp-api/lang-pt_BR/docs/sp-api-endpoints | registro de desenvolvedor, aplicativo aprovado, autorização no Seller Central |
-| Shopee | https://open.shopee.com/ (confirmar a documentação vigente) | conta Open Platform, aplicativo aprovado |
+| Shopee | https://open.shopee.com/developer-guide/20 | conta Open Platform, aplicativo aprovado, Partner ID/Key e autorização de cada loja |
 
-Datas de verificação: Mercado Livre — 20/10/2026, **parcial** (busca em páginas oficiais; leitura direta bloqueada). Amazon e Shopee — nenhuma.
+Datas de verificação: Mercado Livre — 20/10/2026, **parcial** (busca em páginas oficiais; leitura direta bloqueada). Shopee — 16/11/2026, guia de autorização e contratos v2 lidos pelo serviço público de documentação oficial. Detalhes em [SHOPEE.md](SHOPEE.md).
 
 ## Conector Sandbox
 `SANDBOX` só existe com `ENABLE_SANDBOX_CONNECTOR=true` fora de produção (testes automatizados). Simula erros (indisponibilidade, limite de requisições, token inválido, validação) para exercitar fila, retentativas e estados. Não representa nenhum marketplace.
@@ -101,7 +101,7 @@ Notificações ao usuário (e-mail/in-app) para token expirado e falhas; mapeame
 - **Conectar em um passo** (canais disponíveis): o usuário informa o nome e o depósito de origem, é levado ao canal para autorizar e, ao voltar, o teste de conexão roda sozinho; falta apenas clicar em "Ativar".
 - **Catálogo:** `apps/api/src/integrations/catalog.ts` (canal, categoria, região, autenticação prevista, documentação). Endereços de documentação conferidos como acessíveis em 20/10/2026; Americanas e Casas Bahia ficaram sem link público localizado. As formas de autenticação dos canais planejados vêm da documentação pública e **precisam ser confirmadas** antes de implementar.
 - **Logotipos:** ícones genéricos do pacote simple-icons (CC0) para os canais que têm (Shopee, AliExpress, TikTok, eBay, Etsy, Shopify, WooCommerce, VTEX); os demais mostram a sigla na cor da marca. Para usar o logotipo **oficial**, coloque o arquivo em `apps/web/public/marketplaces/<chave>.svg|png` (ex.: `mercado_livre.svg`, `magalu.png`) — ele passa a ter prioridade, sem mudar código. Os logotipos pertencem aos titulares e só identificam o canal; use arquivos que você tem direito de usar.
-- **O que depende de você para cada canal virar real:** conta de desenvolvedor/aplicativo aprovado no canal, credenciais, e leitura da documentação vigente; hoje só o Mercado Livre tem conector (e exige ML_CLIENT_ID/ML_CLIENT_SECRET no servidor).
+- **Configuração dos canais:** cada conector exige credenciais e aprovação próprias. Para Shopee, configure SHOPEE_PARTNER_ID/SHOPEE_PARTNER_KEY no servidor e siga [SHOPEE.md](SHOPEE.md).
 
 
 ## Magalu
@@ -118,17 +118,31 @@ Notificações ao usuário (e-mail/in-app) para token expirado e falhas; mapeame
 **Como o aplicativo é criado:** não há formulário web; usa-se a ferramenta de linha de comando **idm** (`idm login`, `idm client create --name … --redirect-uris https://SEU-DOMINIO/api/integrations/callback --scopes "…" --audience …`). O Client Secret **não pode ser recuperado depois**. Webhooks do Magalu (assinatura `X-Signature-256`, HMAC de `timestamp.corpo`) exigem assinatura em `/v1/onboarding/signup` e **não foram implementados**: os pedidos entram pela reconciliação periódica.
 
 
-## Amazon (SP-API) — autorização própria e pedidos
+## Amazon (SP-API) — conexão por login e pedidos
 
-**Estado:** autorização própria, validação, renovação do token e leitura de pedidos implementadas e testadas **só com servidor simulado** (`IMPLEMENTED_UNVERIFIED`; `apps/api/test/amazon.e2e-spec.ts`). Catálogo, publicação, preço, estoque e envios: **planejados**. Notificações: a Amazon entrega por SQS/EventBridge (não por HTTP): o sistema consulta por varredura.
+**Estado:** autorização OAuth por login no Seller Central, validação, renovação do token e leitura de pedidos implementadas e testadas **só com servidor simulado** (`IMPLEMENTED_UNVERIFIED`; `apps/api/test/amazon.e2e-spec.ts`). O retorno testa e ativa a loja automaticamente. Catálogo, publicação, preço, estoque e envios seguem planejados.
 
-**Custo:** o acesso à SP-API para quem integra a **própria conta** não tem cobrança. Em 2026 a Amazon anunciou uma taxa anual (US$ 1.400) e uso por volume para *desenvolvedores terceiros* (quem cria apps para outros vendedores); relatos de 12/05/2026 dizem que ela desistiu "por ora", mas **não confirmei na página oficial** — confira em developer.amazonservices.com. O vendedor que usa só a sua conta não foi alvo da cobrança.
+**Configuração pelo administrador do ERP**
 
-**Como o vendedor conecta (sem tela de login):**
-1. Seller Central → *Aplicativos e serviços → Desenvolver aplicativos* → registre-se como desenvolvedor privado e **crie um aplicativo** (com a função de pedidos/Orders).
-2. Em *Gerenciar aplicativos* → **Autorizar** (autorização própria): gera o **Refresh Token** (`Atzr|…`). Anote também o **Client ID** (`amzn1.application-oa2-client…`) e o **Client Secret** (Login with Amazon).
-3. Anote o **ID do vendedor** (Configurações → Informações da conta → ID do comerciante).
-4. No sistema: *Marketplaces → Amazon → Conectar* e preencha os quatro campos. Eles são conferidos na hora, guardados cifrados e nunca voltam para a tela.
+1. Cadastre o aplicativo público do ERP na SP-API, com as permissões de Sellers/Orders utilizadas pela integração. A liberação de clientes depende da aprovação/publicação da Amazon.
+2. Configure no serviço API `AMAZON_APPLICATION_ID`, `AMAZON_LWA_CLIENT_ID` e `AMAZON_LWA_CLIENT_SECRET`.
+3. Cadastre como **OAuth Login URI** `https://log.vgon.com.br/api/integrations/amazon/login`.
+4. Cadastre como **OAuth Redirect URI** `https://log.vgon.com.br/api/integrations/callback`.
+5. Em outras instalações, substitua o domínio pelo `WEB_ORIGIN` configurado.
+6. Use `AMAZON_OAUTH_DRAFT=true` para testar a versão Draft do aplicativo. A configuração padrão usa a versão publicada.
+
+**Como o vendedor conecta**
+
+1. Em Integrações, escolha Amazon, informe o nome da conexão e selecione o depósito.
+2. Faça login no Seller Central e conceda as permissões do aplicativo.
+3. Ao retornar, o ERP testa a participação da conta no Brasil e ativa a importação automaticamente. Se houver uma pendência, a tela informa o motivo.
+
+O retorno intermediário aceita somente endereços Amazon de confirmação do aplicativo configurado. Um cookie HttpOnly de dez minutos vincula o navegador à solicitação. O state é assinado e expirável, e seu nonce só pode ser consumido uma vez. Tokens ficam cifrados por tenant. O segredo do aplicativo público permanece no servidor. Conexões privadas já cadastradas mantêm seu formato de credenciais e a renovação.
+
+**Documentação OAuth consultada em 17/11/2026**
+
+- [Website Authorization Workflow](https://developer-docs.amazon/sp-api/docs/website-authorization-workflow)
+- [Seller Central URLs](https://developer-docs.amazon/sp-api/docs/seller-central-urls)
 
 **O que o conector faz:** troca o refresh token por access token (Login with Amazon, 1 h), chama `GET /sellers/v1/marketplaceParticipations` (precisa participar do marketplace do Brasil, `A2Q3Y263D00KWC`) e lê `GET /orders/v0/orders` (por data de atualização, páginas de 20, `NextToken`) e `.../{id}/orderItems`. Cabeçalho `x-amz-access-token`; sem assinatura AWS.
 - Status: `Unshipped`/`PartiallyShipped`/`Shipped` → pago; `Canceled` → cancelado; `Pending` → aguardando pagamento; o resto segue como veio e fica aguardando.

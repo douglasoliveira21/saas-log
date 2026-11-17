@@ -1141,6 +1141,7 @@ model MarketplaceConnection {
   webhookSecretEnc  String?          @map("webhook_secret_enc")
   oauthNonce        String?          @map("oauth_nonce")
   tokenExpiresAt    DateTime?        @map("token_expires_at")
+  tokenRefreshStartedAt DateTime?    @map("token_refresh_started_at")
   testedAt          DateTime?        @map("tested_at")
   lastSyncAt        DateTime?        @map("last_sync_at")
   lastError         String?          @map("last_error")

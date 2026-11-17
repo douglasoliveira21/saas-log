@@ -83,8 +83,16 @@ export default function IntegracoesPage() {
       const id = q.get('connected')!;
       setSel(id); setOk('Conta autorizada. Testando a conexão…');
       api(`/integrations/connections/${id}/test`, 'POST')
-        .then(() => { setOk('Conta autorizada e testada com sucesso. Clique em “Ativar” para começar a importar pedidos.'); load(); loadDetail(id); })
-        .catch((e) => { setOk(''); setError(`Conta autorizada, mas o teste falhou: ${(e as Error).message}`); load(); loadDetail(id); });
+        .then(async () => {
+          if (q.get('activate') === '1') {
+            await api(`/integrations/connections/${id}/activate`, 'POST');
+            setOk('Loja conectada e ativa. A importação dos pedidos será feita automaticamente.');
+          } else {
+            setOk('Conta autorizada e testada com sucesso. Clique em “Ativar” para começar a importar pedidos.');
+          }
+          load(); loadDetail(id);
+        })
+        .catch((e) => { setOk(''); setError(`Conta autorizada, mas a conexão precisa de atenção: ${(e as Error).message}`); load(); loadDetail(id); });
     }
     if (q.get('error')) setError(q.get('error')!);
     window.history.replaceState(null, '', '/integracoes');

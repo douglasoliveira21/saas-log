@@ -16,8 +16,6 @@ const AUTH_NOTE = 'Forma de autenticação conforme a documentação pública; c
  * Endereços de documentação foram conferidos como acessíveis em 20/10/2026; vazio = não localizado publicamente.
  */
 export const PLANNED_CHANNELS: ConnectorInfo[] = [
-  { provider: 'SHOPEE', displayName: 'Shopee', category: 'MARKETPLACE', region: 'GLOBAL', authType: 'SIGNED_OAUTH2', docsUrl: 'https://open.shopee.com/',
-    notes: 'Requer conta no Shopee Open Platform e aplicativo aprovado; a documentação vigente deve ser confirmada antes da implementação.' },
   { provider: 'AMERICANAS', displayName: 'Americanas', category: 'MARKETPLACE', region: 'BR', authType: 'API_KEY', docsUrl: '',
     notes: 'Documentação pública não localizada nesta revisão: consulte o canal ou um integrador homologado (ex.: Anymarket, Bling).' },
   { provider: 'CASAS_BAHIA', displayName: 'Casas Bahia / Ponto', category: 'MARKETPLACE', region: 'BR', authType: 'API_KEY', docsUrl: '',

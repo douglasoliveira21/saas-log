@@ -7,6 +7,8 @@ import request from 'supertest';
 import { AppModule, configureApp } from '../src/app.module';
 import { JobWorker } from '../src/integrations/jobs.service';
 import { ConnectorRegistry } from '../src/integrations/providers';
+import { ConnectionsService } from '../src/integrations/connections.service';
+import { CryptoService } from '../src/integrations/crypto.service';
 
 /**
  * ATENÇÃO: o servidor abaixo SIMULA a SP-API da Amazon conforme a documentação pesquisada em 29/10/2026 (Login with Amazon, cabeçalho
@@ -18,6 +20,8 @@ class MockAmazon {
   base = '';
   access = new Set<string>();
   n = 0;
+  usedCodes = new Set<string>();
+  incompleteTokens = false;
   requests: { method: string; path: string; query: URLSearchParams; headers: IncomingMessage['headers']; body: any; contentType: string }[] = [];
   orders: Record<string, any>[] = [];
   participates = true;
@@ -49,6 +53,12 @@ class MockAmazon {
 
     if (url.pathname === '/auth/o2/token') {
       if (body?.client_id !== 'amzn1.application-oa2-client.TESTE' || body?.client_secret !== 'SEGREDO') return send(400, { error: 'invalid_client', error_description: 'Client authentication failed' });
+      if (body.grant_type === 'authorization_code') {
+        if (!body.code?.startsWith('CODE-') || this.usedCodes.has(body.code)) return send(400, { error: 'invalid_grant' });
+        this.usedCodes.add(body.code);
+        const a = `Atza|access-${++this.n}`; this.access.add(a);
+        return send(200, { access_token: a, expires_in: 3600, ...(this.incompleteTokens ? {} : { refresh_token: 'Atzr|BOM' }) });
+      }
       if (body.grant_type !== 'refresh_token' || body.refresh_token !== 'Atzr|BOM') return send(400, { error: 'invalid_grant', error_description: 'The provided refresh token is invalid' });
       const a = `Atza|access-${++this.n}`; this.access.add(a);
       return send(200, { access_token: a, token_type: 'bearer', expires_in: 3600 });
@@ -83,7 +93,7 @@ let seq = 0;
 const uid = () => `${run}${++seq}`;
 const GOOD = { lwaClientId: 'amzn1.application-oa2-client.TESTE', lwaClientSecret: 'SEGREDO', refreshToken: 'Atzr|BOM', sellerId: 'A1B2C3D4E5F6G7' };
 
-describe('Amazon (servidor simulado): autorização própria e pedidos', () => {
+describe('Amazon (servidor simulado): OAuth, credenciais anteriores e pedidos', () => {
   let app: INestApplication;
   let worker: JobWorker;
   let admin: PrismaClient;
@@ -131,7 +141,10 @@ describe('Amazon (servidor simulado): autorização própria e pedidos', () => {
   let A: T;
   beforeAll(async () => {
     await az.start();
-    Object.assign(process.env, { AMAZON_LWA_URL: `${az.base}/auth/o2/token`, AMAZON_SPAPI_BASE: az.base, AMAZON_ITEM_GAP_MS: '0' });
+    Object.assign(process.env, {
+      AMAZON_LWA_URL: `${az.base}/auth/o2/token`, AMAZON_SPAPI_BASE: az.base, AMAZON_ITEM_GAP_MS: '0',
+      AMAZON_APPLICATION_ID: 'amzn1.sellerapps.app.ERP-TESTE', AMAZON_LWA_CLIENT_ID: GOOD.lwaClientId, AMAZON_LWA_CLIENT_SECRET: GOOD.lwaClientSecret,
+    });
     const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = mod.createNestApplication();
     configureApp(app);
@@ -143,27 +156,89 @@ describe('Amazon (servidor simulado): autorização própria e pedidos', () => {
     A = await setup('azA');
   });
   afterAll(async () => {
-    for (const k of ['AMAZON_LWA_URL', 'AMAZON_SPAPI_BASE', 'AMAZON_ITEM_GAP_MS']) delete process.env[k];
+    for (const k of ['AMAZON_LWA_URL', 'AMAZON_SPAPI_BASE', 'AMAZON_ITEM_GAP_MS', 'AMAZON_APPLICATION_ID', 'AMAZON_LWA_CLIENT_ID', 'AMAZON_LWA_CLIENT_SECRET']) delete process.env[k];
     await admin.$disconnect();
     await app.close();
     await az.stop();
   });
-  beforeEach(() => { az.requests.length = 0; az.orders = []; az.participates = true; });
+  beforeEach(() => { az.requests.length = 0; az.orders = []; az.participates = true; az.incompleteTokens = false; });
 
-  describe('autorização própria', () => {
-    it('aparece com os campos que o vendedor informa e sem validação real', async () => {
+  describe('autorização e compatibilidade', () => {
+    it('aparece com login Amazon, sem solicitar chaves ao vendedor e sem validação real', async () => {
       const list = (await A.owner.get('/api/integrations/providers').expect(200)).body as any[];
       const a = list.find((p) => p.provider === 'AMAZON');
       expect(a.capabilities).toMatchObject({ authorization: 'IMPLEMENTED_UNVERIFIED', orders: 'IMPLEMENTED_UNVERIFIED', catalog: 'PLANNED', publishing: 'PLANNED', price: 'PLANNED', inventory: 'PLANNED' });
-      expect(a.credentialFields.map((f: any) => f.name)).toEqual(['lwaClientId', 'lwaClientSecret', 'refreshToken', 'sellerId']);
-      expect(a.credentialFields.filter((f: any) => f.secret).map((f: any) => f.name)).toEqual(['lwaClientSecret', 'refreshToken']);
+      expect(a.authType).toBe('OAUTH2');
+      expect(a.credentialFields).toBeUndefined();
       expect(list.filter((p) => p.provider === 'AMAZON')).toHaveLength(1);
     });
 
-    it('não tem tela de autorização por redirecionamento', async () => {
+    it('leva ao Seller Central do Brasil e informa configuração ausente no servidor', async () => {
       const id = await create(A);
-      const r = await A.owner.post(`/api/integrations/connections/${id}/authorize`).set(H);
-      expect(r.status).toBe(501); // "não suportado": não há redirecionamento neste canal
+      const r = await A.owner.post(`/api/integrations/connections/${id}/authorize`).set(H).expect(200);
+      const url = new URL(r.body.authorizationUrl);
+      expect(url.origin).toBe('https://sellercentral.amazon.com.br');
+      expect(url.searchParams.get('application_id')).toBe(process.env.AMAZON_APPLICATION_ID);
+      expect(url.searchParams.get('state')).toBeTruthy();
+      expect(String(r.headers['set-cookie'])).toMatch(/dh_amazon_oauth=.*HttpOnly/);
+      delete process.env.AMAZON_LWA_CLIENT_SECRET;
+      try {
+        await A.owner.post(`/api/integrations/connections/${await create(A)}/authorize`).set(H).expect(424);
+      } finally { process.env.AMAZON_LWA_CLIENT_SECRET = GOOD.lwaClientSecret; }
+    });
+
+    it('conclui o retorno intermediário e a troca de código, protege replay e renova o token público', async () => {
+      const id = await create(A);
+      const publicSellerId = 'PUBLICSELLER123';
+      const start = (await A.owner.post(`/api/integrations/connections/${id}/authorize`).set(H).expect(200)).body;
+      const uri = 'https://sellercentral.amazon.com.br/apps/authorize/confirm/' + process.env.AMAZON_APPLICATION_ID;
+      const loginQuery = new URLSearchParams({ amazon_callback_uri: uri, amazon_state: 'AMAZON-STATE', selling_partner_id: publicSellerId });
+      const invalid = await A.owner.get('/api/integrations/amazon/login?' + new URLSearchParams({ ...Object.fromEntries(loginQuery), amazon_callback_uri: 'https://evil.example/confirm' })).expect(302);
+      expect(invalid.headers.location).not.toContain('evil.example');
+      const missingBrowser = await agent().get('/api/integrations/amazon/login?' + loginQuery).expect(302);
+      expect(missingBrowser.headers.location).toContain('error=');
+      const login = await A.owner.get('/api/integrations/amazon/login?' + loginQuery).expect(302);
+      expect(login.headers['referrer-policy']).toBe('no-referrer');
+      const continueUrl = new URL(login.headers.location);
+      expect(continueUrl.origin + continueUrl.pathname).toBe(uri);
+      expect(continueUrl.searchParams.get('amazon_state')).toBe('AMAZON-STATE');
+      const state = continueUrl.searchParams.get('state')!;
+      expect(state).not.toBe(new URL(start.authorizationUrl).searchParams.get('state'));
+      const finalQuery = new URLSearchParams({ state, spapi_oauth_code: 'CODE-' + uid(), selling_partner_id: publicSellerId });
+      const switched = await A.owner.get('/api/integrations/callback?' + new URLSearchParams({ ...Object.fromEntries(finalQuery), selling_partner_id: 'ZZZZZZZZZZZZZ1' })).expect(302);
+      expect(switched.headers.location).toContain('error=');
+      const result = await A.owner.get('/api/integrations/callback?' + finalQuery).expect(302);
+      expect(result.headers.location).toContain(`connected=${id}&activate=1`);
+      expect(result.headers['referrer-policy']).toBe('no-referrer');
+      const tokenRequest = az.requests.find((r) => r.body?.grant_type === 'authorization_code')!;
+      expect(tokenRequest.body).toMatchObject({ client_id: GOOD.lwaClientId, client_secret: GOOD.lwaClientSecret, redirect_uri: continueUrl.searchParams.get('redirect_uri') });
+      const record = await admin.marketplaceConnection.findUniqueOrThrow({ where: { id } });
+      const credentials = app.get(CryptoService).decrypt(A.tenantId, `cred:${id}`, record.credentialsEnc!);
+      expect(credentials).toMatchObject({ authMode: 'PUBLIC_OAUTH', refreshToken: 'Atzr|BOM', sellerId: publicSellerId });
+      expect(credentials).not.toHaveProperty('lwaClientSecret');
+      const replay = await A.owner.get('/api/integrations/callback?' + finalQuery).expect(302);
+      expect(replay.headers.location).toContain('error=');
+      expect(az.requests.filter((r) => r.body?.grant_type === 'authorization_code')).toHaveLength(1);
+      await A.owner.post(`/api/integrations/connections/${id}/test`).set(H).expect(200);
+      await A.owner.post(`/api/integrations/connections/${id}/activate`).set(H).expect(200);
+      expect((await app.get(ConnectionsService).refreshCredentials(A.tenantId, id)).ok).toBe(true);
+      await A.owner.post(`/api/integrations/connections/${id}/pause`).set(H).expect(200);
+    });
+
+    it('recusa state alterado, retorno em outro navegador e tokens incompletos sem gravar autorização', async () => {
+      const id = await create(A);
+      const authorization = (await A.owner.post(`/api/integrations/connections/${id}/authorize`).set(H).expect(200)).body;
+      const state = new URL(authorization.authorizationUrl).searchParams.get('state')!;
+      const query = { state, spapi_oauth_code: 'CODE-' + uid(), selling_partner_id: 'ZZZZZZZZZZZZZ2' };
+      const altered = await A.owner.get('/api/integrations/callback?' + new URLSearchParams({ ...query, state: state + 'x' })).expect(302);
+      expect(altered.headers.location).toContain('error=');
+      const other = await agent().get('/api/integrations/callback?' + new URLSearchParams(query)).expect(302);
+      expect(other.headers.location).toContain('error=');
+      expect(az.requests).toHaveLength(0);
+      az.incompleteTokens = true;
+      const incomplete = await A.owner.get('/api/integrations/callback?' + new URLSearchParams(query)).expect(302);
+      expect(incomplete.headers.location).toContain('error=');
+      expect((await admin.marketplaceConnection.findUniqueOrThrow({ where: { id } })).credentialsEnc).toBeNull();
     });
 
     it('recusa campos faltando, ID de vendedor inválido, credenciais erradas e só guarda cifrado quando a Amazon aceita', async () => {

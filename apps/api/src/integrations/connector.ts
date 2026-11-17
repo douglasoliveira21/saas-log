@@ -141,7 +141,7 @@ export interface Connector {
 
   // autorização
   authorizeConnection(ctx: ConnectionContext, p: { redirectUri: string; state: string }): Promise<OpResult<{ authorizationUrl: string }>>;
-  completeAuthorization(ctx: ConnectionContext, p: { code: string; redirectUri: string; state: string }): Promise<OpResult<Credentials>>;
+  completeAuthorization(ctx: ConnectionContext, p: { code: string; redirectUri: string; state: string; shopId?: string; sellerId?: string }): Promise<OpResult<Credentials>>;
   /** Autorização própria (opcional): confere as credenciais informadas pelo usuário e devolve o que será guardado cifrado. */
   authorizeWithCredentials?(ctx: ConnectionContext, fields: Record<string, string>): Promise<OpResult<Credentials>>;
   validateConnection(ctx: ConnectionContext): Promise<OpResult<{ externalAccountId?: string }>>;

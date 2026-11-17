@@ -4,6 +4,7 @@ import { PLANNED_CHANNELS, PlannedConnector } from './catalog';
 import { AmazonConnector } from './amazon.connector';
 import { MagaluConnector } from './magalu.connector';
 import { MercadoLivreConnector } from './mercado-livre.connector';
+import { ShopeeConnector } from './shopee.connector';
 import {
   BaseConnector, CapabilityMatrix, ConnectionContext, Connector, ConnectorInfo, Credentials, ExternalOrder, ExternalProduct, ItemDraft, fail, OpResult, okResult,
 } from './connector';
@@ -127,7 +128,7 @@ export class ConnectorRegistry {
   private readonly map = new Map<string, Connector>();
 
   constructor() {
-    for (const c of [new MercadoLivreConnector(), new MagaluConnector(), new AmazonConnector(), ...PLANNED_CHANNELS.map((i) => new PlannedConnector(i))]) this.map.set(c.info.provider, c);
+    for (const c of [new MercadoLivreConnector(), new MagaluConnector(), new AmazonConnector(), new ShopeeConnector(), ...PLANNED_CHANNELS.map((i) => new PlannedConnector(i))]) this.map.set(c.info.provider, c);
     if (getConfig().sandboxConnector) this.map.set('SANDBOX', new SandboxConnector());
   }
 

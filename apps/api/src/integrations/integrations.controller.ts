@@ -85,6 +85,9 @@ class RetryDto {
   @IsOptional() @IsBoolean() confirm?: boolean;
 }
 
+const AMAZON_OAUTH_COOKIE = 'dh_amazon_oauth';
+const amazonCookieOptions = () => ({ httpOnly: true, secure: getConfig().cookieSecure, sameSite: 'lax' as const, path: '/api/integrations', maxAge: 600_000 });
+
 @Controller('integrations')
 export class IntegrationsController {
   constructor(
@@ -110,7 +113,11 @@ export class IntegrationsController {
   config(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ConfigDto) { return this.svc.updateConfig(ctx, id, dto); }
 
   @Post('connections/:id/authorize') @HttpCode(200) @RequirePermissions('integrations.manage')
-  authorize(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.svc.authorize(ctx, id); }
+  async authorize(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Res({ passthrough: true }) res: Response) {
+    const result = await this.svc.authorize(ctx, id);
+    if (result.amazonBrowserState) res.cookie(AMAZON_OAUTH_COOKIE, result.amazonBrowserState, amazonCookieOptions());
+    return { authorizationUrl: result.authorizationUrl };
+  }
 
   @Post('connections/:id/credentials') @HttpCode(200) @RequirePermissions('integrations.manage')
   credentials(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CredentialsDto) { return this.svc.saveCredentials(ctx, id, dto.fields); }
@@ -183,13 +190,38 @@ export class IntegrationsController {
   logs(@CurrentAuth() ctx: AuthContext, @Query() q: LogsQuery) { return this.svc.logs(ctx, q); }
 
   /** Retorno do OAuth: rota pública, protegida pelo `state` assinado/expirável/de uso único. */
-  @Public() @Get('callback')
-  async callback(@Query('code') code: string | undefined, @Query('state') state: string | undefined, @Res() res: Response) {
-    const web = getConfig().webOrigin;
-    if (!code || !state) return res.redirect(`${web}/integracoes?error=${encodeURIComponent('Retorno de autorização incompleto.')}`);
+  @Public() @Get('amazon/login')
+  async amazonLogin(
+    @Query('amazon_callback_uri') callbackUri: string | undefined,
+    @Query('amazon_state') amazonState: string | undefined,
+    @Query('selling_partner_id') sellerId: string | undefined,
+    @Req() req: Request, @Res() res: Response,
+  ) {
+    res.set({ 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store' });
     try {
-      const r = await this.svc.callback(code, state);
-      return res.redirect(`${web}/integracoes?connected=${r.connectionId}`);
+      if (!callbackUri || !amazonState || !sellerId) throw new HttpException('Retorno Amazon incompleto. Inicie a conexão pelo ERP.', 400);
+      const result = await this.svc.amazonLogin(req.cookies?.[AMAZON_OAUTH_COOKIE] ?? '', { callbackUri, amazonState, sellerId });
+      return res.redirect(result.authorizationUrl);
+    } catch (e) {
+      const message = e instanceof HttpException ? e.message : 'Falha ao continuar a autorização Amazon.';
+      return res.redirect(`${getConfig().webOrigin}/integracoes?error=${encodeURIComponent(message)}`);
+    }
+  }
+
+  @Public() @Get('callback')
+  async callback(
+    @Query('code') code: string | undefined, @Query('state') state: string | undefined,
+    @Query('shop_id') shopId: string | undefined, @Query('spapi_oauth_code') amazonCode: string | undefined,
+    @Query('selling_partner_id') sellerId: string | undefined, @Req() req: Request, @Res() res: Response,
+  ) {
+    const web = getConfig().webOrigin;
+    res.set({ 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store' });
+    const authorizationCode = amazonCode ?? code;
+    if (!authorizationCode || !state) return res.redirect(`${web}/integracoes?error=${encodeURIComponent('Retorno de autorização incompleto.')}`);
+    try {
+      const r = await this.svc.callback(authorizationCode, state, shopId, sellerId, req.cookies?.[AMAZON_OAUTH_COOKIE]);
+      if (r.activate) res.clearCookie(AMAZON_OAUTH_COOKIE, { path: '/api/integrations' });
+      return res.redirect(`${web}/integracoes?connected=${r.connectionId}${r.activate ? '&activate=1' : ''}`);
     } catch (e) {
       // Só mensagens de erros esperados (HTTP) vão para a URL; falhas internas nunca expõem detalhes.
       const msg = e instanceof HttpException ? redactSecrets(String((e.getResponse() as { message?: string }).message ?? e.message)) : 'Falha ao concluir a autorização. Tente novamente.';
