@@ -16,13 +16,13 @@ const POINTS = [
 ];
 
 /** Moldura das telas públicas (entrar, recuperar senha, convite, escolher empresa): painel de marca + formulário + rodapé legal. */
-export function AuthShell({ children, loginArtwork = false }: { children: ReactNode; loginArtwork?: boolean }) {
+export function AuthShell({ children }: { children: ReactNode }) {
   const reducedMotion = useReducedMotion();
   const enter = reducedMotion ? undefined : { opacity: 1, y: 0 };
   return (
     <div className="auth-wrap">
-      <aside className={`auth-side${loginArtwork ? ' auth-side-login' : ''}`}>
-        {!loginArtwork && <DotPattern className="auth-dots" width={24} height={24} cr={1.1} aria-hidden />}
+      <aside className="auth-side">
+        <DotPattern className="auth-dots" width={24} height={24} cr={1.1} aria-hidden />
         <motion.div className="auth-side-in" initial={reducedMotion ? undefined : { opacity: 0, x: -24 }} animate={reducedMotion ? undefined : { opacity: 1, x: 0 }} transition={{ duration: .55, ease: 'easeOut' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="sys-logo full on-dark" src="/brand/logo.png" alt={BRAND.name} />
@@ -33,7 +33,7 @@ export function AuthShell({ children, loginArtwork = false }: { children: ReactN
           <small>© {new Date().getFullYear()} {BRAND.name} · {VGON.name} · CNPJ {VGON.cnpj}</small>
         </motion.div>
       </aside>
-      <main className={`auth-main${loginArtwork ? ' auth-main-login' : ''}`}>
+      <main className="auth-main">
         <motion.div className="auth-col" initial={reducedMotion ? undefined : { opacity: 0, y: 18 }} animate={enter} transition={{ duration: .45, delay: .08, ease: 'easeOut' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="sys-logo full auth-top-logo" src="/brand/logo.png" alt={BRAND.name} />

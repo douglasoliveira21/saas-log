@@ -40,7 +40,7 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthShell loginArtwork>
+    <AuthShell>
       <form method="post" className="card auth-card" onSubmit={submit}>
         <div className="auth-head">
           <span className="auth-badge" aria-hidden>{mfaToken ? <KeyRound /> : <Lock />}</span>
