@@ -241,14 +241,15 @@ export class WebhooksService {
     private readonly connections: ConnectionsService,
   ) {}
 
-  async ingestProvider(provider: string, token: string, rawBody: Buffer, payload: unknown) {
+  async ingestProvider(provider: string, token: string, rawBody: Buffer, payload: unknown, headers: Request['headers'] = {}) {
     const expected = process.env[PROVIDER_TOKEN_ENV[provider] ?? ''] ?? '';
     const a = Buffer.from(token);
     const b = Buffer.from(expected);
     if (!expected || a.length !== b.length || !timingSafeEqual(a, b)) throw new NotFoundException();
     const connector = this.registry.get(provider);
     const body = payload && typeof payload === 'object' ? payload : { value: payload };
-    const account = (body as { user_id?: unknown }).user_id;
+    if (connector && PROVIDER_SIGNED.has(provider) && !connector.verifyWebhook({ rawBody, headers, secret: '' })) throw new UnauthorizedException('Assinatura inválida.');
+    const account = (body as { user_id?: unknown }).user_id ?? (body as { shop_id?: unknown }).shop_id;
     if (!connector || (typeof account !== 'string' && typeof account !== 'number')) return { received: true };
     const targets = await this.prisma.$queryRaw<{ tenant_id: string; id: string; status: string }[]>`SELECT tenant_id, id, status FROM find_connections_by_account(${provider}, ${String(account)})`;
     const dedupeKey = connector.webhookEventId(body, {}) ?? createHash('sha256').update(rawBody).digest('hex');
@@ -300,7 +301,9 @@ export class WebhooksService {
  * O token na URL (variável <PROVEDOR>_WEBHOOK_TOKEN) filtra chamadas aleatórias; como o canal pode não assinar o corpo,
  * o conteúdo NUNCA é confiável: o conector só usa o recurso indicado e relê os dados na API com o token do vendedor.
  */
-const PROVIDER_TOKEN_ENV: Record<string, string> = { MERCADO_LIVRE: 'ML_WEBHOOK_TOKEN' };
+const PROVIDER_TOKEN_ENV: Record<string, string> = { MERCADO_LIVRE: 'ML_WEBHOOK_TOKEN', TIKTOK_SHOP: 'TIKTOK_WEBHOOK_TOKEN' };
+/** Canais que ASSINAM a notificação: além do token na URL, a assinatura é conferida pelo conector (cabeçalho Authorization no TikTok Shop). */
+const PROVIDER_SIGNED = new Set(['TIKTOK_SHOP']);
 
 @Controller('webhooks')
 export class WebhooksController {
@@ -309,7 +312,7 @@ export class WebhooksController {
   @Public() @Throttle({ default: { limit: 600, ttl: 60_000 } }) @HttpCode(200)
   @Post('providers/:provider/:token')
   receiveProvider(@Param('provider') provider: string, @Param('token') token: string, @Req() req: Request & { rawBody?: Buffer }, @Body() body: unknown) {
-    return this.svc.ingestProvider(provider.toUpperCase(), token, req.rawBody ?? Buffer.from(''), body);
+    return this.svc.ingestProvider(provider.toUpperCase(), token, req.rawBody ?? Buffer.from(''), body, req.headers);
   }
 
   @Public() @Throttle({ default: { limit: 600, ttl: 60_000 } }) @HttpCode(200)

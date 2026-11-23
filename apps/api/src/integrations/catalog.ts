@@ -20,8 +20,6 @@ export const PLANNED_CHANNELS: ConnectorInfo[] = [
     notes: 'Documentação pública não localizada nesta revisão: consulte o canal ou um integrador homologado (ex.: Anymarket, Bling).' },
   { provider: 'CASAS_BAHIA', displayName: 'Casas Bahia / Ponto', category: 'MARKETPLACE', region: 'BR', authType: 'API_KEY', docsUrl: '',
     notes: 'Documentação pública não localizada nesta revisão: consulte o canal ou um integrador homologado (ex.: Anymarket, Bling).' },
-  { provider: 'TIKTOK_SHOP', displayName: 'TikTok Shop', category: 'MARKETPLACE', region: 'GLOBAL', authType: 'SIGNED_OAUTH2', docsUrl: 'https://partner.tiktokshop.com/docv2',
-    notes: `Requer cadastro no Partner Center e aplicativo aprovado. A disponibilidade por país deve ser confirmada. ${AUTH_NOTE}` },
   { provider: 'ALIEXPRESS', displayName: 'AliExpress', category: 'MARKETPLACE', region: 'GLOBAL', authType: 'SIGNED_OAUTH2', docsUrl: 'https://openservice.aliexpress.com/',
     notes: `Plataforma aberta do AliExpress; requer aplicativo aprovado. ${AUTH_NOTE}` },
   { provider: 'OLX', displayName: 'OLX', category: 'MARKETPLACE', region: 'BR', authType: 'OAUTH2', docsUrl: 'https://developers.olx.com.br/',

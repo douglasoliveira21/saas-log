@@ -93,7 +93,7 @@ describe('Fase 4 — central de integrações, fila, webhooks e credenciais', ()
   describe('catálogo de canais e honestidade dos conectores', () => {
     it('lista os canais com matriz de capacidades "planejada" (nada é anunciado como suportado sem implementação)', async () => {
       const list = (await A.owner.get('/api/integrations/providers').expect(200)).body as any[];
-      for (const p of ['ALIEXPRESS', 'TIKTOK_SHOP']) {
+      for (const p of ['ALIEXPRESS', 'EBAY']) {
         const c = list.find((x) => x.provider === p);
         expect(c).toBeDefined();
         expect(Object.values(c.capabilities)).toEqual(Array(8).fill('PLANNED'));
@@ -104,7 +104,7 @@ describe('Fase 4 — central de integrações, fila, webhooks e credenciais', ()
       expect(real.length).toBeGreaterThanOrEqual(20);
       expect(new Set(real.map((x) => x.provider)).size).toBe(real.length);
       expect(new Set(real.map((x) => x.category))).toEqual(new Set(['MARKETPLACE', 'STORE_PLATFORM', 'HUB']));
-      for (const c of real.filter((x) => !['MERCADO_LIVRE', 'MAGALU', 'AMAZON', 'SHOPEE'].includes(x.provider))) {
+      for (const c of real.filter((x) => !['MERCADO_LIVRE', 'MAGALU', 'AMAZON', 'SHOPEE', 'TIKTOK_SHOP'].includes(x.provider))) {
         expect(Object.values(c.capabilities)).toEqual(Array(8).fill('PLANNED'));
         expect(c.docsUrl === '' || /^https:/.test(c.docsUrl)).toBe(true);
         expect(c.notes).toBeTruthy();

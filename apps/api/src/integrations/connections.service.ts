@@ -297,7 +297,7 @@ export class ConnectionsService {
     const connector = this.connector(conn.provider);
     const redirectUri = `${getConfig().webOrigin}/api/integrations/callback`;
     const started = Date.now();
-    const nonceClaimed = ['SHOPEE', 'AMAZON'].includes(conn.provider);
+    const nonceClaimed = ['SHOPEE', 'AMAZON', 'TIKTOK_SHOP'].includes(conn.provider);
     if (nonceClaimed) {
       const claim = await this.prisma.withContext(ctx, (tx) => tx.marketplaceConnection.updateMany({
         where: { id: conn.id, tenantId: p.tid, status: 'AWAITING_AUTHORIZATION', oauthNonce: p.nonce },
@@ -432,8 +432,9 @@ export class ConnectionsService {
 
   async refreshCredentials(tenantId: string, id: string): Promise<OpResult<null>> {
     const conn = await this.prisma.withContext({ tenantId }, (tx) => tx.marketplaceConnection.findFirst({ where: { id, tenantId } }));
-    if (conn?.provider !== 'SHOPEE') return this.refreshAndStore(tenantId, id);
-    if (!conn.credentialsEnc || ['DISCONNECTED', 'NOT_CONNECTED', 'AWAITING_AUTHORIZATION'].includes(conn.status)) return fail('AUTH', 'Autorize a loja Shopee antes de renovar o acesso.');
+    if (!conn || !['SHOPEE', 'TIKTOK_SHOP'].includes(conn.provider)) return this.refreshAndStore(tenantId, id); // tokens que se renovam a cada uso: uma renovação por vez
+    const channel = conn.provider === 'SHOPEE' ? 'Shopee' : 'TikTok Shop';
+    if (!conn.credentialsEnc || ['DISCONNECTED', 'NOT_CONNECTED', 'AWAITING_AUTHORIZATION'].includes(conn.status)) return fail('AUTH', `Autorize a loja ${channel} antes de renovar o acesso.`);
     const startedAt = new Date();
     const claim = await this.prisma.withContext({ tenantId }, (tx) => tx.marketplaceConnection.updateMany({
       where: {
@@ -442,7 +443,7 @@ export class ConnectionsService {
       },
       data: { tokenRefreshStartedAt: startedAt },
     }));
-    if (!claim.count) return fail('UNAVAILABLE', 'A renovação do acesso Shopee já está em andamento.', 10_000);
+    if (!claim.count) return fail('UNAVAILABLE', `A renovação do acesso ${channel} já está em andamento.`, 10_000);
     try {
       const r = await this.call(tenantId, id, 'refreshAuthorization', (c, cc) => c.refreshAuthorization(cc));
       if (!r.ok) return r;
@@ -450,7 +451,7 @@ export class ConnectionsService {
         where: { id, tenantId, credentialsEnc: conn.credentialsEnc, tokenRefreshStartedAt: startedAt, status: { notIn: ['DISCONNECTED', 'AWAITING_AUTHORIZATION'] } },
         data: { credentialsEnc: this.crypto.encrypt(tenantId, `cred:${id}`, r.data.credentials), tokenExpiresAt: r.data.expiresAt ?? null },
       }));
-      return stored.count ? okResult(null) : fail('AUTH', 'A conexão Shopee foi alterada durante a renovação. Teste ou autorize a loja novamente.');
+      return stored.count ? okResult(null) : fail('AUTH', `A conexão ${channel} foi alterada durante a renovação. Teste ou autorize a loja novamente.`);
     } finally {
       await this.prisma.withContext({ tenantId }, (tx) => tx.marketplaceConnection.updateMany({
         where: { id, tenantId, tokenRefreshStartedAt: startedAt }, data: { tokenRefreshStartedAt: null },

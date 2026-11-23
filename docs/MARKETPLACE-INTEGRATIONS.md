@@ -152,3 +152,37 @@ O retorno intermediário aceita somente endereços Amazon de confirmação do ap
 - **Dados do comprador:** sem endereço/CPF (exigiria o *Restricted Data Token*, não usado). O comprador aparece pelo e-mail mascarado da Amazon.
 
 **A validar com conta real:** limites de taxa, vocabulário de status, formato de `BuyerInfo`, o endereço regional (`sellingpartnerapi-na.amazon.com` para o Brasil) e o ID do marketplace. Variáveis de teste: `AMAZON_LWA_URL`, `AMAZON_SPAPI_BASE`, `AMAZON_MARKETPLACE_ID`, `AMAZON_ITEM_GAP_MS`.
+
+
+## TikTok Shop (Open API v2, versão 202309)
+
+**Estado:** autorização por loja, validação, renovação do token, pedidos, catálogo, **publicação**, preço, estoque, desativação de anúncio, rastreio e notificações implementados e testados **só com servidor simulado** (`IMPLEMENTED_UNVERIFIED`; `apps/api/src/integrations/tiktok.connector.ts`, `tiktok.connector.spec.ts` e `apps/api/test/tiktok.e2e-spec.ts`). Nada foi validado contra uma loja real.
+
+**Fontes (leitura em 23/11/2026) e o que NÃO foi confirmado.** A documentação oficial (partner.tiktokshop.com) é uma aplicação de página única e não pôde ser lida. Usamos o código do SDK comunitário EcomPHP/tiktokshop-php (assinatura, endereços, caminhos, versão 202309, cabeçalho `x-tts-access-token`, regras de `shop_cipher`) e a referência de webhooks da Hookdeck. **Os nomes dos campos das respostas e dos corpos de preço/estoque/criação de produto vêm da memória** e estão marcados `[A VALIDAR]` no código: nenhuma fonte lida os traz. A leitura é tolerante e nunca inventa dados.
+
+**Custo:** o acesso à API para integrar a própria loja não tem mensalidade conhecida; confira os termos vigentes no Partner Center. A disponibilidade da API para o Brasil não foi confirmada em fonte oficial (o TikTok Shop abriu no Brasil em 08/05/2025; o cadastro mostra quais mercados o seu CNPJ pode usar).
+
+**O que você precisa pegar (Partner Center):**
+1. Conta de desenvolvedor no Partner Center e um **aplicativo** (App & Service) aprovado, com os escopos de pedidos, produtos, logística e autorização.
+2. **App Key** e **App Secret** → `TIKTOK_APP_KEY` e `TIKTOK_APP_SECRET` na API.
+3. No aplicativo, cadastre como endereço de retorno da autorização: `https://SEU-DOMINIO/api/integrations/callback`.
+4. Para receber avisos, cadastre o endereço do webhook: `https://SEU-DOMINIO/api/webhooks/providers/TIKTOK_SHOP/<TIKTOK_WEBHOOK_TOKEN>` (defina `TIKTOK_WEBHOOK_TOKEN` na API). Sem webhook, os pedidos entram pela sincronização periódica.
+5. Se o Partner Center der um link de autorização com `service_id`, defina `TIKTOK_SERVICE_ID`.
+
+**Como conecta:** Marketplaces → TikTok Shop → Conectar → o vendedor autoriza **uma loja do Brasil** → o sistema troca o código por token (GET sem assinatura em `auth.tiktok-shops.com/api/v2/token/get`), lê a loja (`GET /authorization/202309/shops`) e guarda token, `shop_id` e `shop_cipher` cifrados. Depois: Testar → Ativar.
+
+**Assinatura das chamadas:** parâmetros da URL (menos `sign` e `access_token`) em ordem alfabética, `chave+valor`, caminho na frente, corpo no fim (exceto envio de arquivo), tudo envolvido pelo App Secret e assinado com HMAC-SHA256 em hexadecimal; token no cabeçalho `x-tts-access-token`; `shop_cipher` na URL (menos nos caminhos de autorização). O teste e2e recalcula a assinatura de forma independente.
+
+| Capacidade | Como funciona |
+|---|---|
+| Pedidos | `POST /order/202309/orders/search` por data de atualização (janela de 7 dias na primeira leitura), páginas de 50 com `page_token`; se vier sem as linhas, relê por `GET /order/202309/orders?ids=`. Cada unidade é uma linha: o sistema agrupa por SKU. `AWAITING_SHIPMENT`, `PARTIALLY_SHIPPING`, `AWAITING_COLLECTION`, `IN_TRANSIT`, `DELIVERED`, `COMPLETED` → pago; `CANCELLED` → cancelado; `UNPAID` e `ON_HOLD` (em análise) ficam aguardando. Só BRL. |
+| Catálogo | `POST /product/202309/products/search` (um anúncio por SKU, identificado por `product_id:sku_id`); a descrição, a marca e as fotos vêm da leitura completa (`GET /product/202309/products/{id}`). |
+| Preço / estoque | `POST …/products/{id}/prices/update` e `…/inventory/update`. O SKU e o depósito são lidos do produto; sem depósito, usa o padrão da loja (`GET /logistics/202309/warehouses`). Entra na sincronização normal (só reenvia o que mudou). |
+| Publicação | Envia as fotos (`images/upload`, multipart) e cria o produto (`POST …/products`) com título, descrição, categoria, preço, estoque, peso e medidas. Antes procura o mesmo SKU no canal (nunca cria em duplicidade). **Cada categoria pode exigir atributos próprios** que o sistema não conhece: o canal recusa e a mensagem dele é mostrada; atributos podem ser informados na configuração do anúncio (`productAttributes`). |
+| Desativar anúncio | `POST …/products/deactivate`. |
+| Rastreio | Leitura em `GET /fulfillment/202309/orders/{id}/tracking`. **Não** confirma o envio no canal (feito no Seller Center). |
+| Notificações | Cabeçalho `Authorization` = HMAC-SHA256 hexadecimal de `app_key + corpo cru` com o App Secret (sem `Bearer`), conferido em tempo constante; o token da URL filtra chamadas aleatórias. Tipos: `1` pedido (o sistema **relê** o pedido na API; o corpo não é fonte de verdade), `6` vendedor revogou (a conexão fica "autorização expirada"), `7` autorização perto de vencer. Duplicados são descartados por `tts_notification_id`. A TikTok tenta de novo 4 vezes e depois desiste: a sincronização periódica recupera o que faltar. |
+
+**Renovação do token:** a conexão usa o mesmo cuidado da Shopee (uma renovação por vez), porque o refresh token pode ser trocado a cada uso.
+
+**A validar com loja real:** nomes dos campos das respostas (pedido, produto, loja, token), formato de `access_token_expire_in`, corpos de preço/estoque/criação, depósito padrão, valor de `region` do Brasil, se a busca de produtos aceita `status: ALL`, e se o Brasil usa o mesmo endereço `open-api.tiktokglobalshop.com`. Variáveis de teste (só com `NODE_ENV=test`): `TIKTOK_API_BASE`, `TIKTOK_AUTH_BASE`.
