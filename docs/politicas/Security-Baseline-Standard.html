@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Security Baseline Standard — DistribuiHub</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font: 11pt/1.5 'Segoe UI', Arial, sans-serif; color: #1b2430; margin: 0; }
+  header { border-bottom: 3px solid #1d4ed8; padding-bottom: 10px; margin-bottom: 14px; }
+  h1 { font-size: 20pt; margin: 0 0 4px; letter-spacing: -.3px; }
+  .sub { color: #5b6675; font-size: 10pt; }
+  table.meta { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 10pt; }
+  table.meta td { border: 1px solid #d5dbe6; padding: 5px 9px; vertical-align: top; }
+  table.meta td:first-child { background: #f1f4fa; width: 28%; font-weight: 600; }
+  h2 { font-size: 12.5pt; color: #1d4ed8; margin: 18px 0 5px; break-after: avoid; }
+  p { margin: 5px 0; }
+  ul { margin: 4px 0 6px; padding-left: 20px; }
+  li { margin: 2px 0; }
+  .box { border: 1px solid #d5dbe6; border-radius: 6px; padding: 8px 12px; background: #f8fafd; margin: 8px 0; }
+  table.grid { width: 100%; border-collapse: collapse; margin: 6px 0 8px; font-size: 10pt; }
+  table.grid th { background: #1d4ed8; color: #fff; text-align: left; padding: 5px 8px; }
+  table.grid td { border-bottom: 1px solid #dfe5ef; padding: 5px 8px; vertical-align: top; }
+  .sign { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+  .sign div { border-top: 1px solid #8591a1; padding-top: 4px; font-size: 9.5pt; color: #5b6675; }
+  footer { margin-top: 20px; border-top: 1px solid #dfe5ef; padding-top: 6px; font-size: 9pt; color: #8591a1; }
+  section { break-inside: avoid-page; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Security Baseline Standard</h1>
+  <div class="sub">Vgon Soluções em Informática LTDA &middot; DistribuiHub platform</div>
+</header>
+
+<table class="meta">
+  <tr><td>Organization</td><td>Vgon Soluções em Informática LTDA (CNPJ 13.758.796/0001-98), Brazil</td></tr>
+  <tr><td>Scope</td><td>Daily operations of all employees and contractors: workstations, accounts, workplace and the DistribuiHub platform itself</td></tr>
+  <tr><td>Version / date</td><td>1.0 &middot; 24 November 2026</td></tr>
+  <tr><td>Owner</td><td>Information Security Officer (the Director of the company)</td></tr>
+  <tr><td>Contact</td><td>suporte@vgon.com.br</td></tr>
+  <tr><td>Review cycle</td><td>At least once a year, and after any significant incident</td></tr>
+  <tr><td>Parent document</td><td>Information Security Policy v1.0 &middot; see also the Endpoint Security Standard</td></tr>
+</table>
+
+<section>
+<h2>1. Purpose</h2>
+<p>This standard sets the minimum security baseline that applies to the company's day-to-day operations, so that every person works with the same basic protections regardless of role. It supports the Information Security Policy.</p>
+</section>
+
+<section>
+<h2>2. Baseline for people and workstations</h2>
+<table class="grid">
+  <tr><th style="width:24%">Area</th><th>Baseline requirement</th></tr>
+  <tr><td>Screen lock</td><td>Every workstation locks automatically after inactivity of no more than 10 minutes and requires the user's credentials to unlock. Users lock the screen manually whenever they leave the workstation.</td></tr>
+  <tr><td>Password complexity</td><td>Passwords for company accounts have at least 12 characters, combining letters and numbers, and are not based on personal information or common words. Each account has a unique password; passwords are never shared, written down in the open or reused across services. A password manager is recommended.</td></tr>
+  <tr><td>Multi-factor authentication</td><td>MFA is enabled on the company's Microsoft 365 accounts (including e-mail), the source-code repository (GitHub) and the other administrative services used to operate the platform.</td></tr>
+  <tr><td>Clean desk and clear screen</td><td>Documents and media containing restricted or confidential information are not left unattended on desks or screens. Printed material with personal data is stored securely and destroyed when no longer needed. Screens are positioned or protected so they cannot be read by visitors.</td></tr>
+  <tr><td>Device protection</td><td>Antivirus (Microsoft Defender) with real-time protection, automatic Windows updates and disk encryption (BitLocker) are enabled on every company computer, as set out in the Endpoint Security Standard.</td></tr>
+  <tr><td>Individual accounts</td><td>Each person has a personal account; shared accounts are not used for systems that hold customer data.</td></tr>
+  <tr><td>Least privilege</td><td>Access is limited to what each person needs. Administrative rights are granted only to named people who need them and are removed when no longer needed.</td></tr>
+  <tr><td>Safe use of e-mail and the Internet</td><td>Unexpected links and attachments are not opened; suspicious messages are reported to suporte@vgon.com.br. Software is installed only from trusted sources.</td></tr>
+  <tr><td>Removable media and personal devices</td><td>Customer data is not copied to removable media or personal devices.</td></tr>
+  <tr><td>Public networks and remote work</td><td>Company systems are accessed over encrypted connections (HTTPS/TLS). On public or unknown networks, only the encrypted platform is used and no sensitive files are stored locally.</td></tr>
+  <tr><td>Reporting</td><td>Lost or stolen devices, suspected phishing, exposed passwords or any security concern are reported immediately.</td></tr>
+</table>
+</section>
+
+<section>
+<h2>3. Baseline enforced by the DistribuiHub platform</h2>
+<p>The platform itself enforces a baseline on every user account, independent of the customer company:</p>
+<ul>
+  <li><b>Password rules:</b> at least 10 characters, containing letters and numbers; passwords are stored only as salted hashes (scrypt) and never in clear text.</li>
+  <li><b>Account lockout:</b> repeated failed sign-ins temporarily lock the account.</li>
+  <li><b>Two-factor authentication:</b> available to every user (authenticator app with recovery codes), with secrets stored encrypted.</li>
+  <li><b>Session security:</b> sessions have limited validity and are renewed through protected cookies that scripts cannot read.</li>
+  <li><b>Role-based permissions:</b> the server checks the user's permissions on every request, and customer companies are isolated from each other at the database level.</li>
+  <li><b>Audit trail:</b> sensitive actions are recorded with user, time and company.</li>
+</ul>
+</section>
+
+<section>
+<h2>4. Onboarding and offboarding</h2>
+<ul>
+  <li>When someone joins, they receive an individual account with only the access required for their duties, set up MFA before accessing customer data, and read this standard and the Information Security Policy.</li>
+  <li>When someone leaves or changes role, access is removed or adjusted on the same day, company devices are returned, and any shared secrets they knew are changed.</li>
+</ul>
+</section>
+
+<section>
+<h2>5. Verification and exceptions</h2>
+<p>The Information Security Officer verifies at least twice a year that the baseline is applied (screen lock, passwords, MFA, device protection and clean desk). Exceptions must be requested in writing, approved by management and have an end date. A situation that does not meet the baseline must be corrected before customer data is handled.</p>
+</section>
+
+<section>
+<h2>Approval</h2>
+<div class="box">Approved by management of Vgon Soluções em Informática LTDA. This version takes effect on the approval date below.</div>
+<div class="sign">
+  <div>Name, title and signature</div>
+  <div>Date</div>
+</div>
+</section>
+
+<footer>Security Baseline Standard &middot; v1.0 &middot; Vgon Soluções em Informática LTDA &middot; Classification: Internal / shareable with partners on request</footer>
+</body>
+</html>

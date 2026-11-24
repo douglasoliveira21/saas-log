@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Information Security Policy — DistribuiHub</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font: 11pt/1.5 'Segoe UI', Arial, sans-serif; color: #1b2430; margin: 0; }
+  header { border-bottom: 3px solid #1d4ed8; padding-bottom: 10px; margin-bottom: 14px; }
+  h1 { font-size: 20pt; margin: 0 0 4px; letter-spacing: -.3px; }
+  .sub { color: #5b6675; font-size: 10pt; }
+  table.meta { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 10pt; }
+  table.meta td { border: 1px solid #d5dbe6; padding: 5px 9px; vertical-align: top; }
+  table.meta td:first-child { background: #f1f4fa; width: 28%; font-weight: 600; }
+  h2 { font-size: 12.5pt; color: #1d4ed8; margin: 18px 0 5px; break-after: avoid; }
+  p { margin: 5px 0; }
+  ul { margin: 4px 0 6px; padding-left: 20px; }
+  li { margin: 2px 0; }
+  .box { border: 1px solid #d5dbe6; border-radius: 6px; padding: 8px 12px; background: #f8fafd; margin: 8px 0; }
+  table.grid { width: 100%; border-collapse: collapse; margin: 6px 0 8px; font-size: 10pt; }
+  table.grid th { background: #1d4ed8; color: #fff; text-align: left; padding: 5px 8px; }
+  table.grid td { border-bottom: 1px solid #dfe5ef; padding: 5px 8px; vertical-align: top; }
+  .sign { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+  .sign div { border-top: 1px solid #8591a1; padding-top: 4px; font-size: 9.5pt; color: #5b6675; }
+  footer { margin-top: 20px; border-top: 1px solid #dfe5ef; padding-top: 6px; font-size: 9pt; color: #8591a1; }
+  section { break-inside: avoid-page; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Information Security Policy</h1>
+  <div class="sub">Vgon Soluções em Informática LTDA &middot; DistribuiHub platform</div>
+</header>
+
+<table class="meta">
+  <tr><td>Organization</td><td>Vgon Soluções em Informática LTDA (CNPJ 13.758.796/0001-98), Brazil</td></tr>
+  <tr><td>Product in scope</td><td>DistribuiHub, a multi-tenant cloud ERP for distributors, including its web application, mobile application, API, database and integrations with sales channels (marketplaces)</td></tr>
+  <tr><td>Version / date</td><td>1.0 &middot; 24 November 2026</td></tr>
+  <tr><td>Owner</td><td>Information Security Officer (the Director of the company)</td></tr>
+  <tr><td>Contact</td><td>suporte@vgon.com.br</td></tr>
+  <tr><td>Review cycle</td><td>At least once a year, and after any significant incident or change to the platform</td></tr>
+  <tr><td>Related documents</td><td>Network Security and Segregation Standard, Endpoint Security Standard, Security Baseline Standard, Data Classification and Encryption Policy, Vulnerability and Threat Management Procedure, Access Control Policy, Incident Response Policy, Data Protection Policy, Privacy Policy (https://log.vgon.com.br/privacidade), Terms of Use (https://log.vgon.com.br/termos)</td></tr>
+</table>
+
+<section>
+<h2>1. Purpose and scope</h2>
+<p>This policy defines how the company protects the confidentiality, integrity and availability of the information it processes, in particular the data of its customers (companies that use DistribuiHub), the personal data of their users and end customers, and the credentials used to connect to third-party platforms such as TikTok Shop. It applies to all employees, contractors and service providers who access company systems or customer data, and to all environments (production, test and development).</p>
+</section>
+
+<section>
+<h2>2. Principles</h2>
+<ul>
+  <li><b>Least privilege:</b> people and systems receive only the access they need to do their work.</li>
+  <li><b>Defense in depth:</b> several independent controls protect the same asset (network, application, database, encryption).</li>
+  <li><b>Tenant isolation:</b> the data of each customer company is separated from the data of every other company.</li>
+  <li><b>Data minimization:</b> we collect and keep only what is needed for the service, and for no longer than necessary.</li>
+  <li><b>Accountability:</b> sensitive actions are recorded and traceable to a person or service.</li>
+</ul>
+</section>
+
+<section>
+<h2>3. Roles and responsibilities</h2>
+<table class="grid">
+  <tr><th style="width:26%">Role</th><th>Responsibility</th></tr>
+  <tr><td>Management</td><td>Approves this policy, provides resources and accepts residual risk.</td></tr>
+  <tr><td>Information Security Officer</td><td>Maintains the policy, coordinates incident response, reviews access, tracks vulnerabilities and reports to management.</td></tr>
+  <tr><td>Data Protection Officer (DPO)</td><td>Point of contact for data subjects and authorities (suporte@vgon.com.br); oversees privacy compliance under Brazil's General Data Protection Law (LGPD).</td></tr>
+  <tr><td>Engineering</td><td>Builds and operates the platform in line with the secure development and operations rules below.</td></tr>
+  <tr><td>All personnel</td><td>Follow this policy, protect credentials and devices, and report suspected incidents immediately.</td></tr>
+</table>
+</section>
+
+<section>
+<h2>4. Information classification and handling</h2>
+<table class="grid">
+  <tr><th style="width:18%">Class</th><th>Examples</th><th style="width:36%">Handling</th></tr>
+  <tr><td>Restricted</td><td>Passwords, API keys, OAuth tokens, app secrets, digital certificates, encryption keys, tax documents, personal data</td><td>Encrypted in transit and at rest; access limited to those who need it; never in source code, tickets, chat or e-mail.</td></tr>
+  <tr><td>Confidential</td><td>Customer business data (orders, prices, stock, finances), audit logs, internal documents</td><td>Access by role; transmitted only over encrypted channels.</td></tr>
+  <tr><td>Internal</td><td>Operating procedures, architecture documents</td><td>Shared inside the company and with service providers under confidentiality.</td></tr>
+  <tr><td>Public</td><td>Marketing material, privacy policy, terms of use</td><td>No restriction.</td></tr>
+</table>
+</section>
+
+<section>
+<h2>5. Access control and authentication</h2>
+<ul>
+  <li>Access to the platform is role-based. Each user receives a role with a defined set of permissions; the server enforces these permissions on every request.</li>
+  <li>Each customer company (tenant) is isolated at the database level using row-level security, so one company cannot read another company's data.</li>
+  <li>Passwords are stored only as salted hashes. Accounts are temporarily locked after repeated failed sign-ins. Optional two-factor authentication is available to all users and is required for company administrators and for anyone with administrative access to infrastructure.</li>
+  <li>Administrative access to servers, the database and the hosting panel is restricted to named individuals, uses individual accounts (no shared accounts) and multi-factor authentication where the provider supports it.</li>
+  <li>Access rights are reviewed at least quarterly. Access is removed on the same day a person leaves the company or changes duties.</li>
+  <li>Support staff access customer data only to resolve a customer's request and only to the extent necessary.</li>
+</ul>
+</section>
+
+<section>
+<h2>6. Cryptography and key management</h2>
+<ul>
+  <li>All traffic between users, mobile app, API and integrations is protected with HTTPS/TLS.</li>
+  <li>Credentials for third-party platforms (access tokens, refresh tokens, app secrets), digital certificates and two-factor secrets are stored encrypted at rest, with a separate encryption context for each customer.</li>
+  <li>Database backups are encrypted.</li>
+  <li>Encryption keys and application secrets are kept in the server environment configuration, not in source code or repositories, and are rotated when a person with access leaves or when exposure is suspected.</li>
+</ul>
+</section>
+
+<section>
+<h2>7. Secure development and change management</h2>
+<ul>
+  <li>Source code is kept in a private repository with individual accounts. Secrets are never committed.</li>
+  <li>Changes are covered by automated tests (unit and end-to-end), including tests for permissions and tenant isolation, and are run before release.</li>
+  <li>Inputs are validated on the server. The platform uses parameterized database access and protections against cross-site request forgery.</li>
+  <li>Production data is not used in test or development environments.</li>
+  <li>Releases are deployed through a controlled pipeline; a previous version can be restored if a release causes a problem.</li>
+</ul>
+</section>
+
+<section>
+<h2>8. Logging, monitoring and audit</h2>
+<ul>
+  <li>The platform records an audit trail of sensitive actions (sign-ins, permission and configuration changes, integration connections, fiscal and financial operations) with user, time and tenant.</li>
+  <li>Integration logs are stored without secrets; tokens and keys are masked before being written.</li>
+  <li>Application and server logs are reviewed when an alert or anomaly is reported, and at least monthly for repeated failures and unusual access.</li>
+  <li>Logs are retained for the period needed for security investigations and legal obligations.</li>
+</ul>
+</section>
+
+<section>
+<h2>9. Network and infrastructure security</h2>
+<ul>
+  <li>Production runs on a dedicated virtual private server hosted by Contabo in the United States. The host firewall allows inbound connections only on the two service ports (web 3000 and API 3001); all other inbound ports are closed.</li>
+  <li>The PostgreSQL database has no public port and is reachable only by the platform's own services through the internal network.</li>
+  <li>Administrative access (SSH) is enabled only from a single fixed company IP address.</li>
+  <li>The company operates internal monitoring of the platform (service availability and server and application logs). Details are in the Network Security and Segregation Standard.</li>
+  <li>Operating systems, containers and runtime components are kept updated (see section 12).</li>
+</ul>
+</section>
+
+<section>
+<h2>10. Endpoint and workplace security</h2>
+<ul>
+  <li>Company computers have antivirus/anti-malware protection enabled and receive operating system updates.</li>
+  <li>Screens lock automatically after inactivity; strong, unique passwords are required, preferably kept in a password manager; multi-factor authentication is used for e-mail, code repository, hosting panel and other administrative services.</li>
+  <li>Devices that store company data use full-disk encryption. Lost or stolen devices are reported immediately so that access can be revoked.</li>
+  <li>A clean-desk rule applies: documents with restricted or confidential data are not left unattended.</li>
+</ul>
+</section>
+
+<section>
+<h2>11. Backup and continuity</h2>
+<ul>
+  <li>The production database is backed up automatically at least daily. Backups are encrypted and stored separately from the production server.</li>
+  <li>Restoration is tested at least twice a year.</li>
+  <li>Backups are retained for a limited period and then deleted.</li>
+</ul>
+</section>
+
+<section>
+<h2>12. Vulnerability and patch management</h2>
+<ul>
+  <li>Software dependencies are checked for known vulnerabilities at least monthly and before each release.</li>
+  <li>Critical vulnerabilities are fixed or mitigated within 7 days; high-severity within 30 days; others in the normal maintenance cycle.</li>
+  <li>Operating system and infrastructure updates are applied at least monthly, and immediately for critical security fixes.</li>
+  <li>Reports of vulnerabilities received from researchers or customers are acknowledged within 5 business days at suporte@vgon.com.br.</li>
+</ul>
+</section>
+
+<section>
+<h2>13. Incident management</h2>
+<p>Any suspected security incident must be reported immediately to the Information Security Officer (suporte@vgon.com.br). Incidents are handled under the Incident Response Policy: identification, containment, eradication, recovery and post-incident review. Where an incident may affect personal data or customer data, the affected customers and, when required by law, the Brazilian National Data Protection Authority (ANPD) are notified without undue delay, with a description of what happened and the measures taken. Where an incident may affect data obtained through a sales channel (for example TikTok Shop), the channel and the affected sellers are also notified.</p>
+</section>
+
+<section>
+<h2>14. Suppliers and third-party platforms</h2>
+<ul>
+  <li>Hosting, e-mail and other providers that process customer data are selected for their security practices and are bound by confidentiality and data-protection obligations.</li>
+  <li>Integrations with sales channels use the minimum permissions (scopes) needed for the features offered, and credentials are stored as described in section 6.</li>
+  <li>Data obtained from a sales channel is used only to provide the service to the seller who authorized the integration, is never sold or shared with other parties, and is deleted when the seller revokes the authorization or the contract ends, except where retention is required by law.</li>
+</ul>
+</section>
+
+<section>
+<h2>15. Privacy and legal compliance</h2>
+<p>The company processes personal data in line with the LGPD (Law 13.709/2018). Its Privacy Policy is published at https://log.vgon.com.br/privacidade and is reviewed whenever the processing changes. Data subjects can request access, correction, portability or deletion at suporte@vgon.com.br; requests passed on by sellers are handled together with the controller. At the end of a customer contract, customer data is made available for export and then deleted or anonymized, except where the law requires it to be kept.</p>
+</section>
+
+<section>
+<h2>16. Training and awareness</h2>
+<p>All personnel receive security and privacy guidance when they join and at least once a year, covering passwords and multi-factor authentication, phishing, handling of restricted data and how to report incidents.</p>
+</section>
+
+<section>
+<h2>17. Exceptions, enforcement and review</h2>
+<p>Exceptions to this policy must be requested in writing, assessed for risk and approved by management, with an end date. Violations may lead to disciplinary action and, for contractors and providers, to contract termination. This policy is reviewed at least annually, and the version history is kept.</p>
+</section>
+
+<section>
+<h2>Approval</h2>
+<div class="box">Approved by management of Vgon Soluções em Informática LTDA. This version takes effect on the approval date below.</div>
+<div class="sign">
+  <div>Name, title and signature</div>
+  <div>Date</div>
+</div>
+</section>
+
+<footer>Information Security Policy &middot; v1.0 &middot; Vgon Soluções em Informática LTDA &middot; Classification: Internal / shareable with partners on request</footer>
+</body>
+</html>

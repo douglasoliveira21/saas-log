@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Endpoint Security Standard — DistribuiHub</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font: 11pt/1.5 'Segoe UI', Arial, sans-serif; color: #1b2430; margin: 0; }
+  header { border-bottom: 3px solid #1d4ed8; padding-bottom: 10px; margin-bottom: 14px; }
+  h1 { font-size: 20pt; margin: 0 0 4px; letter-spacing: -.3px; }
+  .sub { color: #5b6675; font-size: 10pt; }
+  table.meta { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 10pt; }
+  table.meta td { border: 1px solid #d5dbe6; padding: 5px 9px; vertical-align: top; }
+  table.meta td:first-child { background: #f1f4fa; width: 28%; font-weight: 600; }
+  h2 { font-size: 12.5pt; color: #1d4ed8; margin: 18px 0 5px; break-after: avoid; }
+  p { margin: 5px 0; }
+  ul { margin: 4px 0 6px; padding-left: 20px; }
+  li { margin: 2px 0; }
+  .box { border: 1px solid #d5dbe6; border-radius: 6px; padding: 8px 12px; background: #f8fafd; margin: 8px 0; }
+  table.grid { width: 100%; border-collapse: collapse; margin: 6px 0 8px; font-size: 10pt; }
+  table.grid th { background: #1d4ed8; color: #fff; text-align: left; padding: 5px 8px; }
+  table.grid td { border-bottom: 1px solid #dfe5ef; padding: 5px 8px; vertical-align: top; }
+  .sign { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+  .sign div { border-top: 1px solid #8591a1; padding-top: 4px; font-size: 9.5pt; color: #5b6675; }
+  footer { margin-top: 20px; border-top: 1px solid #dfe5ef; padding-top: 6px; font-size: 9pt; color: #8591a1; }
+  section { break-inside: avoid-page; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Endpoint Security Standard</h1>
+  <div class="sub">Vgon Soluções em Informática LTDA &middot; DistribuiHub platform</div>
+</header>
+
+<table class="meta">
+  <tr><td>Organization</td><td>Vgon Soluções em Informática LTDA (CNPJ 13.758.796/0001-98), Brazil</td></tr>
+  <tr><td>Scope</td><td>All computers (workstations and laptops) used by employees and contractors to work on or access company systems and customer data</td></tr>
+  <tr><td>Version / date</td><td>1.0 &middot; 24 November 2026</td></tr>
+  <tr><td>Owner</td><td>Information Security Officer (the Director of the company)</td></tr>
+  <tr><td>Contact</td><td>suporte@vgon.com.br</td></tr>
+  <tr><td>Review cycle</td><td>At least once a year, and after any significant incident</td></tr>
+  <tr><td>Parent document</td><td>Information Security Policy v1.0</td></tr>
+</table>
+
+<section>
+<h2>1. Purpose</h2>
+<p>This standard defines the minimum security configuration of every company computer, to protect company systems and customer data from malware, unauthorized access and device loss. It supports the Information Security Policy.</p>
+</section>
+
+<section>
+<h2>2. Minimum requirements</h2>
+<table class="grid">
+  <tr><th style="width:24%">Control</th><th>Requirement</th></tr>
+  <tr><td>Antivirus / anti-malware</td><td>Anti-malware software is installed and active on every company computer: Microsoft Defender Antivirus (built into Windows), with real-time protection enabled and automatic signature updates. Computers are not used for company work if protection is disabled.</td></tr>
+  <tr><td>Operating system updates</td><td>Windows Update is set to install updates automatically. Critical security updates are installed as soon as they are available.</td></tr>
+  <tr><td>Screen lock</td><td>Computers lock automatically after a period of inactivity and require the user's credentials to unlock.</td></tr>
+  <tr><td>Passwords</td><td>Each person uses an individual account with a strong, unique password. Passwords are never shared. A password manager is recommended.</td></tr>
+  <tr><td>Disk encryption</td><td>The disks of company computers are encrypted (Windows BitLocker), so data remains protected if a device is lost or stolen.</td></tr>
+  <tr><td>Multi-factor authentication (MFA)</td><td>MFA is enabled on the company's Microsoft 365 accounts (including e-mail), on the source-code repository (GitHub) and on the other administrative services used to operate the platform.</td></tr>
+  <tr><td>E-mail protection</td><td>The company's e-mail is provided by Microsoft 365 (Exchange Online), which filters malware and phishing messages before delivery.</td></tr>
+</table>
+</section>
+
+<section>
+<h2>3. Safe use</h2>
+<ul>
+  <li>Install software only from trusted sources. Do not open unexpected attachments or links; report suspicious messages to suporte@vgon.com.br.</li>
+  <li>Do not store customer data on removable media or personal devices.</li>
+  <li>Restricted information (passwords, tokens, keys, certificates, personal data) must never be sent by chat or e-mail in clear text or stored in source code.</li>
+  <li>Keep documents with restricted or confidential data out of sight when leaving the workstation (clean-desk rule).</li>
+</ul>
+</section>
+
+<section>
+<h2>4. Lost or stolen devices and departures</h2>
+<ul>
+  <li>The loss or theft of a computer must be reported immediately. Access of that device and the user to company accounts is revoked, and passwords and tokens that may have been exposed are changed.</li>
+  <li>When a person leaves the company, their accounts are disabled on the same day and the computer is returned and cleaned.</li>
+</ul>
+</section>
+
+<section>
+<h2>5. Verification and exceptions</h2>
+<p>The Information Security Officer verifies at least twice a year that every computer meets the requirements above (antivirus active, updates current, screen lock set, disk encrypted, MFA enabled). Exceptions must be requested in writing, approved by management and have an end date. A computer that does not meet the requirements must be fixed before it is used with customer data.</p>
+</section>
+
+<section>
+<h2>Approval</h2>
+<div class="box">Approved by management of Vgon Soluções em Informática LTDA. This version takes effect on the approval date below.</div>
+<div class="sign">
+  <div>Name, title and signature</div>
+  <div>Date</div>
+</div>
+</section>
+
+<footer>Endpoint Security Standard &middot; v1.0 &middot; Vgon Soluções em Informática LTDA &middot; Classification: Internal / shareable with partners on request</footer>
+</body>
+</html>

@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Access Control Policy — DistribuiHub</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font: 11pt/1.5 'Segoe UI', Arial, sans-serif; color: #1b2430; margin: 0; }
+  header { border-bottom: 3px solid #1d4ed8; padding-bottom: 10px; margin-bottom: 14px; }
+  h1 { font-size: 20pt; margin: 0 0 4px; letter-spacing: -.3px; }
+  .sub { color: #5b6675; font-size: 10pt; }
+  table.meta { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 10pt; }
+  table.meta td { border: 1px solid #d5dbe6; padding: 5px 9px; vertical-align: top; }
+  table.meta td:first-child { background: #f1f4fa; width: 28%; font-weight: 600; }
+  h2 { font-size: 12.5pt; color: #1d4ed8; margin: 18px 0 5px; break-after: avoid; }
+  p { margin: 5px 0; }
+  ul { margin: 4px 0 6px; padding-left: 20px; }
+  li { margin: 2px 0; }
+  .box { border: 1px solid #d5dbe6; border-radius: 6px; padding: 8px 12px; background: #f8fafd; margin: 8px 0; }
+  table.grid { width: 100%; border-collapse: collapse; margin: 6px 0 8px; font-size: 10pt; }
+  table.grid th { background: #1d4ed8; color: #fff; text-align: left; padding: 5px 8px; }
+  table.grid td { border-bottom: 1px solid #dfe5ef; padding: 5px 8px; vertical-align: top; }
+  .sign { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+  .sign div { border-top: 1px solid #8591a1; padding-top: 4px; font-size: 9.5pt; color: #5b6675; }
+  footer { margin-top: 20px; border-top: 1px solid #dfe5ef; padding-top: 6px; font-size: 9pt; color: #8591a1; }
+  section { break-inside: avoid-page; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Access Control Policy</h1>
+  <div class="sub">Vgon Soluções em Informática LTDA &middot; DistribuiHub platform</div>
+</header>
+
+<table class="meta">
+  <tr><td>Organization</td><td>Vgon Soluções em Informática LTDA (CNPJ 13.758.796/0001-98), Brazil</td></tr>
+  <tr><td>Scope</td><td>Access to the DistribuiHub platform (by customer users and by company staff), to the production infrastructure and to the personal data and credentials processed by the platform</td></tr>
+  <tr><td>Version / date</td><td>1.0 &middot; 24 November 2026</td></tr>
+  <tr><td>Owner</td><td>Information Security Officer (the Director of the company)</td></tr>
+  <tr><td>Contact</td><td>suporte@vgon.com.br</td></tr>
+  <tr><td>Review cycle</td><td>At least once a year; access rights at least quarterly</td></tr>
+  <tr><td>Parent document</td><td>Information Security Policy v1.0</td></tr>
+</table>
+
+<section>
+<h2>1. Purpose</h2>
+<p>This policy defines who may access which systems and data, and how access is granted, reviewed and removed. Its central rule is the <b>principle of least privilege</b>: every person and system receives only the access required for its legitimate task, for as long as it is required. It applies in particular to personal data.</p>
+</section>
+
+<section>
+<h2>2. Principles</h2>
+<ul>
+  <li><b>Need to know:</b> access to personal data is granted only to roles whose duties require it.</li>
+  <li><b>Least privilege:</b> permissions are the minimum needed, and administrative rights are exceptional.</li>
+  <li><b>Individual accountability:</b> every account belongs to one person or one service; shared accounts are not used for systems that hold customer data.</li>
+  <li><b>Separation of tenants:</b> a customer company can never see another company's data.</li>
+  <li><b>Traceability:</b> access to and changes of sensitive data are recorded.</li>
+</ul>
+</section>
+
+<section>
+<h2>3. Access to the platform by customer users</h2>
+<p>The platform uses role-based access control. The server checks the user's permissions on every request; the screen only hides what the user cannot do. There is no public sign-up: accounts are created by the customer company's administrator.</p>
+<table class="grid">
+  <tr><th style="width:26%">Role</th><th>Access (summary)</th></tr>
+  <tr><td>Owner</td><td>All permissions of the customer company, including plan and company settings.</td></tr>
+  <tr><td>Administrator</td><td>All permissions except company ownership settings.</td></tr>
+  <tr><td>Operations manager / Commercial manager</td><td>Operational or commercial areas, according to the role.</td></tr>
+  <tr><td>Salesperson</td><td>Customers and quotes/orders needed for selling; sees their own orders unless granted broader visibility.</td></tr>
+  <tr><td>Buyer</td><td>Suppliers, purchasing and related stock and fiscal data.</td></tr>
+  <tr><td>Stock operator / Shipper</td><td>Stock movements, picking, packing and shipping.</td></tr>
+  <tr><td>Driver</td><td>Only the delivery tasks assigned to the driver; no access to other modules or customers' data beyond the delivery stops.</td></tr>
+  <tr><td>Finance / Fiscal</td><td>Financial or fiscal areas and the read access they need.</td></tr>
+  <tr><td>Auditor</td><td>Read-only access.</td></tr>
+</table>
+<ul>
+  <li>Personal data of end customers (names, documents, contacts, addresses) is available only to roles that hold the customer permissions; roles without them cannot read it.</li>
+  <li>Customer administrators create users, assign roles and remove access. The platform records these changes in the audit trail.</li>
+  <li>Sign-in uses a password that follows the platform's password rules, account lockout after repeated failures, and optional two-factor authentication.</li>
+  <li>Data of different customer companies is isolated at the database level (row-level security).</li>
+</ul>
+</section>
+
+<section>
+<h2>4. Access by company staff to production systems and customer data</h2>
+<table class="grid">
+  <tr><th style="width:26%">Resource</th><th>Rule</th></tr>
+  <tr><td>Servers and hosting panel</td><td>Named administrators only; individual accounts; multi-factor authentication where available; remote administration (SSH) allowed only from a single fixed company IP address.</td></tr>
+  <tr><td>Production database</td><td>No public port; reachable only by the platform's services. Direct access is limited to the Information Security Officer or designated engineers, for maintenance, and is exceptional.</td></tr>
+  <tr><td>Source code and deployment</td><td>Private repository with individual accounts and multi-factor authentication; secrets are never committed.</td></tr>
+  <tr><td>Application secrets and keys</td><td>Stored in the server environment configuration; accessible only to those who operate the platform.</td></tr>
+  <tr><td>Customer data (support)</td><td>Staff access customer data only to answer a customer's request, only to the extent necessary, and never to browse or copy it for other purposes.</td></tr>
+  <tr><td>Credentials of third-party platforms</td><td>Tokens and secrets are stored encrypted and are never displayed in the interface or in logs; staff do not need to see them in clear text.</td></tr>
+</table>
+</section>
+
+<section>
+<h2>5. Granting, changing and removing access</h2>
+<ul>
+  <li><b>Granting:</b> access is requested for a specific role and duty, approved by the Information Security Officer (staff) or by the customer's administrator (customer users), and set up with the minimum permissions needed.</li>
+  <li><b>Changing:</b> when duties change, permissions are adjusted the same day and the previous ones removed.</li>
+  <li><b>Removal:</b> when a person leaves the company or a customer user is no longer authorized, access is disabled the same day.</li>
+  <li><b>Temporary access:</b> elevated access for a specific task is time-limited and removed when the task ends.</li>
+</ul>
+</section>
+
+<section>
+<h2>6. Review and monitoring</h2>
+<ul>
+  <li>The Information Security Officer reviews all staff access to production systems at least quarterly and removes what is no longer needed.</li>
+  <li>Customers are encouraged to review their own users and roles periodically; the platform lists users and roles for this purpose.</li>
+  <li>Sign-ins, permission and role changes, integration connections and other sensitive actions are recorded in the audit trail, with user, time and company. Unusual access is investigated under the Incident Response Policy.</li>
+</ul>
+</section>
+
+<section>
+<h2>7. Exceptions and enforcement</h2>
+<p>Exceptions must be requested in writing, assessed for risk, approved by management and have an end date. Access that violates this policy is removed immediately, and violations may lead to disciplinary action or contract termination.</p>
+</section>
+
+<section>
+<h2>Approval</h2>
+<div class="box">Approved by management of Vgon Soluções em Informática LTDA. This version takes effect on the approval date below.</div>
+<div class="sign">
+  <div>Name, title and signature</div>
+  <div>Date</div>
+</div>
+</section>
+
+<footer>Access Control Policy &middot; v1.0 &middot; Vgon Soluções em Informática LTDA &middot; Classification: Internal / shareable with partners on request</footer>
+</body>
+</html>

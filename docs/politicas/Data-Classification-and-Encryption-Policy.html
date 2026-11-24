@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Data Classification and Encryption Policy — DistribuiHub</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font: 11pt/1.5 'Segoe UI', Arial, sans-serif; color: #1b2430; margin: 0; }
+  header { border-bottom: 3px solid #1d4ed8; padding-bottom: 10px; margin-bottom: 14px; }
+  h1 { font-size: 20pt; margin: 0 0 4px; letter-spacing: -.3px; }
+  .sub { color: #5b6675; font-size: 10pt; }
+  table.meta { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 10pt; }
+  table.meta td { border: 1px solid #d5dbe6; padding: 5px 9px; vertical-align: top; }
+  table.meta td:first-child { background: #f1f4fa; width: 28%; font-weight: 600; }
+  h2 { font-size: 12.5pt; color: #1d4ed8; margin: 18px 0 5px; break-after: avoid; }
+  p { margin: 5px 0; }
+  ul { margin: 4px 0 6px; padding-left: 20px; }
+  li { margin: 2px 0; }
+  .box { border: 1px solid #d5dbe6; border-radius: 6px; padding: 8px 12px; background: #f8fafd; margin: 8px 0; }
+  table.grid { width: 100%; border-collapse: collapse; margin: 6px 0 8px; font-size: 10pt; }
+  table.grid th { background: #1d4ed8; color: #fff; text-align: left; padding: 5px 8px; }
+  table.grid td { border-bottom: 1px solid #dfe5ef; padding: 5px 8px; vertical-align: top; }
+  .sign { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+  .sign div { border-top: 1px solid #8591a1; padding-top: 4px; font-size: 9.5pt; color: #5b6675; }
+  footer { margin-top: 20px; border-top: 1px solid #dfe5ef; padding-top: 6px; font-size: 9pt; color: #8591a1; }
+  section { break-inside: avoid-page; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Data Classification and Encryption Policy</h1>
+  <div class="sub">Vgon Soluções em Informática LTDA &middot; DistribuiHub platform</div>
+</header>
+
+<table class="meta">
+  <tr><td>Organization</td><td>Vgon Soluções em Informática LTDA (CNPJ 13.758.796/0001-98), Brazil</td></tr>
+  <tr><td>Scope</td><td>All information processed or stored by the DistribuiHub platform and by the company, in any form and environment</td></tr>
+  <tr><td>Version / date</td><td>1.0 &middot; 24 November 2026</td></tr>
+  <tr><td>Owner</td><td>Information Security Officer (the Director of the company)</td></tr>
+  <tr><td>Contact</td><td>suporte@vgon.com.br</td></tr>
+  <tr><td>Review cycle</td><td>At least once a year, and after significant changes to the platform or to the data it processes</td></tr>
+  <tr><td>Parent document</td><td>Information Security Policy v1.0</td></tr>
+</table>
+
+<section>
+<h2>1. Purpose</h2>
+<p>This policy classifies the information handled by the company and defines the protections, including encryption in transit and at rest, that each class requires. It supports the Information Security Policy and the Data Protection Policy.</p>
+</section>
+
+<section>
+<h2>2. Data classification</h2>
+<table class="grid">
+  <tr><th style="width:15%">Class</th><th style="width:36%">Examples</th><th>Required protection</th></tr>
+  <tr><td>Restricted</td><td>Passwords; API keys, OAuth tokens and app secrets for sales channels; digital certificates; two-factor secrets; encryption keys</td><td>Never stored in clear text. Encrypted or hashed at rest; encrypted in transit; never written to logs, e-mail, chat or source code; access only by the service that needs them.</td></tr>
+  <tr><td>Confidential</td><td>Personal data of users and end customers (names, tax IDs, contacts, addresses); orders, prices, stock, financial and fiscal data; audit trail; backups</td><td>Encrypted in transit; access by role and need to know; isolated per customer company; backups encrypted; not used in test environments.</td></tr>
+  <tr><td>Internal</td><td>Operating procedures, architecture documents, non-sensitive configuration</td><td>Shared inside the company and with providers under confidentiality.</td></tr>
+  <tr><td>Public</td><td>Marketing material, privacy policy, terms of use</td><td>No restriction.</td></tr>
+</table>
+<p>Information is classified by its owner when it is created or collected. When in doubt, the higher class applies. Customer data remains the property of the customer company, which is the controller of the personal data of its own customers; the company acts as processor.</p>
+</section>
+
+<section>
+<h2>3. Encryption in transit</h2>
+<ul>
+  <li>All communication between users' browsers, the mobile application and the platform, and between the platform and third-party services (marketplaces, tax authorities, e-mail), uses HTTPS/TLS.</li>
+  <li>Cookies that carry sessions are marked secure and cannot be read by scripts.</li>
+  <li>Notifications received from sales channels (webhooks) must carry a secret token and are accepted only after the sender's cryptographic signature is verified.</li>
+  <li>Product photos are delivered only through signed, expiring URLs.</li>
+  <li>The database has no public port; it communicates only with the platform's own services through the server's internal network.</li>
+</ul>
+</section>
+
+<section>
+<h2>4. Encryption and protection at rest</h2>
+<table class="grid">
+  <tr><th style="width:28%">Data</th><th>Protection</th></tr>
+  <tr><td>User passwords</td><td>Never stored; only salted hashes created with the scrypt key-derivation function.</td></tr>
+  <tr><td>Credentials and tokens for sales channels, digital certificates, two-factor secrets</td><td>Encrypted before being stored, with AES-256-GCM. The key of each customer company is derived from a master key (HKDF, salted with the customer company identifier), and each encrypted value is bound to its company and purpose, so a value from one customer cannot be decrypted or swapped into another. The master key supports rotation (current and previous key).</td></tr>
+  <tr><td>Database backups</td><td>Encrypted with AES-256-GCM before being stored, using a dedicated backup key that must be kept separately from the backup files. Restoration is tested periodically.</td></tr>
+  <tr><td>Business and personal data in the database</td><td>Protected by access control and role-based permissions, row-level isolation between customer companies, network segregation (no public database port, firewall limited to the service ports) and the provider's infrastructure controls. Column-level encryption of this data is not applied; protection of the underlying storage is evaluated at least once a year in the review of this policy.</td></tr>
+  <tr><td>Company workstations</td><td>Disks are encrypted (Windows BitLocker), as set out in the Endpoint Security Standard.</td></tr>
+</table>
+</section>
+
+<section>
+<h2>5. Key and secret management</h2>
+<ul>
+  <li>Encryption keys and application secrets are kept in the server environment configuration, never in source code or repositories, and are accessible only to those who operate the platform.</li>
+  <li>Keys are rotated when a person with access leaves or when exposure is suspected. Rotation keeps the previous key available only for the time needed to re-encrypt existing data.</li>
+  <li>Loss or suspected exposure of a key is handled as a security incident under the Incident Response Policy.</li>
+  <li>Secrets are masked before being written to logs or shown in any interface.</li>
+</ul>
+</section>
+
+<section>
+<h2>6. Handling, retention and disposal</h2>
+<ul>
+  <li>Restricted and confidential data is accessed only by authorized people, for legitimate purposes, according to the Access Control Policy.</li>
+  <li>Production data is not copied to test or development environments, and customer data is not copied to removable media or personal devices.</li>
+  <li>Data is kept only as long as needed for the service or required by law. At the end of a customer contract, data is made available for export and then deleted or anonymized, except where retention is required by law. Backups are retained for a limited period and then deleted.</li>
+  <li>When a seller revokes the authorization of a sales channel, the stored credentials for that channel are discarded.</li>
+</ul>
+</section>
+
+<section>
+<h2>7. Responsibilities, exceptions and review</h2>
+<p>The Information Security Officer owns this policy and verifies compliance at least annually. All personnel must handle information according to its class. Exceptions must be requested in writing, approved by management and have an end date. Violations may lead to disciplinary action or contract termination.</p>
+</section>
+
+<section>
+<h2>Approval</h2>
+<div class="box">Approved by management of Vgon Soluções em Informática LTDA. This version takes effect on the approval date below.</div>
+<div class="sign">
+  <div>Name, title and signature</div>
+  <div>Date</div>
+</div>
+</section>
+
+<footer>Data Classification and Encryption Policy &middot; v1.0 &middot; Vgon Soluções em Informática LTDA &middot; Classification: Internal / shareable with partners on request</footer>
+</body>
+</html>

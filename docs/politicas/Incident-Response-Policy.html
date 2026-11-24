@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Incident Response Policy — DistribuiHub</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font: 11pt/1.5 'Segoe UI', Arial, sans-serif; color: #1b2430; margin: 0; }
+  header { border-bottom: 3px solid #1d4ed8; padding-bottom: 10px; margin-bottom: 14px; }
+  h1 { font-size: 20pt; margin: 0 0 4px; letter-spacing: -.3px; }
+  .sub { color: #5b6675; font-size: 10pt; }
+  table.meta { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 10pt; }
+  table.meta td { border: 1px solid #d5dbe6; padding: 5px 9px; vertical-align: top; }
+  table.meta td:first-child { background: #f1f4fa; width: 28%; font-weight: 600; }
+  h2 { font-size: 12.5pt; color: #1d4ed8; margin: 18px 0 5px; break-after: avoid; }
+  p { margin: 5px 0; }
+  ul { margin: 4px 0 6px; padding-left: 20px; }
+  li { margin: 2px 0; }
+  .box { border: 1px solid #d5dbe6; border-radius: 6px; padding: 8px 12px; background: #f8fafd; margin: 8px 0; }
+  table.grid { width: 100%; border-collapse: collapse; margin: 6px 0 8px; font-size: 10pt; }
+  table.grid th { background: #1d4ed8; color: #fff; text-align: left; padding: 5px 8px; }
+  table.grid td { border-bottom: 1px solid #dfe5ef; padding: 5px 8px; vertical-align: top; }
+  .sign { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+  .sign div { border-top: 1px solid #8591a1; padding-top: 4px; font-size: 9.5pt; color: #5b6675; }
+  footer { margin-top: 20px; border-top: 1px solid #dfe5ef; padding-top: 6px; font-size: 9pt; color: #8591a1; }
+  section { break-inside: avoid-page; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Incident Response Policy</h1>
+  <div class="sub">Vgon Soluções em Informática LTDA &middot; DistribuiHub platform</div>
+</header>
+
+<table class="meta">
+  <tr><td>Organization</td><td>Vgon Soluções em Informática LTDA (CNPJ 13.758.796/0001-98), Brazil</td></tr>
+  <tr><td>Scope</td><td>Any event that threatens or may threaten the confidentiality, integrity or availability of the DistribuiHub platform, its infrastructure, or the data of customers, sellers and their end customers</td></tr>
+  <tr><td>Version / date</td><td>1.0 &middot; 24 November 2026</td></tr>
+  <tr><td>Owner</td><td>Information Security Officer (the Director of the company)</td></tr>
+  <tr><td>Incident reporting channel</td><td>suporte@vgon.com.br (monitored by the Information Security Officer)</td></tr>
+  <tr><td>Review cycle</td><td>At least once a year, and after every significant incident</td></tr>
+  <tr><td>Parent document</td><td>Information Security Policy v1.0</td></tr>
+</table>
+
+<section>
+<h2>1. Purpose</h2>
+<p>This policy defines how the company detects, reports, handles and learns from security incidents, who is responsible for each step, and how customers, sellers, sales channels and authorities are informed.</p>
+</section>
+
+<section>
+<h2>2. What is an incident</h2>
+<p>A security incident is any confirmed or suspected event such as: unauthorized access to systems or data; exposure or loss of customer data, credentials, tokens or keys; malware or ransomware; account takeover; loss or theft of a device with company access; abuse of an integration with a sales channel; denial of service; unauthorized changes to the platform; or a significant failure of a security control.</p>
+</section>
+
+<section>
+<h2>3. Roles and responsibilities</h2>
+<table class="grid">
+  <tr><th style="width:28%">Role</th><th>Responsibility</th></tr>
+  <tr><td>Everyone (employees, contractors)</td><td>Report any suspected incident immediately to suporte@vgon.com.br; do not try to investigate or hide it; preserve evidence (do not delete messages, logs or files).</td></tr>
+  <tr><td>Information Security Officer (incident lead)</td><td>Receives reports, classifies severity, leads the response, decides containment actions, keeps the incident record, coordinates communication and runs the post-incident review.</td></tr>
+  <tr><td>Engineering</td><td>Investigates technical causes, contains and eradicates the threat, restores services and data, and implements corrective measures.</td></tr>
+  <tr><td>Data Protection Officer (DPO)</td><td>Assesses the impact on personal data, advises on notification duties under Brazil's LGPD, and is the contact for data subjects and the ANPD (suporte@vgon.com.br).</td></tr>
+  <tr><td>Management</td><td>Approves critical decisions (for example, taking the service offline, notifying authorities) and provides resources.</td></tr>
+</table>
+</section>
+
+<section>
+<h2>4. Severity levels</h2>
+<table class="grid">
+  <tr><th style="width:14%">Level</th><th>Description</th><th style="width:26%">Target response</th></tr>
+  <tr><td>Critical</td><td>Confirmed exposure or loss of personal or customer data, compromise of keys or credentials, ransomware, or a platform-wide outage</td><td>Start immediately; incident lead engaged within 1 hour</td></tr>
+  <tr><td>High</td><td>Compromise of an account or integration, or suspected data exposure under investigation</td><td>Start within 4 hours</td></tr>
+  <tr><td>Medium</td><td>Contained event with limited impact (for example, blocked attack, isolated malware on one device)</td><td>Within 1 business day</td></tr>
+  <tr><td>Low</td><td>Policy violation or weakness with no evidence of impact</td><td>Within 5 business days</td></tr>
+</table>
+</section>
+
+<section>
+<h2>5. Response process</h2>
+<ol>
+  <li><b>Detect and report:</b> incidents are detected by internal monitoring, the audit trail and logs, alerts from providers, or reports from staff, customers or researchers. Every report is logged with date, time, reporter and description.</li>
+  <li><b>Assess and classify:</b> the incident lead confirms whether it is an incident, assigns a severity level and opens an incident record.</li>
+  <li><b>Contain:</b> stop the spread without destroying evidence. Typical actions include disabling affected accounts, revoking sessions, disconnecting affected integrations and invalidating their tokens, rotating exposed keys and passwords, blocking addresses at the firewall, and isolating affected systems.</li>
+  <li><b>Eradicate:</b> remove the cause (malware, vulnerable component, unauthorized access) and close the weakness.</li>
+  <li><b>Recover:</b> restore services and, if necessary, data from verified backups; confirm normal operation and keep monitoring closely afterwards.</li>
+  <li><b>Review:</b> within 5 business days after closure, the team documents the timeline, root cause, impact, what worked and what did not, and corrective actions with owners and dates.</li>
+</ol>
+<p>Evidence is preserved for the investigation: audit trail, application and server logs, and affected files. The platform's audit trail and integration logs record sensitive actions with user, time and customer company, with secrets masked.</p>
+</section>
+
+<section>
+<h2>6. Communication and notification</h2>
+<table class="grid">
+  <tr><th style="width:26%">Who</th><th>When and how</th></tr>
+  <tr><td>Internal</td><td>The incident lead informs management at once for Critical and High incidents, and keeps the team updated throughout.</td></tr>
+  <tr><td>Affected customers (customer companies and sellers)</td><td>Without undue delay once an incident that may affect their data is confirmed, by e-mail to their registered contact, describing what happened, the data involved, the measures taken and what they should do.</td></tr>
+  <tr><td>Sales channels (for example TikTok Shop)</td><td>If data obtained through a channel, or the credentials of the integration, may be affected, the channel and the affected sellers are notified without undue delay and within the period required by the channel's terms. The integration is disconnected and its credentials revoked or rotated.</td></tr>
+  <tr><td>Authority (ANPD) and data subjects</td><td>When the incident may cause relevant risk or damage to personal data subjects, the company, together with the controller, notifies the Brazilian National Data Protection Authority (ANPD) and the data subjects within the legal deadline set by ANPD regulations (currently three business days from becoming aware of the incident), with the information the regulation requires.</td></tr>
+  <tr><td>Other parties</td><td>Police, insurers, providers and legal advisers are contacted when appropriate, by decision of management.</td></tr>
+</table>
+<p>Public statements are made only by management. Communications are factual, avoid speculation and never include secrets or personal data.</p>
+</section>
+
+<section>
+<h2>7. Incident record</h2>
+<p>Each incident has a record kept by the incident lead, with: identifier, dates and times, reporter, description, severity, systems and data affected, actions taken, notifications sent, root cause, corrective actions and closure date. Records are retained for at least five years and are available for audits and to partners on request.</p>
+</section>
+
+<section>
+<h2>8. Preparedness and testing</h2>
+<ul>
+  <li>Backups are taken at least daily, are encrypted, and restoration is tested at least twice a year.</li>
+  <li>Contact details for the response team, hosting provider and key suppliers are kept up to date.</li>
+  <li>This policy is rehearsed at least once a year through a simulated incident (tabletop exercise), and the results are used to improve it.</li>
+  <li>Personnel receive guidance on how to recognize and report incidents when they join and at least once a year.</li>
+</ul>
+</section>
+
+<section>
+<h2>9. Exceptions and review</h2>
+<p>Exceptions must be approved in writing by management. This policy is reviewed at least annually and after every Critical incident.</p>
+</section>
+
+<section>
+<h2>Approval</h2>
+<div class="box">Approved by management of Vgon Soluções em Informática LTDA. This version takes effect on the approval date below.</div>
+<div class="sign">
+  <div>Name, title and signature</div>
+  <div>Date</div>
+</div>
+</section>
+
+<footer>Incident Response Policy &middot; v1.0 &middot; Vgon Soluções em Informática LTDA &middot; Classification: Internal / shareable with partners on request</footer>
+</body>
+</html>

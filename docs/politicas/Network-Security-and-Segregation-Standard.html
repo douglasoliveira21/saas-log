@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Network Security and Segregation Standard — DistribuiHub</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font: 11pt/1.5 'Segoe UI', Arial, sans-serif; color: #1b2430; margin: 0; }
+  header { border-bottom: 3px solid #1d4ed8; padding-bottom: 10px; margin-bottom: 14px; }
+  h1 { font-size: 20pt; margin: 0 0 4px; letter-spacing: -.3px; }
+  .sub { color: #5b6675; font-size: 10pt; }
+  table.meta { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 10pt; }
+  table.meta td { border: 1px solid #d5dbe6; padding: 5px 9px; vertical-align: top; }
+  table.meta td:first-child { background: #f1f4fa; width: 28%; font-weight: 600; }
+  h2 { font-size: 12.5pt; color: #1d4ed8; margin: 18px 0 5px; break-after: avoid; }
+  p { margin: 5px 0; }
+  ul { margin: 4px 0 6px; padding-left: 20px; }
+  li { margin: 2px 0; }
+  .box { border: 1px solid #d5dbe6; border-radius: 6px; padding: 8px 12px; background: #f8fafd; margin: 8px 0; }
+  table.grid { width: 100%; border-collapse: collapse; margin: 6px 0 8px; font-size: 10pt; }
+  table.grid th { background: #1d4ed8; color: #fff; text-align: left; padding: 5px 8px; }
+  table.grid td { border-bottom: 1px solid #dfe5ef; padding: 5px 8px; vertical-align: top; }
+  .sign { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+  .sign div { border-top: 1px solid #8591a1; padding-top: 4px; font-size: 9.5pt; color: #5b6675; }
+  footer { margin-top: 20px; border-top: 1px solid #dfe5ef; padding-top: 6px; font-size: 9pt; color: #8591a1; }
+  section { break-inside: avoid-page; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Network Security and Segregation Standard</h1>
+  <div class="sub">Vgon Soluções em Informática LTDA &middot; DistribuiHub platform</div>
+</header>
+
+<table class="meta">
+  <tr><td>Organization</td><td>Vgon Soluções em Informática LTDA (CNPJ 13.758.796/0001-98), Brazil</td></tr>
+  <tr><td>Scope</td><td>Production infrastructure of the DistribuiHub platform: servers, network, firewall, database and remote administration</td></tr>
+  <tr><td>Version / date</td><td>1.0 &middot; 24 November 2026</td></tr>
+  <tr><td>Owner</td><td>Information Security Officer (the Director of the company)</td></tr>
+  <tr><td>Contact</td><td>suporte@vgon.com.br</td></tr>
+  <tr><td>Review cycle</td><td>At least quarterly for firewall rules and allowed addresses; the whole standard at least once a year</td></tr>
+  <tr><td>Parent document</td><td>Information Security Policy v1.0</td></tr>
+</table>
+
+<section>
+<h2>1. Purpose</h2>
+<p>This standard describes how the production network of the DistribuiHub platform is segregated and protected, and how network threats are monitored and prevented. It supports the Information Security Policy.</p>
+</section>
+
+<section>
+<h2>2. Hosting</h2>
+<p>The platform runs on a dedicated virtual private server hosted by Contabo, in a data center located in the United States. The same server hosts the web application, the API and the database of the platform. Customer data is therefore stored and processed in the United States. The company informs its customers of this in its Privacy Policy (https://log.vgon.com.br/privacidade, section on international transfer), and applies the protections described in this standard and in the Information Security Policy.</p>
+</section>
+
+<section>
+<h2>3. Network segregation</h2>
+<table class="grid">
+  <tr><th style="width:26%">Control</th><th>Description</th></tr>
+  <tr><td>Database not exposed</td><td>The PostgreSQL database has no port published to the Internet or to the host's public interface. It is reachable only by the platform's own application services through the server's internal network.</td></tr>
+  <tr><td>Host firewall</td><td>The server firewall allows inbound connections only on the two ports required by the service: the web application port (3000) and the API port (3001). All other inbound ports are closed.</td></tr>
+  <tr><td>Separated services</td><td>The web application, the API and the database run as separate services; only the web and API services accept connections from outside.</td></tr>
+  <tr><td>Remote administration</td><td>Administrative access (SSH) is enabled only from a single, fixed company IP address. Connections from any other address are refused.</td></tr>
+  <tr><td>Tenant separation</td><td>Within the database, the data of each customer company is separated by row-level security, so a flaw in one customer's session cannot expose another customer's data. This is an additional layer on top of network segregation.</td></tr>
+</table>
+</section>
+
+<section>
+<h2>4. Monitoring and prevention of network and application threats</h2>
+<ul>
+  <li><b>Internal monitoring:</b> the company operates internal monitoring of the platform, covering service availability and server and application logs. Anomalies are reviewed by the Information Security Officer and handled under the Incident Response Policy.</li>
+  <li><b>Rate limiting:</b> the API limits the number of requests per client over time, in particular on sign-in, account recovery and public endpoints, to reduce brute-force and denial-of-service attempts.</li>
+  <li><b>Account protection:</b> repeated failed sign-ins temporarily lock the account; optional two-factor authentication is available to every user.</li>
+  <li><b>Audit trail:</b> sensitive actions (sign-ins, permission changes, integration connections, fiscal and financial operations) are recorded with user, time and customer company. Secrets, tokens and keys are masked in logs.</li>
+  <li><b>Encrypted channels:</b> user and integration traffic is protected with HTTPS/TLS.</li>
+  <li><b>Public webhooks:</b> endpoints that receive notifications from sales channels require a secret token in the address and verify the sender's cryptographic signature before processing.</li>
+</ul>
+</section>
+
+<section>
+<h2>5. Firewall and access change control</h2>
+<ul>
+  <li>Only the Information Security Officer or a person designated in writing may change firewall rules, open a port or add an address to the administrative allow-list.</li>
+  <li>Each change records who requested it, the reason and the date, and is removed when no longer needed.</li>
+  <li>Open ports and allowed administrative addresses are reviewed at least quarterly. Any port other than the two service ports, and any administrative address that is no longer required, is closed.</li>
+  <li>Database ports are never opened to the public Internet. Temporary access for maintenance is done through the allowed administrative address and closed afterwards.</li>
+</ul>
+</section>
+
+<section>
+<h2>6. Responsibilities</h2>
+<p>The Information Security Officer owns this standard, approves changes to the network and reviews monitoring results. Engineering operates the infrastructure according to this standard. All personnel must report suspected network incidents immediately to suporte@vgon.com.br.</p>
+</section>
+
+<section>
+<h2>Approval</h2>
+<div class="box">Approved by management of Vgon Soluções em Informática LTDA. This version takes effect on the approval date below.</div>
+<div class="sign">
+  <div>Name, title and signature</div>
+  <div>Date</div>
+</div>
+</section>
+
+<footer>Network Security and Segregation Standard &middot; v1.0 &middot; Vgon Soluções em Informática LTDA &middot; Classification: Internal / shareable with partners on request</footer>
+</body>
+</html>
