@@ -36,5 +36,26 @@ export function catalogHtml(products: CatalogProduct[], company: string, origin:
     footer{display:flex;justify-content:space-between;border-top:1px solid #d8e3e7;padding:2mm 0;color:#536879;font-size:9pt}
     @media print{body{background:white;print-color-adjust:exact;-webkit-print-color-adjust:exact}.toolbar{display:none}.sheet{width:auto;margin:0}}
     @media screen and (max-width:760px){.sheet{width:calc(100% - 16px)}main{grid-template-columns:repeat(2,minmax(0,1fr))}}
-  </style></head><body><div class="toolbar"><button type="button" onclick="window.print()">Imprimir / Salvar como PDF</button></div>${pages}</body></html>`;
+  
+    #loading{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:#e8eef3;font:14px system-ui,sans-serif;color:#142436}
+    #loading .box{display:grid;gap:10px;justify-items:center;width:min(86vw,360px);padding:26px 22px;background:#fff;border-radius:14px;box-shadow:0 8px 30px rgba(16,51,72,.16);text-align:center}
+    #loading strong{font-size:16px} #loading span{color:#536879}
+    #loading .spin{width:38px;height:38px;border-radius:50%;border:4px solid #d9f6ef;border-top-color:#076b60;animation:dhspin .9s linear infinite}
+    #loading .bar{width:100%;height:8px;border-radius:99px;background:#e1ebef;overflow:hidden} #loading .bar i{display:block;height:100%;width:0;background:#076b60;border-radius:99px;transition:width .15s}
+    @keyframes dhspin{to{transform:rotate(360deg)}}
+    body.loading .toolbar,body.loading .sheet{visibility:hidden}
+    @media print{#loading{display:none}}
+  </style></head><body class="loading"><div class="toolbar"><button type="button" onclick="window.print()">Imprimir / Salvar como PDF</button></div>${pages}<div id="loading" role="status" aria-live="polite"><div class="box"><div class="spin" aria-hidden="true"></div><strong>Carregando o catálogo</strong><span id="lmsg">Preparando as imagens…</span><div class="bar"><i id="lbar"></i></div></div></div><script>(function(){
+var imgs=[].slice.call(document.querySelectorAll('img')),total=imgs.length,done=0,finished=false,msg=document.getElementById('lmsg'),bar=document.getElementById('lbar');
+function show(){if(finished)return;finished=true;document.body.classList.remove('loading');var l=document.getElementById('loading');if(l)l.remove();}
+function tick(){done++;var pct=total?Math.round(done/total*100):100;msg.textContent=done+' de '+total+' imagens ('+pct+'%)';bar.style.width=pct+'%';if(done>=total)setTimeout(show,150);}
+if(!total){show();return;}
+msg.textContent='0 de '+total+' imagens (0%)';
+imgs.forEach(function(img){var ok=false;function once(){if(ok)return;ok=true;tick();}
+img.addEventListener('load',once);img.addEventListener('error',once);if(img.complete)once();});
+setTimeout(show,90000);
+})();</script></body></html>`;
 }
+
+/** Tela de espera mostrada na janela do catálogo enquanto os produtos são buscados (as imagens têm a própria tela dentro do catálogo). */
+export const catalogLoadingHtml = () => `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Carregando o catálogo…</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#e8eef3;font:14px system-ui,sans-serif;color:#142436}.box{display:grid;gap:10px;justify-items:center;width:min(86vw,360px);padding:26px 22px;background:#fff;border-radius:14px;box-shadow:0 8px 30px rgba(16,51,72,.16);text-align:center}.spin{width:38px;height:38px;border-radius:50%;border:4px solid #d9f6ef;border-top-color:#076b60;animation:s .9s linear infinite}@keyframes s{to{transform:rotate(360deg)}}span{color:#536879}</style></head><body><div class="box"><div class="spin" aria-hidden="true"></div><strong>Carregando o catálogo</strong><span id="msg">Buscando os produtos…</span></div></body></html>`;

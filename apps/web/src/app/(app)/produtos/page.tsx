@@ -7,7 +7,7 @@ import { api, ApiError } from '@/lib/api';
 import { useUi, PageHeader, Alert, Skeleton, EmptyState, Pager, SortTh, useSort } from '@/components/ui';
 import { formatNcm } from '@/lib/format';
 import { useSession } from '@/lib/session';
-import { catalogHtml } from './catalog-print';
+import { catalogHtml, catalogLoadingHtml } from './catalog-print';
 
 interface Product { id: string; sku: string; name: string; title: string | null; _count: { images: number }; images: { id: string }[]; barcode: string | null; brand: string | null; saleUnit: string; costPrice: string | null; wholesalePrice?: string | null; suggestedPrice: string | null; minStock: number; ncm: string | null; active: boolean; fiscalPending: boolean; category: { name: string } | null }
 interface Category { id: string; name: string }
@@ -56,7 +56,9 @@ export default function ProdutosPage() {
     const preview = window.open('', '_blank');
     if (!preview) { setError('Permita pop-ups para abrir o catálogo.'); return; }
     preview.opener = null;
-    preview.document.body.textContent = 'Preparando o catálogo de produtos…';
+    preview.document.write(catalogLoadingHtml());
+    preview.document.close();
+    const say = (text: string) => { const el = preview.document.getElementById('msg'); if (el) el.textContent = text; };
     setCatalogBusy(true);
     setError('');
     try {
@@ -65,10 +67,12 @@ export default function ProdutosPage() {
       for (let offset = 0; ; offset += limit) {
         const result = await api<{ total: number; items: Product[] }>(`/products?limit=${limit}&offset=${offset}`);
         for (const product of result.items) if (product.active) products.set(product.id, product);
+        say(`Buscando os produtos… ${products.size}${result.total ? ` de ${result.total}` : ''}`);
         if (!result.items.length || offset + result.items.length >= result.total) break;
       }
       if (!products.size) throw new Error('Não há produtos ativos para gerar o catálogo.');
       if (preview.closed) return;
+      say(`${products.size} produto(s) encontrados. Carregando as imagens…`);
       preview.document.open();
       preview.document.write(catalogHtml([...products.values()], me.tenant?.name ?? 'DistribuiHub', window.location.origin, me.tenant?.logoVersion));
       preview.document.close();
