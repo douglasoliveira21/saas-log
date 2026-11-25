@@ -31,7 +31,7 @@ export function NativeBackGuard() {
       last = 0; asking = true;
       const yes = await ui.confirm({ title: 'Encerrar o aplicativo?', message: 'Ao encerrar, o GPS para e sua rota deixa de ser acompanhada. Para continuar trabalhando, escolha “Continuar”.', confirmLabel: 'Encerrar', cancelLabel: 'Continuar', danger: true });
       asking = false;
-      if (yes) { tracker.shutdown(); await app.exitApp(); }
+      if (yes) { tracker.stop(); await tracker.endService(); await app.exitApp(); } // desliga o GPS de propósito e só então fecha
     }).then((h) => { if (dead) void h.remove(); else remove = h.remove; }).catch(() => undefined);
     return () => { dead = true; if (remove) void remove(); };
   }, [ui]);

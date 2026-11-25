@@ -15,9 +15,33 @@ export function GpsGate({ children }: { children: ReactNode }) {
   const { logout } = useSession();
   const [slow, setSlow] = useState(false);
   const [skipBattery, setSkipBattery] = useState(false);
+  const [skipBg, setSkipBg] = useState(false);
   useEffect(() => { tracker.start(); return () => tracker.stop(); }, []);
   // se o aparelho nem chega a perguntar, mostra o botão para pedir de novo
   useEffect(() => { if (t.status !== 'asking') { setSlow(false); return; } const id = setTimeout(() => setSlow(true), 4000); return () => clearTimeout(id); }, [t.status]);
+
+  // Serviço nativo: para o GPS seguir com a tela bloqueada, a localização precisa estar em "Permitir o tempo todo"
+  const bgBlocked = t.engine === 'service' && t.allTheTime === false && !skipBg && t.status !== 'denied' && t.status !== 'asking';
+  if (bgBlocked) {
+    return (
+      <div className="gps-gate card" role="alertdialog" aria-labelledby="bg-title">
+        <span className="gps-icon" aria-hidden><LocateFixed size={28} /></span>
+        <h1 id="bg-title">Permita a localização o tempo todo</h1>
+        <p className="muted">Para o GPS continuar funcionando com a tela bloqueada ou com outro aplicativo aberto, a localização do DistribuiHub precisa estar em <strong>“Permitir o tempo todo”</strong>.</p>
+        <ol className="gps-steps">
+          <li>Toque em <strong>Liberar o tempo todo</strong>. Se abrir os ajustes do aplicativo, entre em <strong>Permissões → Localização</strong>.</li>
+          <li>Escolha <strong>Permitir o tempo todo</strong> (não “somente com o app em uso”).</li>
+          <li>Volte para cá: a tela segue sozinha.</li>
+        </ol>
+        <div className="gps-actions">
+          <button className="btn primary" onClick={() => void tracker.requestAllTheTime()}><LocateFixed aria-hidden />Liberar o tempo todo</button>
+          <button className="btn" onClick={() => void tracker.openSettings().then(() => tracker.openBatterySettings().catch(() => undefined))}><Settings aria-hidden />Abrir ajustes</button>
+        </div>
+        {t.bgAsks >= 2 && <button className="btn ghost sm" onClick={() => setSkipBg(true)}>Continuar mesmo assim (o GPS pode parar com a tela bloqueada)</button>}
+        <div className="gps-foot"><button className="btn ghost sm" onClick={() => { clearTrackerBuffer(); void logout(); }}><LogOut aria-hidden />Sair da conta</button></div>
+      </div>
+    );
+  }
 
   const batteryBlocked = t.native && t.battery === 'restricted' && !skipBattery && (t.status === 'ok' || t.status === 'weak');
   if (batteryBlocked) {

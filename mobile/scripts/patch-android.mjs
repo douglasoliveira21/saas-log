@@ -1,7 +1,7 @@
 // Ajusta o projeto Android gerado por `cap add android`: permissões de localização (incluindo segundo plano), tráfego só criptografado,
 // número da versão e o plugin nativo "PowerSettings" (pede ao Android para NÃO restringir a bateria do app, o que mantém o GPS enviando
 // com a tela bloqueada ou com outro aplicativo aberto). Pode ser executado várias vezes sem duplicar nada.
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,6 +21,7 @@ const PERMISSIONS = [
   'android.permission.POST_NOTIFICATIONS', // aviso fixo exigido pelo Android enquanto a localização é usada
   'android.permission.WAKE_LOCK',
   'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS', // pedir "sem restrições de bateria" para o app
+  'android.permission.RECEIVE_BOOT_COMPLETED', // religar o GPS quando o celular reinicia
 ];
 
 let xml = readFileSync(manifestPath, 'utf8');
@@ -124,15 +125,39 @@ public class PowerSettingsPlugin extends Plugin {
     }
 }
 `);
+
+// ── serviço nativo de localização (envia as posições sozinho, sem depender da página) ──
+for (const name of ['TrackerService', 'TrackerPlugin', 'PointQueue', 'BootReceiver']) {
+  const src = readFileSync(join(root, 'native', `${name}.java`), 'utf8').replace(/__PACKAGE__/g, pkg);
+  writeFileSync(join(dir, `${name}.java`), src);
+}
+let manifest = readFileSync(manifestPath, 'utf8');
+if (!manifest.includes('TrackerService')) {
+  manifest = manifest.replace('</application>', `    <service android:name=".TrackerService" android:enabled="true" android:exported="false" android:foregroundServiceType="location" />
+        <receiver android:name=".BootReceiver" android:enabled="true" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+    </application>`);
+  writeFileSync(manifestPath, manifest);
+}
+if (!main.includes('TrackerPlugin') && main.includes('registerPlugin(PowerSettingsPlugin.class);')) {
+  main = main.replace('registerPlugin(PowerSettingsPlugin.class);', 'registerPlugin(PowerSettingsPlugin.class);\n        registerPlugin(TrackerPlugin.class);');
+  writeFileSync(mainPath, main);
+}
+
 if (!main.includes('PowerSettingsPlugin')) {
   main = main.replace(/public class MainActivity extends BridgeActivity\s*\{\s*\}/, `public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(android.os.Bundle savedInstanceState) {
         registerPlugin(PowerSettingsPlugin.class);
+        registerPlugin(TrackerPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }`);
   if (!main.includes('PowerSettingsPlugin')) { console.error('Formato inesperado da MainActivity: registre o PowerSettingsPlugin manualmente.'); process.exit(1); }
   writeFileSync(mainPath, main);
 }
-console.log('AndroidManifest, versão e plugin PowerSettings ajustados.');
+console.log('AndroidManifest, versão, PowerSettings e serviço nativo de GPS ajustados.');

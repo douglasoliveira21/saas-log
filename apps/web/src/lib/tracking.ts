@@ -32,11 +32,26 @@ export interface TrackerState {
   batteryAsks: number;
   /** Opção do usuário: manter o GPS e a localização funcionando em segundo plano (serviço contínuo, com notificação fixa). */
   background: boolean;
+  /** 'service' = serviço nativo do app (envia sozinho, com a tela bloqueada); 'bgplugin' = plugin de localização + envio pela página (APK antigo); 'web' = navegador. */
+  engine: 'web' | 'bgplugin' | 'service';
+  /** Serviço nativo: a permissão "Permitir o tempo todo" está concedida (null = ainda não sabe). */
+  allTheTime: boolean | null;
+  /** Quantas vezes o motorista foi levado a liberar "o tempo todo" nesta sessão. */
+  bgAsks: number;
 }
 
 interface Pt { lat: number; lng: number; accuracyM?: number; speedMps?: number; heading?: number; recordedAt: string }
 interface NativeLocation { latitude: number; longitude: number; accuracy: number; speed: number | null; bearing: number | null; time: number | null }
 interface PowerSettingsPlugin { status(): Promise<{ ignoring: boolean }>; request(): Promise<void>; openBatterySettings(): Promise<void>; openAppSettings(): Promise<void> }
+interface NativePerms { location: boolean; background: boolean; notifications: boolean; gpsOn: boolean }
+interface NativeServiceState extends NativePerms {
+  running: boolean; hasToken: boolean; authFailed: boolean; routeActive: number; pending: number; fixAgeSec: number; sentAgeSec: number;
+  lat?: number; lng?: number; accuracyM?: number; lastError: string;
+}
+interface NativeTrackerPlugin {
+  permissions(): Promise<NativePerms>; requestLocation(): Promise<NativePerms>; requestBackground(): Promise<NativePerms>; requestNotifications(): Promise<NativePerms>;
+  start(o: { baseUrl?: string; token?: string }): Promise<NativeServiceState>; stop(): Promise<{ running: boolean }>; state(): Promise<NativeServiceState>;
+}
 interface BackgroundGeolocationPlugin {
   addWatcher(options: { backgroundMessage?: string; backgroundTitle?: string; requestPermissions?: boolean; stale?: boolean; distanceFilter?: number }, callback: (position?: NativeLocation, error?: { code?: string; message?: string }) => void): Promise<string>;
   removeWatcher(options: { id: string }): Promise<void>;
@@ -56,13 +71,14 @@ const FLUSH_MS = 15_000;
 const isNative = () => { try { return Capacitor.isNativePlatform(); } catch { return false; } };
 const native = () => registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
 const power = () => registerPlugin<PowerSettingsPlugin>('PowerSettings');
+const service = () => registerPlugin<NativeTrackerPlugin>('NativeTracker');
 
 function store(op: 'get' | 'set' | 'del', value?: string): string | null {
   try { if (op === 'set') { localStorage.setItem(BUF_KEY, value!); return value!; } if (op === 'del') { localStorage.removeItem(BUF_KEY); return null; } return localStorage.getItem(BUF_KEY); } catch { return null; }
 }
 
 class Tracker {
-  state: TrackerState = { status: 'idle', native: false, last: null, routeActive: null, routeNumber: null, pending: 0, lastSentAt: null, sendError: false, battery: 'unknown', batteryAsks: 0, background: true };
+  state: TrackerState = { status: 'idle', native: false, last: null, routeActive: null, routeNumber: null, pending: 0, lastSentAt: null, sendError: false, battery: 'unknown', batteryAsks: 0, background: true, engine: 'web', allTheTime: null, bgAsks: 0 };
   private listeners = new Set<() => void>();
   private started = false;
   private watchId: number | null = null;
@@ -72,17 +88,26 @@ class Tracker {
   private lastKept = 0;
   private lastFlush = 0;
   private sending = false;
-  private onVisible = () => { if (document.visibilityState === 'visible') { void this.flush(); void this.checkBattery(); } };
+  private poll: ReturnType<typeof setInterval> | null = null;
+  private lastHeal = 0;
+  private onVisible = () => { if (document.visibilityState === 'visible') { void this.flush(); void this.checkBattery(); void this.pollService(); } };
 
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
   getSnapshot = () => this.state;
-  private set(patch: Partial<TrackerState>) { this.state = { ...this.state, ...patch, pending: this.buffer.length }; this.listeners.forEach((l) => l()); }
+  private set(patch: Partial<TrackerState>) { this.state = { ...this.state, ...patch, pending: patch.pending ?? (this.state.engine === 'service' ? this.state.pending : this.buffer.length) }; this.listeners.forEach((l) => l()); }
 
   start() {
     if (this.started || typeof window === 'undefined') return;
     this.started = true;
     try { this.buffer = (JSON.parse(store('get') ?? '[]') as Pt[]).slice(-MAX_BUFFER); } catch { this.buffer = []; }
     this.set({ native: isNative(), background: readBackground() });
+    if (isNative() && this.state.background) void this.startNative();
+    else this.startWeb();
+  }
+
+  /** Navegador (ou o aplicativo com o GPS contínuo desligado): localização pela página, só com a página aberta. */
+  private startWeb() {
+    this.set({ engine: isNative() ? 'bgplugin' : 'web' });
     this.watch();
     void this.checkBattery();
     this.timers.push(setInterval(() => void this.flush(true), HEARTBEAT_MS));
@@ -91,14 +116,88 @@ class Tracker {
     void this.flush(true);
   }
 
-  stop() {
-    if (!this.started) return;
-    this.started = false;
+  private stopWeb() {
     this.unwatch();
     this.timers.forEach(clearInterval); this.timers = [];
     window.removeEventListener('online', this.onVisible);
     document.removeEventListener('visibilitychange', this.onVisible);
+  }
+
+  /**
+   * Aplicativo: o SERVIÇO NATIVO lê o GPS e envia as posições sozinho (fila em arquivo, credencial própria), mesmo com a tela bloqueada e a página
+   * parada. Aqui só pedimos as permissões, entregamos a credencial e acompanhamos o estado para mostrar na tela.
+   */
+  private async startNative() {
+    try { await service().permissions(); } catch { this.startWeb(); return; } // APK antigo, sem o serviço nativo
+    this.set({ engine: 'service', status: 'asking' });
+    void this.checkBattery();
+    document.addEventListener('visibilitychange', this.onVisible);
+    await this.ensureService(true);
+    if (this.poll) clearInterval(this.poll);
+    this.poll = setInterval(() => void this.pollService(), 3_000);
+    void this.pollService();
+  }
+
+  /** Permissões, credencial do aparelho e início do serviço. `ask` = pode mostrar as janelas de permissão. */
+  private async ensureService(ask: boolean) {
+    try {
+      let perms = await service().permissions();
+      if (!perms.location && ask) perms = await service().requestLocation();
+      if (!perms.location) { this.set({ status: 'denied', allTheTime: perms.background }); return; }
+      if (!perms.notifications && ask) await service().requestNotifications().catch(() => undefined);
+      if (!perms.background && ask) perms = await service().requestBackground().catch(() => perms);
+      let token: string | undefined;
+      try { token = (await api<{ token: string }>('/delivery/my/tracking-token', 'POST')).token; } catch { token = undefined; } // sem internet: usa a já guardada
+      await service().start({ baseUrl: window.location.origin, token });
+      this.set({ allTheTime: perms.background });
+    } catch { /* o próximo ciclo tenta de novo */ }
+  }
+
+  /** Lê o estado do serviço nativo e traduz para a tela. Também religa o serviço se o Android o tiver encerrado. */
+  private async pollService() {
+    if (this.state.engine !== 'service') return;
+    try {
+      const s = await service().state();
+      const now = Date.now();
+      let status: GpsStatus;
+      if (!s.location) status = 'denied';
+      else if (!s.running) status = 'asking';
+      else if (!s.gpsOn) status = 'weak';
+      else status = s.fixAgeSec >= 0 && s.fixAgeSec < 90 ? 'ok' : 'weak';
+      this.set({
+        status, allTheTime: s.background, pending: s.pending,
+        routeActive: s.routeActive === 1 ? true : s.routeActive === 0 ? false : null,
+        lastSentAt: s.sentAgeSec >= 0 ? now - s.sentAgeSec * 1000 : this.state.lastSentAt,
+        sendError: !!s.lastError && s.lastError !== '',
+        last: s.lat !== undefined && s.lng !== undefined && s.fixAgeSec >= 0 ? { lat: s.lat, lng: s.lng, accuracyM: s.accuracyM ?? null, at: now - s.fixAgeSec * 1000 } : this.state.last,
+      });
+      // cura sozinha: serviço parado ou credencial recusada → renova e religa (no máximo a cada minuto)
+      if (s.location && (!s.running || s.authFailed) && now - this.lastHeal > 60_000) { this.lastHeal = now; void this.ensureService(false); }
+    } catch { /* tenta no próximo ciclo */ }
+  }
+
+  /** "Permitir o tempo todo" (Android 11 ou mais novo abre os ajustes do app). */
+  async requestAllTheTime() {
+    this.set({ bgAsks: this.state.bgAsks + 1 });
+    try { const p = await service().requestBackground(); this.set({ allTheTime: p.background }); } catch { /* o aviso na tela orienta */ }
+    void this.pollService();
+  }
+
+  /** Para só o acompanhamento NA PÁGINA. O serviço nativo do aplicativo continua rodando (só para ao sair da conta ou encerrar o app). */
+  stop() {
+    if (!this.started) return;
+    this.started = false;
+    this.stopWeb();
+    if (this.poll) { clearInterval(this.poll); this.poll = null; }
+    document.removeEventListener('visibilitychange', this.onVisible);
     this.set({ status: 'idle', last: null, routeActive: null, sendError: false });
+  }
+
+  /** Encerra de verdade: desliga o serviço nativo, apaga a fila do aparelho e revoga a credencial (ao sair da conta ou fechar o app de propósito). */
+  async endService() {
+    if (!isNative()) return;
+    try { await service().stop(); } catch { /* APK antigo */ }
+    try { await api('/delivery/my/tracking-token', 'DELETE'); } catch { /* sem sessão ou sem internet: ela vence sozinha */ }
   }
 
   /** Pede (de novo) o acesso à localização. No navegador precisa de um toque do usuário em alguns aparelhos. */
@@ -123,13 +222,21 @@ class Tracker {
   setBackground(on: boolean) {
     try { localStorage.setItem(BG_KEY, on ? '1' : '0'); } catch { /* sem armazenamento: vale até fechar */ }
     this.set({ background: on });
-    if (this.started) this.retry(); // recria o observador com/sem o serviço em primeiro plano
+    if (!this.started) return;
+    if (this.state.engine === 'service' && !on) { // volta para a localização pela página (só com o app na tela)
+      if (this.poll) { clearInterval(this.poll); this.poll = null; }
+      document.removeEventListener('visibilitychange', this.onVisible);
+      void service().stop().catch(() => undefined).then(() => this.startWeb());
+    } else if (this.state.engine !== 'service' && isNative() && on) {
+      this.stopWeb();
+      void this.startNative();
+    } else if (this.state.engine === 'bgplugin') this.retry(); // APK antigo: recria o observador com/sem o serviço do plugin
   }
 
   /** Encerra o rastreio (usado ao fechar o aplicativo de propósito). */
-  shutdown() { this.stop(); }
+  shutdown() { this.stop(); void this.endService(); }
 
-  async openSettings() { if (isNative()) { try { await native().openSettings(); } catch { /* sem tela de ajustes: o aviso já orienta */ } } }
+  async openSettings() { if (isNative()) { try { await power().openAppSettings(); } catch { try { await native().openSettings(); } catch { /* sem tela de ajustes: o aviso já orienta */ } } } }
 
   private unwatch() {
     if (this.watchId !== null) { navigator.geolocation.clearWatch(this.watchId); this.watchId = null; }
@@ -195,3 +302,5 @@ export const useTracker = () => useSyncExternalStore(tracker.subscribe, tracker.
 
 /** Apaga o que ficou guardado no aparelho (ao sair da conta). */
 export function clearTrackerBuffer() { store('del'); }
+/** Ao sair da conta: desliga o serviço nativo e revoga a credencial do aparelho. */
+export const endTracking = () => tracker.endService();

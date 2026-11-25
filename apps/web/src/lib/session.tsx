@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api, ApiError, type Me } from './api';
+import { endTracking } from './tracking';
 
 interface SessionValue {
   me: Me;
@@ -47,6 +48,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [load]);
 
   const logout = useCallback(async () => {
+    await endTracking().catch(() => undefined); // desliga o GPS do aplicativo e revoga a credencial do aparelho (precisa da sessão)
     await api('/auth/logout', 'POST').catch(() => undefined);
     router.replace('/login');
   }, [router]);

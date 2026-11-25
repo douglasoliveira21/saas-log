@@ -250,4 +250,110 @@ describe('Rastreio do motorista, geocodificação e trajeto', () => {
       expect((await live(C)).map((r) => r.routeId)).toContain(routeId);
     });
   });
+
+  describe('credencial do aplicativo (envio nativo, sem página nem sessão)', () => {
+    const beacon = (token: string | null, points: object[] = [], gps: object = gpsOn) => {
+      const r = request(app.getHttpServer()).post('/api/delivery/beacon').send({ points, gps });
+      return token === null ? r : r.set('authorization', `Bearer ${token}`);
+    };
+    const issue = async (t: T) => (await t.driver.post('/api/delivery/my/tracking-token').set(H).expect(200)).body as { token: string; expiresAt: string };
+    let D: T;
+    beforeAll(async () => { D = await setup('trD'); });
+
+    it('só o motorista cria a credencial; vem uma vez e no banco fica só o hash; a nova revoga a anterior', async () => {
+      await D.shipper.post('/api/delivery/my/tracking-token').set(H).expect(403);
+      await D.seller.post('/api/delivery/my/tracking-token').set(H).expect(403);
+      await request(app.getHttpServer()).post('/api/delivery/my/tracking-token').set(H).expect(401);
+      const first = await issue(D);
+      expect(first.token).toMatch(/^dht_[A-Za-z0-9_-]{40,}$/);
+      expect(new Date(first.expiresAt).getTime()).toBeGreaterThan(Date.now() + 80 * 86_400_000);
+      const rows = await admin.driverTrackToken.findMany({ where: { tenantId: D.tenantId } });
+      expect(JSON.stringify(rows)).not.toContain(first.token); // nunca em texto puro
+      await beacon(first.token).expect(200);
+      const second = await issue(D);
+      expect(second.token).not.toBe(first.token);
+      await beacon(first.token).expect(401); // a anterior foi revogada
+      await beacon(second.token).expect(200);
+      expect(await admin.driverTrackToken.count({ where: { tenantId: D.tenantId, revokedAt: null } })).toBe(1);
+    });
+
+    it('recusa credencial ausente, malformada, inventada ou de outro tipo', async () => {
+      await beacon(null).expect(401);
+      await beacon('').expect(401);
+      await beacon('dht_curto').expect(401);
+      await beacon(`dht_${'a'.repeat(43)}`).expect(401);
+      await beacon('x'.repeat(60)).expect(401);
+      const { token } = await issue(D);
+      await beacon(token.replace('dht_', 'xxx_')).expect(401);
+    });
+
+    it('grava a trilha como a página (só com rota em andamento) e guarda o estado do GPS sem rota', async () => {
+      const { token } = await issue(D);
+      const none = (await beacon(token, [point(-22.9, -47.06)]).expect(200)).body;
+      expect(none).toMatchObject({ accepted: 0, routeActive: false });
+      expect(await admin.driverTrackPoint.count({ where: { tenantId: D.tenantId } })).toBe(0);
+      const routeId = await startedRoute(D);
+      const batch = [point(-22.9, -47.06, 30), point(-22.901, -47.061, 20), point(-22.902, -47.062, 10)];
+      const r = (await beacon(token, batch).expect(200)).body;
+      expect(r).toMatchObject({ accepted: 3, routeActive: true, routeId });
+      await beacon(token, batch).expect(200); // reenvio do mesmo lote (rede instável): sem duplicar
+      expect(await admin.driverTrackPoint.count({ where: { tenantId: D.tenantId, routeId } })).toBe(3);
+      await beacon(token, [], { enabled: false, permission: 'denied', source: 'APP' }).expect(200);
+      expect((await D.shipper.get('/api/delivery/tracking').expect(200)).body[0].flags).toContain('GPS_OFF');
+      await beacon(token, [point(91, 0)]).expect(400); // mesma validação da rota normal
+    });
+
+    it('a credencial só serve para enviar posição: não abre nenhuma outra rota', async () => {
+      const { token } = await issue(D);
+      for (const path of ['/api/delivery/my/routes', '/api/delivery/my/tracking', '/api/auth/me', '/api/delivery/tracking']) {
+        await request(app.getHttpServer()).get(path).set('authorization', `Bearer ${token}`).expect(401);
+      }
+      await request(app.getHttpServer()).post('/api/delivery/my/position').set(H).set('authorization', `Bearer ${token}`).send({ points: [], gps: gpsOn }).expect(401);
+    });
+
+    it('isolamento: a credencial de um motorista nunca grava na empresa ou no motorista de outro', async () => {
+      const mine = await issue(D);
+      const theirs = await issue(A);
+      await beacon(theirs.token, [point(-23.5, -46.6)]).expect(200);
+      const posD = await admin.driverPosition.findFirst({ where: { tenantId: D.tenantId, driverId: D.driverId } });
+      expect(Number(posD?.lat ?? 0)).not.toBe(-23.5); // a posição do outro motorista não caiu aqui
+      const posA = await admin.driverPosition.findFirst({ where: { tenantId: A.tenantId, driverId: A.driverId } });
+      expect(posA).not.toBeNull(); // caiu no dono da credencial, com o estado do GPS
+      expect(posA!.gpsEnabled).toBe(true);
+      await beacon(mine.token, []).expect(200);
+      expect(await admin.driverPosition.count({ where: { tenantId: D.tenantId, driverId: A.driverId } })).toBe(0);
+    });
+
+    it('revogar (ao sair da conta), vencer, desativar o motorista ou o usuário derrubam o acesso na hora', async () => {
+      let { token } = await issue(D);
+      await beacon(token).expect(200);
+      await D.driver.delete('/api/delivery/my/tracking-token').set(H).expect(200);
+      await beacon(token).expect(401);
+
+      token = (await issue(D)).token;
+      await admin.driverTrackToken.updateMany({ where: { tenantId: D.tenantId, revokedAt: null }, data: { expiresAt: new Date(Date.now() - 1000) } });
+      await beacon(token).expect(401); // vencida
+
+      token = (await issue(D)).token;
+      await beacon(token).expect(200);
+      await admin.driver.update({ where: { id: D.driverId }, data: { active: false } });
+      await beacon(token).expect(401); // motorista desativado
+      await admin.driver.update({ where: { id: D.driverId }, data: { active: true } });
+      await beacon(token).expect(200);
+      const userId = (await admin.driver.findUniqueOrThrow({ where: { id: D.driverId } })).userId;
+      await admin.user.update({ where: { id: userId }, data: { status: 'DISABLED' } });
+      await beacon(token).expect(401); // usuário desativado
+      await admin.user.update({ where: { id: userId }, data: { status: 'ACTIVE' } });
+      await admin.membership.updateMany({ where: { tenantId: D.tenantId, userId }, data: { status: 'SUSPENDED' } });
+      await beacon(token).expect(401); // sem participação ativa na empresa
+    });
+
+    it('avisa para renovar a credencial quando faltam menos de 15 dias', async () => {
+      await admin.membership.updateMany({ where: { tenantId: D.tenantId }, data: { status: 'ACTIVE' } });
+      const { token } = await issue(D);
+      expect((await beacon(token).expect(200)).body.renewToken).toBe(false);
+      await admin.driverTrackToken.updateMany({ where: { tenantId: D.tenantId, revokedAt: null }, data: { expiresAt: new Date(Date.now() + 5 * 86_400_000) } });
+      expect((await beacon(token).expect(200)).body.renewToken).toBe(true);
+    });
+  });
 });

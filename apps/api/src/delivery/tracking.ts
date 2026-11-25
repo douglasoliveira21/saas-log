@@ -1,11 +1,12 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Injectable, Logger, NotFoundException, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Headers, HttpCode, Injectable, Logger, NotFoundException, Param, ParseUUIDPipe, Post, UnauthorizedException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Prisma } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsNumber, IsOptional, ValidateNested } from 'class-validator';
 import { AuditService } from '../audit/audit.service';
-import { AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
-import { PrismaService } from '../prisma/prisma.service';
+import { createHash, randomBytes } from 'node:crypto';
+import { AuthContext, CurrentAuth, Public, RequirePermissions } from '../common/auth';
+import { DbContext, PrismaService } from '../prisma/prisma.service';
 import { distanceToPolyline, downsample, Geocoder, haversine, LatLng, RoutePlanner, validLat, validLng } from './geo';
 
 type Tx = Prisma.TransactionClient;
@@ -17,6 +18,8 @@ export const OFF_ROUTE_M = 300;
 const STOPPED_MS = 15 * MIN;
 const NEAR_STOP_M = 150;
 const AVG_SPEED_KMH = 30;
+const TOKEN_DAYS = 90;
+const sha256 = (v: string) => createHash('sha256').update(v).digest('hex');
 
 class PointDto {
   @IsNumber({ allowNaN: false, allowInfinity: false }) lat: number;
@@ -56,7 +59,14 @@ export class TrackingService {
    * Recebe os pontos (podem vir em lote, de um período sem sinal) e o estado do GPS. Os pontos só são GUARDADOS enquanto há rota em andamento:
    * fora disso só a última posição/estado é atualizada para a tela do motorista saber que está tudo certo.
    */
-  async ingest(ctx: AuthContext, dto: PositionDto) {
+  /** Posição enviada pela página do motorista (sessão normal). */
+  ingest(ctx: AuthContext, dto: PositionDto) {
+    return this.store({ tenantId: ctx.tenantId!, userId: ctx.userId }, dto, async (tx) => (await this.myDriver(tx, ctx)).id);
+  }
+
+  /** Grava os pontos (se há rota em andamento) e o estado do GPS. Serve tanto à página quanto ao serviço nativo do aplicativo. */
+  private async store(dbc: DbContext, dto: PositionDto, resolveDriver: (tx: Tx) => Promise<string>) {
+    const tenantId = dbc.tenantId!;
     const now = Date.now();
     const points = (dto.points ?? []).map((p) => ({ ...p, t: new Date(p.recordedAt) })).filter((p) => {
       if (!validLat(p.lat) || !validLng(p.lng) || Number.isNaN(p.t.getTime())) return false;
@@ -64,31 +74,74 @@ export class TrackingService {
     }).sort((a, b) => a.t.getTime() - b.t.getTime());
     if ((dto.points ?? []).length && !points.length) throw new BadRequestException('Nenhum ponto válido (coordenadas ou horário fora do aceitável).');
 
-    return this.prisma.withContext(ctx, async (tx) => {
-      const driver = await this.myDriver(tx, ctx);
-      const route = await tx.deliveryRoute.findFirst({ where: { tenantId: ctx.tenantId!, driverId: driver.id, status: 'IN_PROGRESS' }, orderBy: { startedAt: 'desc' }, select: { id: true, number: true } });
+    return this.prisma.withContext(dbc, async (tx) => {
+      const driver = { id: await resolveDriver(tx) };
+      const route = await tx.deliveryRoute.findFirst({ where: { tenantId: tenantId, driverId: driver.id, status: 'IN_PROGRESS' }, orderBy: { startedAt: 'desc' }, select: { id: true, number: true } });
       if (route && points.length) {
         await tx.driverTrackPoint.createMany({
-          data: points.map((p) => ({ tenantId: ctx.tenantId!, driverId: driver.id, routeId: route.id, lat: p.lat, lng: p.lng, accuracyM: p.accuracyM !== undefined ? Math.round(p.accuracyM) : null, speedMps: p.speedMps ?? null, heading: p.heading ?? null, recordedAt: p.t })),
+          data: points.map((p) => ({ tenantId: tenantId, driverId: driver.id, routeId: route.id, lat: p.lat, lng: p.lng, accuracyM: p.accuracyM !== undefined ? Math.round(p.accuracyM) : null, speedMps: p.speedMps ?? null, heading: p.heading ?? null, recordedAt: p.t })),
           skipDuplicates: true,
         });
       }
       const last = points[points.length - 1];
-      const cur = await tx.driverPosition.findUnique({ where: { tenantId_driverId: { tenantId: ctx.tenantId!, driverId: driver.id } } });
+      const cur = await tx.driverPosition.findUnique({ where: { tenantId_driverId: { tenantId: tenantId, driverId: driver.id } } });
       const newer = route && last && (!cur?.recordedAt || last.t.getTime() >= cur.recordedAt.getTime());
       // fora de uma rota em andamento a localização NÃO é guardada: só o estado do GPS
       const data = {
         routeId: route?.id ?? null, gpsEnabled: dto.gps.enabled, permission: dto.gps.permission ?? null, source: dto.gps.source ?? 'APP', receivedAt: new Date(),
         ...(newer ? { lat: last.lat, lng: last.lng, accuracyM: last.accuracyM !== undefined ? Math.round(last.accuracyM) : null, speedMps: last.speedMps ?? null, heading: last.heading ?? null, recordedAt: last.t } : {}),
       };
-      await tx.driverPosition.upsert({ where: { tenantId_driverId: { tenantId: ctx.tenantId!, driverId: driver.id } }, create: { tenantId: ctx.tenantId!, driverId: driver.id, ...data }, update: data });
-      void this.purge(ctx);
+      await tx.driverPosition.upsert({ where: { tenantId_driverId: { tenantId: tenantId, driverId: driver.id } }, create: { tenantId: tenantId, driverId: driver.id, ...data }, update: data });
+      void this.purge(dbc);
       return { accepted: route ? points.length : 0, routeActive: !!route, routeId: route?.id ?? null, routeNumber: route?.number ?? null, serverTime: new Date().toISOString() };
     });
   }
 
+  // ───────────── credencial do aplicativo (envio nativo) ─────────────
+
+  /** Cria a credencial do aparelho deste motorista (revoga a anterior). O valor só é mostrado agora; no banco fica o hash. */
+  issueToken(ctx: AuthContext) {
+    return this.prisma.withContext(ctx, async (tx) => {
+      const driver = await this.myDriver(tx, ctx);
+      const token = `dht_${randomBytes(32).toString('base64url')}`;
+      const expiresAt = new Date(Date.now() + TOKEN_DAYS * 86_400_000);
+      await tx.driverTrackToken.updateMany({ where: { tenantId: ctx.tenantId!, driverId: driver.id, revokedAt: null }, data: { revokedAt: new Date() } });
+      await tx.driverTrackToken.create({ data: { tenantId: ctx.tenantId!, driverId: driver.id, tokenHash: sha256(token), expiresAt } });
+      await this.audit.record(tx, ctx, { action: 'delivery.track_token_issued', entity: 'driver', entityId: driver.id });
+      return { token, expiresAt: expiresAt.toISOString() };
+    });
+  }
+
+  /** Revoga a credencial (ao sair da conta ou encerrar o aplicativo). */
+  revokeToken(ctx: AuthContext) {
+    return this.prisma.withContext(ctx, async (tx) => {
+      const driver = await this.myDriver(tx, ctx);
+      const r = await tx.driverTrackToken.updateMany({ where: { tenantId: ctx.tenantId!, driverId: driver.id, revokedAt: null }, data: { revokedAt: new Date() } });
+      if (r.count) await this.audit.record(tx, ctx, { action: 'delivery.track_token_revoked', entity: 'driver', entityId: driver.id });
+      return { revoked: r.count };
+    });
+  }
+
+  /**
+   * Posição enviada pelo SERVIÇO NATIVO do aplicativo, sem página e sem sessão: autenticada só pela credencial do aparelho (Authorization: Bearer).
+   * A credencial vale apenas para esta rota. Tudo é conferido no banco a cada chamada (motorista, usuário e participação ativos).
+   */
+  async beacon(authorization: string | undefined, dto: PositionDto) {
+    const raw = authorization?.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
+    if (!raw.startsWith('dht_') || raw.length < 40 || raw.length > 100) throw new UnauthorizedException('Credencial do aparelho inválida.');
+    const rows = await this.prisma.$queryRaw<{ tenant_id: string; driver_id: string; user_id: string; token_id: string }[]>`SELECT tenant_id, driver_id, user_id, token_id FROM find_driver_by_track_token(${sha256(raw)})`;
+    const who = rows[0];
+    if (!who) throw new UnauthorizedException('Credencial do aparelho inválida, vencida ou revogada.');
+    const dbc: DbContext = { tenantId: who.tenant_id, userId: who.user_id };
+    const out = await this.store(dbc, dto, async () => who.driver_id);
+    // marca o último uso (no máximo uma vez por minuto) e avisa quando falta pouco para vencer
+    const row = await this.prisma.withContext(dbc, (tx) => tx.driverTrackToken.findUnique({ where: { id: who.token_id }, select: { lastUsedAt: true, expiresAt: true } }));
+    if (row && (!row.lastUsedAt || Date.now() - row.lastUsedAt.getTime() > MIN)) await this.prisma.withContext(dbc, (tx) => tx.driverTrackToken.update({ where: { id: who.token_id }, data: { lastUsedAt: new Date() } }));
+    return { ...out, renewToken: !!row && row.expiresAt.getTime() - Date.now() < 15 * 86_400_000 };
+  }
+
   /** Apaga pontos antigos (retenção, padrão 30 dias; TRACK_RETENTION_DAYS). No máximo uma vez por hora por processo. */
-  private async purge(ctx: AuthContext) {
+  private async purge(ctx: DbContext) {
     if (Date.now() - this.purgedAt < 60 * MIN) return;
     this.purgedAt = Date.now();
     const days = Math.max(1, Number(process.env.TRACK_RETENTION_DAYS ?? 30));
@@ -235,6 +288,16 @@ export class DriverTrackingController {
 
   @Post('my/position') @HttpCode(200) @Throttle({ default: { limit: 120, ttl: 60_000 } }) @RequirePermissions('delivery.perform')
   position(@CurrentAuth() ctx: AuthContext, @Body() dto: PositionDto) { return this.svc.ingest(ctx, dto); }
+
+  @Post('my/tracking-token') @HttpCode(200) @Throttle({ default: { limit: 20, ttl: 60_000 } }) @RequirePermissions('delivery.perform')
+  issueToken(@CurrentAuth() ctx: AuthContext) { return this.svc.issueToken(ctx); }
+
+  @Delete('my/tracking-token') @HttpCode(200) @RequirePermissions('delivery.perform')
+  revokeToken(@CurrentAuth() ctx: AuthContext) { return this.svc.revokeToken(ctx); }
+
+  /** Rota do SERVIÇO NATIVO do aplicativo: pública (sem sessão), autenticada pela credencial do aparelho. */
+  @Public() @Post('beacon') @HttpCode(200) @Throttle({ default: { limit: 240, ttl: 60_000 } })
+  beacon(@Headers('authorization') authorization: string | undefined, @Body() dto: PositionDto) { return this.svc.beacon(authorization, dto); }
 
   @Get('my/tracking') @RequirePermissions('delivery.perform')
   mine(@CurrentAuth() ctx: AuthContext) { return this.svc.myState(ctx); }
