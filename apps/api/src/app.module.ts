@@ -2,6 +2,7 @@ import { Controller, Get, INestApplication, Module, ValidationPipe } from '@nest
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AuditController, AuditService } from './audit/audit.service';
@@ -192,6 +193,8 @@ export function configureApp(app: INestApplication): void {
   app.setGlobalPrefix('api');
   app.use(requestObserver);
   app.use(helmet());
+  // Brotli/Gzip nas respostas de texto (JSON etc.); imagens já comprimidas são ignoradas pelo filtro padrão
+  app.use(compression({ threshold: 1024 }));
   app.use(cookieParser());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
 }

@@ -8,6 +8,10 @@ export interface DbContext {
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  constructor() {
+    super({ datasourceUrl: withPool(process.env.DATABASE_URL) });
+  }
+
   async onModuleInit(): Promise<void> {
     await this.$connect();
   }
@@ -36,3 +40,17 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 @Global()
 @Module({ providers: [PrismaService], exports: [PrismaService] })
 export class PrismaModule {}
+
+/**
+ * Pool de conexões: define limite e espera máxima se a URL não trouxer (DB_POOL_SIZE, padrão 10; DB_POOL_TIMEOUT s, padrão 10).
+ * Evita abrir conexões demais no Postgres e evita fila infinita quando o banco está ocupado.
+ */
+export function withPool(url: string | undefined): string | undefined {
+  if (!url) return url;
+  try {
+    const u = new URL(url);
+    if (!u.searchParams.has('connection_limit')) u.searchParams.set('connection_limit', process.env.DB_POOL_SIZE ?? '10');
+    if (!u.searchParams.has('pool_timeout')) u.searchParams.set('pool_timeout', process.env.DB_POOL_TIMEOUT ?? '10');
+    return u.toString();
+  } catch { return url; }
+}

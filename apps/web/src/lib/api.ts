@@ -36,7 +36,20 @@ const noRefreshPaths = new Set([
   '/auth/forgot-password', '/auth/reset-password', '/auth/mfa/verify',
 ]);
 
+// Mesma consulta GET feita ao mesmo tempo por vários componentes: uma só ida ao servidor.
+const inflightGets = new Map<string, Promise<unknown>>();
+
 export async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+  if (method.toUpperCase() === 'GET' && path !== '/delivery/my/position') {
+    let p = inflightGets.get(path) as Promise<T> | undefined;
+    if (!p) {
+      p = request<T>(path, 'GET').finally(() => { inflightGets.delete(path); });
+      inflightGets.set(path, p);
+    }
+    const data = await p;
+    // cada chamador recebe sua própria cópia (ninguém altera o dado do outro)
+    return data !== null && typeof data === 'object' && typeof structuredClone === 'function' ? structuredClone(data) : data;
+  }
   // Consultas e o envio periódico de GPS não devem interromper a navegação.
   const stopLoading = path === '/delivery/my/position' || ['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase())
     ? undefined

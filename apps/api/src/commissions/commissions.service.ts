@@ -169,8 +169,10 @@ export class CommissionsService {
     tx: Tx, ctx: AuthContext, orderId: string, returnId: string,
     lines: { orderItemId: string; itemQty: number; returnedBefore: number; returnedNow: number }[],
   ) {
+    // lançamentos de todos os itens devolvidos em uma consulta só (evita N+1)
+    const all = await tx.salesCommission.findMany({ where: { tenantId: ctx.tenantId!, orderId, orderItemId: { in: lines.map((l) => l.orderItemId) } } });
     for (const l of lines) {
-      const list = await tx.salesCommission.findMany({ where: { tenantId: ctx.tenantId!, orderId, orderItemId: l.orderItemId } });
+      const list = all.filter((e) => e.orderItemId === l.orderItemId);
       if (!list.length) continue;
       const accrued = list.filter((e) => e.kind === 'ACCRUAL').reduce((s, e) => s + toCents(e.amount), 0);
       const reversed = list.filter((e) => e.kind === 'REVERSAL').reduce((s, e) => s + toCents(e.amount), 0);

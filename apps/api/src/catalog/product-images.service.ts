@@ -1,8 +1,9 @@
-import { BadRequestException, Body, ConflictException, Controller, Delete, Get, Injectable, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Delete, Get, Injectable, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, Res } from '@nestjs/common';
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
+import { clampWidth, imageVariant, pickFormat } from './image-variants';
 import { AuditService } from '../audit/audit.service';
 import { AuthContext, CurrentAuth, Public, RequirePermissions } from '../common/auth';
 import { getConfig } from '../config/app.config';
@@ -162,9 +163,12 @@ export class ProductImagesController {
   remove(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Param('imageId', ParseUUIDPipe) imageId: string) { return this.svc.remove(ctx, id, imageId); }
 
   @Get('products/:id/images/:imageId/file') @RequirePermissions('products.view')
-  async file(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Param('imageId', ParseUUIDPipe) imageId: string, @Res() res: Response) {
-    const f = await this.svc.file(ctx, id, imageId);
-    send(res, f, 'private, max-age=300');
+  async file(@CurrentAuth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Param('imageId', ParseUUIDPipe) imageId: string, @Query('w') w: string | undefined, @Req() req: Request, @Res() res: Response) {
+    let f: { content: Buffer; contentType: string } = await this.svc.file(ctx, id, imageId);
+    // ?w=<largura>: versão leve (WebP) para listas e miniaturas; sem ?w devolve o original
+    const width = clampWidth(w); const format = pickFormat(req.headers.accept);
+    if (width && format) { const v = await imageVariant(`${ctx.tenantId}:${imageId}`, f.content, width, format); if (v) { res.setHeader('Vary', 'Accept'); f = v; } }
+    send(res, f, 'private, max-age=86400');
   }
 }
 

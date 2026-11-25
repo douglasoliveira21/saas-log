@@ -274,8 +274,10 @@ export class DeliveryService {
       const r = await this.editableRoute(tx, ctx, id, ['PLANNED']);
       const pending = r.stops.filter((s) => s.status === 'PENDING');
       if (!pending.length) throw new ConflictException('A rota não tem paradas pendentes.');
+      // todos os pedidos da rota em uma consulta só (evita N+1)
+      const orders = new Map((await tx.salesOrder.findMany({ where: { id: { in: pending.map((s) => s.salesOrderId) }, tenantId: ctx.tenantId! }, select: { id: true, number: true, status: true } })).map((o) => [o.id, o]));
       for (const s of pending) {
-        const o = await tx.salesOrder.findFirst({ where: { id: s.salesOrderId, tenantId: ctx.tenantId! }, select: { number: true, status: true } });
+        const o = orders.get(s.salesOrderId);
         if (!o || !DELIVERABLE.includes(o.status)) throw new ConflictException(`O pedido ${o?.number ?? ''} está "${o?.status ?? 'inexistente'}": remova-o da rota antes de iniciar.`);
         if (o.status === 'PACKED') await this.sales.advanceInTx(tx, ctx, s.salesOrderId, 'SHIPPED', { unscoped: true });
       }

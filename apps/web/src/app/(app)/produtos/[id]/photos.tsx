@@ -103,7 +103,7 @@ export function Photos({ productId, manage, onChange }: { productId: string; man
         {imgs?.map((im, i) => (
           <figure key={im.id} className={`photo ${im.main ? 'main' : ''}`}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`/api/products/${productId}/images/${im.id}/file`} alt={im.alt ?? `Foto ${i + 1}`} loading="lazy" />
+            <img src={`/api/products/${productId}/images/${im.id}/file?w=480`} alt={im.alt ?? `Foto ${i + 1}`} loading="lazy" decoding="async" />
             <figcaption>
               <span>{im.main ? <span className="badge brand"><Star size={11} aria-hidden />Principal</span> : `Foto ${i + 1}`}</span>
               <span className="muted">{im.width}×{im.height} · {kb(im.bytes)}</span>

@@ -1,6 +1,7 @@
-import { ArgumentsHost, Catch, Controller, ExceptionFilter, Get, HttpException, HttpStatus, Logger, NotFoundException, Res, Req, ServiceUnavailableException } from '@nestjs/common';
+import { ArgumentsHost, Body, Catch, Controller, ExceptionFilter, Get, HttpCode, Post, HttpException, HttpStatus, Logger, NotFoundException, Res, Req, ServiceUnavailableException } from '@nestjs/common';
 import { timingSafeEqual, randomUUID } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
+import { Throttle } from '@nestjs/throttler';
 import { Public } from '../common/auth';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -9,6 +10,17 @@ const BUCKETS = [0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10];
 const counters = new Map<string, number>();
 const hist = new Map<string, { buckets: number[]; sum: number; count: number }>();
 const startedAt = Date.now();
+const SLOW_MS = Number(process.env.SLOW_REQUEST_MS ?? 1000);
+
+// ───────────── Web Vitals de usuários reais (RUM) ─────────────
+const VITALS = new Set(['LCP', 'INP', 'CLS', 'FCP', 'TTFB']);
+const VITAL_BUCKETS: Record<string, number[]> = { LCP: [1000, 2500, 4000], INP: [100, 200, 500], CLS: [0.1, 0.25, 0.5], FCP: [900, 1800, 3000], TTFB: [200, 800, 1800] };
+
+export function recordVital(name: string, value: number, device: string) {
+  if (!VITALS.has(name) || !Number.isFinite(value) || value < 0) return;
+  const b = VITAL_BUCKETS[name]; const rating = value <= b[0] ? 'good' : value <= b[1] ? 'needs_improvement' : 'poor';
+  inc(`web_vitals_total{metric="${name}",rating="${rating}",device="${device === 'mobile' ? 'mobile' : 'desktop'}"}`);
+}
 
 export function resetMetrics() { counters.clear(); hist.clear(); }
 
@@ -45,6 +57,8 @@ export function requestObserver(req: Request, res: Response, next: NextFunction)
     inc(`http_requests_total{method="${req.method}",status="${Math.floor(status / 100)}xx"}`);
     observe('http_request_duration_seconds', seconds);
     if (status >= 500) inc('http_errors_total');
+    // Requisição lenta: contada e registrada (rota normalizada, sem dados) para achar gargalos sem ferramenta externa
+    if (seconds * 1000 >= SLOW_MS) { inc('http_slow_requests_total'); if (process.env.NODE_ENV !== 'test') process.stdout.write(asJson({ ts: new Date().toISOString(), level: 'warn', msg: 'slow_request', reqId: id, method: req.method, route, status, ms: Math.round(seconds * 1000) }) + '\n'); }
     if (process.env.NODE_ENV === 'test' || route === '/api/health' || route === '/api/metrics') return;
     const auth = (req as Request & { auth?: { tenantId: string | null; userId: string } }).auth;
     const line = asJson({ ts: new Date().toISOString(), level: status >= 500 ? 'error' : 'info', reqId: id, method: req.method, route, status, ms: Math.round(seconds * 1000), tenantId: auth?.tenantId ?? undefined, userId: auth?.userId ?? undefined });
@@ -93,6 +107,13 @@ export class ObservabilityController {
     const queue = await this.queue();
     const lagMs = queue.oldestReady ? Math.max(0, Date.now() - queue.oldestReady.getTime()) : 0;
     return { status: lagMs > 10 * 60_000 ? 'degraded' : 'ok', checks: { database: 'ok', dbMs: Date.now() - t0, queueLagSeconds: Math.round(lagMs / 1000), deadJobs: queue.dead } };
+  }
+
+  /** Coleta anônima de velocidade real (Web Vitals). Só nome, valor e tipo de aparelho; sem usuário, IP ou URL. */
+  @Public() @Post('vitals') @HttpCode(204)
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  vitals(@Body() body: { name?: string; value?: number; device?: string }) {
+    recordVital(String(body?.name ?? ''), Number(body?.value), String(body?.device ?? ''));
   }
 
   private async queue() {

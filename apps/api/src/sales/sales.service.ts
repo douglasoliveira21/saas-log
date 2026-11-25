@@ -223,9 +223,11 @@ export class SalesService {
       await this.delinquency.assertNotBlocked(tx, ctx.tenantId!, order.customerId);
       const cfg = await this.settings.load(tx, ctx);
       const reasons: string[] = [];
+      // preço mínimo de todos os produtos do pedido em uma única consulta (evita N+1)
+      const minPrices = new Map((await tx.product.findMany({ where: { id: { in: order.items.map((i) => i.productId) } }, select: { id: true, minPrice: true } })).map((p) => [p.id, p.minPrice]));
       for (const i of order.items) {
         if (Number(i.discountPct) > cfg['sales.maxDiscountPct']) reasons.push(`${i.product.sku}: desconto de ${Number(i.discountPct)}% acima do limite de ${cfg['sales.maxDiscountPct']}%`);
-        const min = (await tx.product.findUniqueOrThrow({ where: { id: i.productId }, select: { minPrice: true } })).minPrice;
+        const min = minPrices.get(i.productId) ?? null;
         const net = toCents(i.unitPrice) * (10000 - Math.round(Number(i.discountPct) * 100)) / 10000;
         if (min && net < toCents(min)) reasons.push(`${i.product.sku}: preço líquido abaixo do mínimo autorizado`);
       }
