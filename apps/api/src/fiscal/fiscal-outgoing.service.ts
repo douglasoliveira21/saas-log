@@ -1,9 +1,10 @@
-import { BadRequestException, ConflictException, HttpException, HttpStatus, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, HttpException, HttpStatus, Inject, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { BrandingService } from '../branding/branding.service';
 import { AuthContext } from '../common/auth';
 import { isValidCnpj, isValidCpf, onlyDigits } from '../common/cnpj';
+import { NotificationsService } from '../notify/notifications';
 import { PrismaService } from '../prisma/prisma.service';
 import { lockOrdersForFiscal } from '../sales/fiscal-cancellation';
 import { buildChave } from './chave';
@@ -27,7 +28,7 @@ const OPEN_FOR_EDIT = ['PENDING_VALIDATION', 'READY_TO_TRANSMIT', 'REJECTED'];
  * O que existe aqui garante que, quando houver provedor, nada seja emitido em duplicidade nem marcado como autorizado sem confirmação.
  */
 @Injectable()
-export class FiscalOutgoingService {
+export class FiscalOutgoingService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -36,7 +37,26 @@ export class FiscalOutgoingService {
     private readonly pctx: ProviderContextService,
     private readonly ibge: IbgeService,
     private readonly branding: BrandingService,
+    private readonly notifications: NotificationsService,
   ) {}
+
+  private readonly log = new Logger('FiscalOutgoing');
+
+  /** O e-mail "nota fiscal emitida" leva o XML autorizado e o DANFE desta nota. */
+  onModuleInit() {
+    NotificationsService.registerAttachments('FISCAL_DOCUMENT', async (tenantId, id) => {
+      const ctx = { tenantId, userId: null, membershipId: null, roleKey: null, permissions: new Set<string>() } as unknown as AuthContext;
+      const xml = await this.file(ctx, id, 'xml');
+      const danfe = await this.file(ctx, id, 'danfe');
+      return [xml, danfe].map((f) => ({ filename: f.name, content: f.content, contentType: f.contentType }));
+    });
+  }
+
+  /** Depois de gravar a autorização: envia já o e-mail da nota (sem esperar a varredura periódica). Falha aqui nunca afeta a nota. */
+  private kickNotices(tenantId: string | null, queued: boolean) {
+    if (!queued || !tenantId || process.env.NODE_ENV === 'test') return;
+    void this.notifications.dispatchTenant(tenantId).catch((e: unknown) => this.log.warn(`envio do e-mail da nota: ${(e as Error).message}`));
+  }
 
   /** Busca (FORA de transação) os municípios das UFs envolvidas, para o código IBGE do XML; só quando o estabelecimento usa emissão direta. */
   private async warmCities(ctx: AuthContext, ref: { orderId?: string; docId?: string }) {
@@ -420,8 +440,9 @@ export class FiscalOutgoingService {
       else if (r.kind === 'NOT_FOUND') status = 'READY_TO_TRANSMIT'; // a chave não existe no provedor: reenvio seguro com a MESMA numeração
       await tx.fiscalDocument.update({ where: { id }, data: { ...data, status } });
       await this.audit.record(tx, ctx, { action: 'fiscal.consulted', entity: 'fiscal_document', entityId: id, metadata: { result: r.kind, status } });
-      return { id, status, result: r.kind };
-    });
+      const noticeQueued = status === 'AUTHORIZED' && doc.status !== 'AUTHORIZED' ? await this.notifications.onInvoiceAuthorized(tx, ctx.tenantId!, id) : false;
+      return { id, status, result: r.kind, noticeQueued };
+    }).then(({ noticeQueued, ...v }) => { this.kickNotices(ctx.tenantId, noticeQueued); return v; });
   }
 
   private async storeSigned(tx: Tx, ctx: AuthContext, id: string, xml: string) {
@@ -469,8 +490,9 @@ export class FiscalOutgoingService {
       }
       await tx.fiscalDocument.update({ where: { id }, data: { ...data, status } });
       await this.audit.record(tx, ctx, { action: 'fiscal.transmit_result', entity: 'fiscal_document', entityId: id, metadata: { accessKey, result: r.kind, status } });
-      return { id, status, accessKey };
-    });
+      const noticeQueued = status === 'AUTHORIZED' ? await this.notifications.onInvoiceAuthorized(tx, ctx.tenantId!, id) : false;
+      return { id, status, accessKey, noticeQueued };
+    }).then(({ noticeQueued, ...v }) => { this.kickNotices(ctx.tenantId, noticeQueued); return v; });
   }
 
   /** Inutiliza uma faixa de numeração não usada (emissão direta). Fica registrada com o protocolo; só se a SEFAZ confirmar. */

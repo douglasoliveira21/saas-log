@@ -4,7 +4,8 @@ import { PrismaClient } from '@prisma/client';
 import request from 'supertest';
 import { AppModule, configureApp } from '../src/app.module';
 import { Mailer } from '../src/notify/mailer';
-import { NotificationWorker } from '../src/notify/notifications';
+import { NotificationsService, NotificationWorker } from '../src/notify/notifications';
+import { PrismaService } from '../src/prisma/prisma.service';
 import { waNumber } from '../src/notify/whatsapp';
 import { localToday } from '../src/sales/cutoff';
 import { MockEvolution } from './fixtures/mock-evolution';
@@ -21,7 +22,7 @@ describe('Avisos por e-mail e WhatsApp (Evolution API): vencimento, pedido e cob
   const agent = () => request.agent(app.getHttpServer());
   type Agent = ReturnType<typeof agent>;
   let owner: Agent; let seller: Agent; let tenantId: string; let wh: string; let product: string;
-  let custA: string; let custB: string; let custC: string;
+  let estId: string; let custA: string; let custB: string; let custC: string;
   const mailTo = (to: string) => Mailer.outbox.filter((m) => m.to === to);
   const rule = (type: string, body: object) => owner.put(`/api/notifications/rules/${type}`).set(H).send(body);
   const runNow = async () => (await owner.post('/api/notifications/run').set(H).expect(200)).body;
@@ -51,6 +52,7 @@ describe('Avisos por e-mail e WhatsApp (Evolution API): vencimento, pedido e cob
     tenantId = r.body.tenantId;
     const company = await owner.post('/api/companies').set(H).send({ legalName: 'NT LTDA', tradeName: 'NT', taxRegime: 'SIMPLES_NACIONAL' }).expect(201);
     const est = await owner.post('/api/establishments').set(H).send({ companyId: company.body.id, kind: 'MATRIZ', name: 'Matriz', cnpj: cnpj(), zipCode: '30110-000', city: 'Belo Horizonte', state: 'MG', street: 'Rua A', number: '1', district: 'Centro' }).expect(201);
+    estId = est.body.id;
     wh = (await owner.post('/api/warehouses').set(H).send({ establishmentId: est.body.id, code: 'CD01', name: 'Depósito' }).expect(201)).body.id;
     product = (await owner.post('/api/products').set(H).send({ sku: `NT-${run}`, name: 'Parafuso', costPrice: 10, suggestedPrice: 50 }).expect(201)).body.id;
     await owner.post('/api/stock/movements').set(H).send({ productId: product, warehouseId: wh, type: 'PURCHASE_ENTRY', quantity: 500 }).expect(201);
@@ -67,7 +69,7 @@ describe('Avisos por e-mail e WhatsApp (Evolution API): vencimento, pedido e cob
 
   it('tudo começa desligado, só quem tem permissão configura e variáveis desconhecidas são recusadas', async () => {
     const r = (await owner.get('/api/notifications/rules').expect(200)).body;
-    expect(r.rules.map((x: any) => [x.type, x.emailEnabled, x.whatsappEnabled])).toEqual([['INVOICE_DUE', false, false], ['ORDER_STATUS', false, false], ['COLLECTION', false, false]]);
+    expect(r.rules.map((x: any) => [x.type, x.emailEnabled, x.whatsappEnabled])).toEqual([['INVOICE_DUE', false, false], ['ORDER_STATUS', false, false], ['INVOICE_ISSUED', false, false], ['COLLECTION', false, false]]);
     expect(r.rules[0].variables).toContain('vencimento');
     await seller.get('/api/notifications/rules').expect(403);
     await seller.put('/api/notifications/rules/ORDER_STATUS').set(H).send({ emailEnabled: true }).expect(403);
@@ -261,6 +263,56 @@ describe('Avisos por e-mail e WhatsApp (Evolution API): vencimento, pedido e cob
     const rules = (await other.get('/api/notifications/rules').expect(200)).body.rules;
     expect(rules.every((x: any) => !x.emailEnabled && !x.whatsappEnabled)).toBe(true);
   });
+  describe('Nota fiscal emitida: e-mail com XML e DANFE em anexo', () => {
+    async function authorizedNfe(orderId: string, key: string) {
+      const doc = await admin.fiscalDocument.create({ data: { tenantId, direction: 'EXIT', model: '55', status: 'AUTHORIZED', accessKey: key, series: 1, number: 123, environment: 'HOMOLOGACAO', establishmentId: estId, salesOrderId: orderId, totalInvoice: 30 } });
+      const xml = nfeXml().replaceAll(NFE_KEY, key);
+      await admin.fiscalXmlFile.create({ data: { tenantId, documentId: doc.id, kind: 'AUTHORIZED', sha256: 'x', content: xml } });
+      return doc.id;
+    }
+    const authorize = (docId: string) => app.get(PrismaService).withContext({ tenantId }, (tx) => app.get(NotificationsService).onInvoiceAuthorized(tx, tenantId, docId));
+
+    it('desligado: nada entra na fila', async () => {
+      const c = await newCustomer('Cliente NF Off', `nf-off-${run}@teste.local`, null);
+      const docId = await authorizedNfe(await newOrder(c), '3126104572317400011055001000000123100000' + String(Math.floor(Math.random() * 9000) + 1000));
+      expect(await authorize(docId)).toBe(false);
+    });
+
+    it('ligado: envia uma vez, com o XML autorizado e o DANFE anexados', async () => {
+      await rule('INVOICE_ISSUED', { emailEnabled: true }).expect(200);
+      const to = `nf-on-${run}@teste.local`;
+      const c = await newCustomer('Cliente NF', to, null);
+      const key = '3126104572317400011055001000000123100000' + String(Math.floor(Math.random() * 9000) + 1000);
+      const docId = await authorizedNfe(await newOrder(c), key);
+      Mailer.outbox.length = 0;
+      expect(await authorize(docId)).toBe(true);
+      expect(await authorize(docId)).toBe(false); // não duplica
+      await runNow();
+      const mails = mailTo(to).filter((m) => m.subject.startsWith('Nota fiscal'));
+      expect(mails).toHaveLength(1);
+      expect(mails[0].subject).toContain('Nota fiscal 123/1');
+      expect(mails[0].text).toContain(key);
+      const names = (mails[0].attachments ?? []).map((a) => a.filename);
+      expect(names).toEqual([`nfe-${key}.xml`, `danfe-${key}.html`]);
+      expect(mails[0].attachments![0].content.toString('utf8')).toContain('<nfeProc');
+      expect(mails[0].html).toContain('Em anexo');
+      const log = (await logs('?type=INVOICE_ISSUED')).items.find((l: { recipient: string }) => l.recipient === to);
+      expect(log.status).toBe('SENT');
+    });
+
+    it('sem XML disponível: não envia sem os anexos e tenta de novo depois', async () => {
+      const to = `nf-noxml-${run}@teste.local`;
+      const c = await newCustomer('Cliente NF sem XML', to, null);
+      const doc = await admin.fiscalDocument.create({ data: { tenantId, direction: 'EXIT', model: '55', status: 'AUTHORIZED', series: 1, number: 124, environment: 'HOMOLOGACAO', establishmentId: estId, salesOrderId: await newOrder(c), totalInvoice: 30 } });
+      Mailer.outbox.length = 0;
+      expect(await authorize(doc.id)).toBe(true);
+      await runNow();
+      expect(mailTo(to).filter((m) => m.subject.startsWith('Nota fiscal'))).toHaveLength(0);
+      const log = (await logs('?type=INVOICE_ISSUED')).items.find((l: { recipient: string }) => l.recipient === to);
+      expect(log.status).toBe('QUEUED');
+      expect(log.error).toMatch(/Anexos indisponíveis/);
+    });
+  });
 });
 
 function cnpj(): string {
@@ -268,3 +320,17 @@ function cnpj(): string {
   const dv = (n: number[]) => { const w = n.length === 12 ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]; const s = n.reduce((a, x, i) => a + x * w[i], 0) % 11; return s < 2 ? 0 : 11 - s; };
   const d1 = dv(base); return [...base, d1, dv([...base, d1])].join('');
 }
+
+const NFE_KEY = '31261045723174000110550010000001231000001236';
+const nfeXml = (over: { mod?: string; tpAmb?: string; prot?: boolean; xProd?: string; supl?: boolean } = {}) => `<?xml version="1.0" encoding="UTF-8"?>
+<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00"><NFe xmlns="http://www.portalfiscal.inf.br/nfe"><infNFe Id="NFe${NFE_KEY}" versao="4.00">
+<ide><cUF>31</cUF><natOp>Venda de mercadoria</natOp><mod>${over.mod ?? '55'}</mod><serie>1</serie><nNF>123</nNF><dhEmi>2026-10-22T10:30:00-03:00</dhEmi><tpNF>1</tpNF><tpAmb>${over.tpAmb ?? '1'}</tpAmb></ide>
+<emit><CNPJ>45723174000110</CNPJ><xNome>Distribuidora &amp; Cia</xNome><enderEmit><xLgr>Rua A</xLgr><nro>10</nro><xBairro>Centro</xBairro><xMun>Belo Horizonte</xMun><UF>MG</UF><CEP>30000000</CEP></enderEmit><IE>1234567890123</IE></emit>
+<dest><CNPJ>11222333000181</CNPJ><xNome>Cliente Teste</xNome><enderDest><xLgr>Rua B</xLgr><nro>5</nro><xBairro>Bairro</xBairro><xMun>Contagem</xMun><UF>MG</UF><CEP>32000000</CEP></enderDest><IE>ISENTO</IE></dest>
+<det nItem="1"><prod><cProd>P1</cProd><xProd>${over.xProd ?? 'Parafuso'}</xProd><NCM>73181500</NCM><CFOP>5102</CFOP><uCom>UN</uCom><qCom>10.0000</qCom><vUnCom>2.5000</vUnCom><vProd>25.00</vProd></prod><imposto><ICMS><ICMSSN102><orig>0</orig><CSOSN>102</CSOSN></ICMSSN102></ICMS></imposto></det>
+<det nItem="2"><prod><cProd>P2</cProd><xProd>Porca</xProd><NCM>73181600</NCM><CFOP>5102</CFOP><uCom>UN</uCom><qCom>4.0000</qCom><vUnCom>1.0000</vUnCom><vProd>4.00</vProd></prod><imposto><ICMS><ICMSSN102><orig>0</orig><CSOSN>102</CSOSN></ICMSSN102></ICMS></imposto></det>
+<total><ICMSTot><vBC>0.00</vBC><vICMS>0.00</vICMS><vBCST>0.00</vBCST><vST>0.00</vST><vProd>29.00</vProd><vFrete>1.00</vFrete><vSeg>0.00</vSeg><vDesc>0.00</vDesc><vOutro>0.00</vOutro><vIPI>0.00</vIPI><vNF>30.00</vNF></ICMSTot></total>
+<transp><modFrete>9</modFrete></transp><cobr><dup><nDup>001</nDup><dVenc>2026-11-22</dVenc><vDup>30.00</vDup></dup></cobr>
+<pag><detPag><tPag>15</tPag><vPag>30.00</vPag></detPag></pag><infAdic><infCpl>Pedido 77 - obrigado</infCpl></infAdic></infNFe>
+${over.supl === false ? '' : `<infNFeSupl><qrCode>https://exemplo.fazenda.gov.br/nfce?p=${NFE_KEY}|2|1|1|ABCDEF</qrCode><urlChave>https://exemplo.fazenda.gov.br/consulta</urlChave></infNFeSupl>`}</NFe>
+${over.prot === false ? '' : `<protNFe versao="4.00"><infProt><tpAmb>1</tpAmb><chNFe>${NFE_KEY}</chNFe><dhRecbto>2026-10-22T10:31:00-03:00</dhRecbto><nProt>131260000012345</nProt><cStat>100</cStat><xMotivo>Autorizado o uso da NF-e</xMotivo></infProt></protNFe>`}</nfeProc>`;

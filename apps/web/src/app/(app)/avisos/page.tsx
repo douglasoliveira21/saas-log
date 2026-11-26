@@ -12,10 +12,11 @@ const MAX_QR_CYCLES = 8; // ~6 minutos tentando; depois espera o clique (evita g
 interface LogRow { id: string; type: string; channel: string; recipient: string; subject: string | null; status: string; error: string | null; attempts: number; createdAt: string; sentAt: string | null }
 interface Logs { counts: Record<string, number>; items: LogRow[] }
 
-const TITLE: Record<string, string> = { INVOICE_DUE: 'Lembrete de vencimento', ORDER_STATUS: 'Status do pedido', COLLECTION: 'Cobrança de títulos vencidos' };
+const TITLE: Record<string, string> = { INVOICE_DUE: 'Lembrete de vencimento', ORDER_STATUS: 'Status do pedido', INVOICE_ISSUED: 'Nota fiscal emitida', COLLECTION: 'Cobrança de títulos vencidos' };
 const HELP: Record<string, string> = {
   INVOICE_DUE: 'Avisa o cliente alguns dias antes do vencimento dos títulos a receber em aberto (um aviso por cliente e dia).',
   ORDER_STATUS: 'Avisa o cliente quando o pedido muda para os status escolhidos. Pedidos de marketplace não entram (quem avisa é o marketplace).',
+  INVOICE_ISSUED: 'Assim que a NF-e/NFC-e do pedido é autorizada, envia ao cliente o e-mail com o XML e o DANFE em anexo (por WhatsApp vai só o aviso com número e chave). Pedidos de marketplace não entram.',
   COLLECTION: 'Avisa o cliente sobre títulos vencidos, em tom neutro, repetindo no intervalo escolhido até o pagamento. Revise o texto com o seu financeiro.',
 };
 const STATUSES: [string, string][] = [['CONFIRMED', 'Confirmado'], ['PICKING', 'Em separação'], ['PACKED', 'Embalado'], ['SHIPPED', 'Enviado'], ['DELIVERED', 'Entregue'], ['CANCELLED', 'Cancelado']];

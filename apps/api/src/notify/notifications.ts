@@ -6,11 +6,11 @@ import { AuthContext, CurrentAuth, RequirePermissions } from '../common/auth';
 import { getConfig } from '../config/app.config';
 import { PrismaService } from '../prisma/prisma.service';
 import { localToday } from '../sales/cutoff';
-import { esc, Mailer } from './mailer';
+import { Mailer, noticeMail, type MailAttachment } from './mailer';
 import { waNumber, WhatsappService } from './whatsapp';
 
 type Tx = Prisma.TransactionClient;
-export const NOTIFY_TYPES = ['INVOICE_DUE', 'ORDER_STATUS', 'COLLECTION'] as const;
+export const NOTIFY_TYPES = ['INVOICE_DUE', 'ORDER_STATUS', 'INVOICE_ISSUED', 'COLLECTION'] as const;
 export type NotifyType = (typeof NOTIFY_TYPES)[number];
 const DAY = 86_400_000;
 
@@ -25,8 +25,13 @@ export const DEFAULT_TEMPLATES: Record<NotifyType, { subject: string; body: stri
   },
   ORDER_STATUS: {
     subject: 'Pedido {pedido}: {status}',
-    body: 'Olá, {cliente}! Seu pedido {pedido} na {empresa} está {status}. Para deixar de receber estes avisos, fale com a {empresa}.',
-    vars: ['cliente', 'empresa', 'pedido', 'status'],
+    body: 'Olá, {cliente}! Seu pedido {pedido} na {empresa} está {status}. Valor do pedido: {total}. Para deixar de receber estes avisos, fale com a {empresa}.',
+    vars: ['cliente', 'empresa', 'pedido', 'status', 'total'],
+  },
+  INVOICE_ISSUED: {
+    subject: 'Nota fiscal {numero} — {empresa}',
+    body: 'Olá, {cliente}! A {empresa} emitiu a nota fiscal {numero} do seu pedido {pedido}, no valor de {valor}. Chave de acesso: {chave}. Para deixar de receber estes avisos, fale com a {empresa}.',
+    vars: ['cliente', 'empresa', 'numero', 'pedido', 'valor', 'chave'],
   },
   COLLECTION: {
     subject: 'Pendência em aberto com a {empresa}',
@@ -66,6 +71,10 @@ void IsEmail;
 export class NotificationsService {
   private readonly log = new Logger(NotificationsService.name);
   constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly mailer: Mailer, private readonly wa: WhatsappService) {}
+
+  /** Quem sabe montar os anexos de cada tipo de referência (ex.: a nota fiscal entrega XML e DANFE). Evita dependência circular entre módulos. */
+  private static attachers = new Map<string, (tenantId: string, refId: string) => Promise<MailAttachment[]>>();
+  static registerAttachments(refType: string, fn: (tenantId: string, refId: string) => Promise<MailAttachment[]>) { NotificationsService.attachers.set(refType, fn); }
 
   // ───────────── configuração ─────────────
 
@@ -141,10 +150,23 @@ export class NotificationsService {
   async onOrderStatus(tx: Tx, tenantId: string, orderId: string, status: string) {
     const rule = await this.ruleOf(tx, tenantId, 'ORDER_STATUS');
     if (!rule || !(rule.orderStatuses as string[]).includes(status)) return;
-    const o = await tx.salesOrder.findFirst({ where: { id: orderId, tenantId }, select: { number: true, channel: true, customer: { select: { id: true, name: true, email: true, phone: true, notifyOptOut: true } } } });
+    const o = await tx.salesOrder.findFirst({ where: { id: orderId, tenantId }, select: { number: true, channel: true, total: true, customer: { select: { id: true, name: true, email: true, phone: true, notifyOptOut: true } } } });
     if (!o || o.channel === 'MARKETPLACE' || o.customer.notifyOptOut) return; // pedido de marketplace: quem avisa é o marketplace
     const t = await tx.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true } });
-    await this.enqueue(tx, tenantId, rule, o.customer, { cliente: o.customer.name, empresa: t.name, pedido: `#${o.number}`, status: ORDER_STATUS_LABEL[status] ?? status.toLowerCase() }, { type: 'ORDER', id: orderId }, `order:${orderId}:${status}`);
+    await this.enqueue(tx, tenantId, rule, o.customer, { cliente: o.customer.name, empresa: t.name, pedido: `#${o.number}`, status: ORDER_STATUS_LABEL[status] ?? status.toLowerCase(), total: brl(Math.round(Number(o.total) * 100)) }, { type: 'ORDER', id: orderId }, `order:${orderId}:${status}`);
+  }
+
+  /** Nota fiscal de saída autorizada: entra na fila o e-mail ao cliente com XML e DANFE (chamado na mesma transação da autorização). */
+  async onInvoiceAuthorized(tx: Tx, tenantId: string, documentId: string): Promise<boolean> {
+    const rule = await this.ruleOf(tx, tenantId, 'INVOICE_ISSUED');
+    if (!rule) return false;
+    const d = await tx.fiscalDocument.findFirst({ where: { id: documentId, tenantId, direction: 'EXIT', purpose: 'NORMAL' }, select: { number: true, series: true, accessKey: true, totalInvoice: true, salesOrder: { select: { number: true, channel: true, total: true, customer: { select: { id: true, name: true, email: true, phone: true, notifyOptOut: true } } } } } });
+    const o = d?.salesOrder;
+    if (!d || !o || o.channel === 'MARKETPLACE' || o.customer.notifyOptOut) return false; // marketplace entrega a nota pelo próprio canal
+    const t = await tx.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true } });
+    const cents = Math.round(Number(d.totalInvoice ?? o.total) * 100);
+    const n = await this.enqueue(tx, tenantId, rule, o.customer, { cliente: o.customer.name, empresa: t.name, numero: d.number ? `${d.number}${d.series != null ? `/${d.series}` : ''}` : '', pedido: `#${o.number}`, valor: brl(cents), chave: d.accessKey ?? '' }, { type: 'FISCAL_DOCUMENT', id: documentId }, `nfe:${documentId}`);
+    return n > 0;
   }
 
   /** Varredura diária de vencimentos e cobrança de uma empresa. Pode rodar quantas vezes quiser: a chave de deduplicação impede repetição. */
@@ -205,8 +227,18 @@ export class NotificationsService {
       const rule = await this.prisma.withContext({ tenantId }, (tx) => tx.notificationRule.findUnique({ where: { tenantId_type: { tenantId, type: r.type } } }));
       const on = r.channel === 'EMAIL' ? rule?.emailEnabled : rule?.whatsappEnabled;
       if (cust?.notifyOptOut || !on) { await this.mark(tenantId, r.id, 'SKIPPED', r.attempts, cust?.notifyOptOut ? 'Cliente pediu para não receber avisos.' : 'Aviso desligado nas configurações.'); continue; }
+      // anexos (XML e DANFE da nota): se não der para montar agora, tenta de novo mais tarde — nunca envia a nota sem os arquivos
+      let attachments: MailAttachment[] | undefined;
+      const attacher = r.channel === 'EMAIL' && r.refType ? NotificationsService.attachers.get(r.refType) : undefined;
+      if (attacher && r.refId) {
+        try { attachments = await attacher(tenantId, r.refId); } catch (e) {
+          failed++; const final = r.attempts + 1 >= 5;
+          await this.mark(tenantId, r.id, final ? 'FAILED' : 'QUEUED', r.attempts + 1, `Anexos indisponíveis: ${(e as Error).message}`.slice(0, 300));
+          continue;
+        }
+      }
       const res = r.channel === 'EMAIL'
-        ? await this.mailer.send({ to: r.recipient, subject: r.subject ?? 'Aviso', text: r.body, html: `<div style="font-family:system-ui,sans-serif;max-width:520px"><p>${esc(r.body)}</p><p style="color:#666;font-size:12px">${esc(t.name)}</p></div>`, fromName: t.name })
+        ? await this.mailer.send({ to: r.recipient, subject: r.subject ?? 'Aviso', text: attachments?.length ? `${r.body}\n\nEm anexo: ${attachments.map((a) => a.filename).join(', ')}` : r.body, html: noticeMail(t.name, r.body, { attachments: attachments?.map((a) => a.filename) }), fromName: t.name, attachments })
         : await this.wa.sendText(tenantId, r.recipient, r.body);
       if (res.ok) { sent++; await this.mark(tenantId, r.id, 'SENT', r.attempts + 1, null); continue; }
       failed++;
