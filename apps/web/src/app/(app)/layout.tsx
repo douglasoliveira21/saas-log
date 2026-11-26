@@ -13,6 +13,7 @@ import { ADMIN_NAV, NAV, NAV_GROUP_ICONS, NAV_GROUPS, PLATFORM_ADMIN_PATHS } fro
 import { SessionProvider, useSession } from '@/lib/session';
 import { useAppMode } from '@/lib/app-mode';
 import { clearTrackerBuffer } from '@/lib/tracking';
+import { ApkDownload } from '@/components/apk-download';
 import { GlobalSearch } from '@/components/global-search';
 
 
@@ -161,6 +162,7 @@ function Shell({ children }: { children: ReactNode }) {
           </nav>
           <span className="spacer" />
           <GlobalSearch />
+          <ApkDownload />
           {trialLeft !== null && (can('tenant.manage') ? <Link href="/plano" className={`badge ${trialLeft <= 3 ? 'warn' : 'brand'} hide-sm`} style={{ textDecoration: 'none' }}>
             {trialLeft > 0 ? `Avaliação: ${trialLeft} dia(s)` : 'Avaliação encerrada'}
           </Link> : <span className={`badge ${trialLeft <= 3 ? 'warn' : 'brand'} hide-sm`}>{trialLeft > 0 ? `Avaliação: ${trialLeft} dia(s)` : 'Avaliação encerrada'}</span>)}

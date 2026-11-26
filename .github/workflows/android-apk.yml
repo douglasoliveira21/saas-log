@@ -87,3 +87,11 @@ jobs:
             mobile/android/app/build/outputs/apk/release/distribuihub.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publicar o APK (link fixo .../releases/latest/download/distribuihub.apk)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK=$(ls android/app/build/outputs/apk/release/distribuihub.apk 2>/dev/null || ls android/app/build/outputs/apk/debug/*.apk | head -1)
+          cp "$APK" "$RUNNER_TEMP/distribuihub.apk"
+          gh release create "app-v${VERSION_NAME}" "$RUNNER_TEMP/distribuihub.apk" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA"             --title "Aplicativo Android ${VERSION_NAME}" --notes "Aplicativo do motorista (APK). Instale no Android permitindo 'fontes desconhecidas'." --latest
